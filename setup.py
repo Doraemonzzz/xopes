@@ -11,11 +11,11 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, "README.md"), encoding="utf-8") as f:
     long_description = f.read()
 
-exec(open("pypat/version.py").read())
+exec(open("xopes/version.py").read())
 setup(
-    name="pypat",
+    name="xops",
     version=__version__,
-    description="Python Package Template",
+    description="Efficient operators for Machine Learning",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Doraemonzzz/Python-Package-Template",
