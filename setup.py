@@ -13,7 +13,7 @@ with open(path.join(here, "README.md"), encoding="utf-8") as f:
 
 exec(open("xopes/version.py").read())
 setup(
-    name="xops",
+    name="xopes",
     version=__version__,
     description="Efficient operators for Machine Learning",
     long_description=long_description,
