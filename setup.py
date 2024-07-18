@@ -18,7 +18,7 @@ setup(
     description="Efficient operators for Machine Learning",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/Doraemonzzz/Python-Package-Template",
+    url="https://github.com/Doraemonzzz/xopes",
     author="Doraemonzzz",
     author_email="doraemon_zzz@163.com",
     classifiers=[
