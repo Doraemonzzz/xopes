@@ -70,7 +70,7 @@ def additive_rule_recurrence_stable_torch(
         # print(lambdai.shape, denom.shape, gi.shape)
         denom = lambdai * denom + torch.exp(gi)
         # print(qi.shape, s.shape, denom.shape)
-        oi = torch.matmul(qi.transpose(-1, -2), s / denom)
+        oi = torch.matmul((qi / denom).transpose(-1, -2), s)
         # oi = torch.matmul(qi.to(s.dtype) / denom, s)
         o.append(oi)
         m = mi

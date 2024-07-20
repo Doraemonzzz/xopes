@@ -173,7 +173,7 @@ def _additive_recurrence_fwd(
         s = lambda_ * s + k_bar_trans.to(v.dtype) * v
         denom = lambda_ * denom + g_exp_trans
         # d 1, d e -> d e
-        o = (q_trans) * (s / denom)
+        o = (q_trans / denom) * s
         # d e -> 1 e
         o = tl.sum(o, axis=0)[None, :]
 

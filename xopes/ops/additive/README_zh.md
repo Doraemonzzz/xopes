@@ -56,10 +56,10 @@ m_0 &= -\infty, \\
 m_t  &= \max(m_{t-1}, g_t), \\
 \lambda_t &= \exp(m_{t-1}-m_t)  \\
 \bar k_t &=\exp(g_t-m_t) \odot k_t, \\
+\bar q_t &= q_t/\Delta_t, \\
 s_t &= \lambda_t s_{t-1} +\bar k_t^T v_t,\\
 \Delta_t &=\lambda_t \Delta_{t-1} + \exp(g_t-m_t), \\
-\bar {s}_t &=diag\{\Delta_t\}^{-1} s_t, \\
-o_t &=q_t \bar {s}_t. \\
+o_t &=\bar q_t  {s}_t. \\
 \end{aligned}
 $$
 
@@ -79,7 +79,7 @@ i_t &=g_t - f_t,  \\
 \bar k_t &= \exp(i_t) \odot k_t, \\
 s_t &=\mathrm{diag}\{\Delta_{t-1}/\Delta_t\} s_{t-1} +\mathrm{diag}\{ \exp(g_t)/\Delta_t\}  k_t^T v_t,\\
 &=\mathrm{diag}\{\exp(f_{t-1}-f_t)\} s_{t-1} + \mathrm{diag}\{\exp(i_t)\} k_t^Tv_t\\
-&=\mathrm{diag}\{\exp(f_{t-1}-f_t)\} s_{t-1} + \bar k_t^Tv_t,
+&=\mathrm{diag}\{\exp(f_{t-1}-f_t)\} s_{t-1} + \bar k_t^Tv_t, \\
 o_t &=q_t  {s}_t. \\
 \end{aligned}
 $$
@@ -145,7 +145,26 @@ $$
 
 ## block level实现
 
-### 数值稳定版本
+$$
+\begin{aligned}
+m_0 &= -\infty, \\
+m_t  &= \max(m_{t-1}, g_t), \\
+\lambda_t &= \exp(m_{t-1}-m_t)  \\
+\bar k_t &=\exp(g_t-m_t) \odot k_t, \\
+\bar q_t &= q_t/\Delta_t, \\
+\Delta_t &=\lambda_t \Delta_{t-1} + \exp(g_t-m_t), \\
+s_t &= \lambda_t s_{t-1} +\bar k_t^T v_t,\\
+o_t &=\bar q_t  {s}_t. \\
+\end{aligned}
+$$
+
+其中$\Delta_t = \exp(\log\exp\mathrm{cumsum}(g_t)-c)$，可以提前计算，所以重点是$s_t$的递推。
+
+
+
+
+
+## block level实现(gla)
 
 考虑递推：
 $$
@@ -185,7 +204,7 @@ O = \left(\left( \left(Q\odot \Lambda\right) \left(\frac{K}{\Lambda} \right)^T  
 \odot M
 \right) V
 $$
-考虑chunk size为$B$，
+考虑block size为$B$，
 $$
 S_t =s_{tB}=\sum_{s\le tB} \left(\Lambda_{tB} /\Lambda_s  \right)  k_sv_s^T
 $$
@@ -211,9 +230,44 @@ O_{t+1}=\left[ \underbrace {\left( \left(Q_{t+1} \odot \Lambda_{t+1}\right) \lef
  \Tau_{t+1,r} =\Lambda_{tB+r} /\Lambda_{tB}, \Gamma_{t+1, r}= \Lambda_{(t+1)B} /\Lambda_{tB+r}, \\
  S_{t+1}=\sum_{s=tB+1}^{tB+B} \left(\Lambda_{(t+1)B} /\Lambda_s  \right)  k_sv_s^T
 +  (\Lambda_{(t+1)B} /\Lambda_{tB})\sum_{s=1}^{tB} \left(\Lambda_{tB} /\Lambda_s  \right)  k_sv_s^T \\
-= \Tau_{t+1,B} S_t +  (\Tau_{t+1}\odot K_{t+1})^T V_{t+1}.
+= \Tau_{t+1,B} S_t +  (\Gamma_{t+1}\odot K_{t+1})^T V_{t+1}.
 $$
 最后讨论$P$：
 $$
 P_{ij}= \sum_{k=1}^d Q_{ik} K_{jk} (\Lambda_{ik}/\Lambda_{jk})
+$$
+记：
+$$
+\bar \Lambda_{t, r}=\Lambda_{tB+r}=m_0 -m_{tB+r}\le 0
+$$
+
+
+
+
+### 代入
+
+$$
+\log \Lambda_t  = \sum_{s=1}^t \log\lambda_s = \sum_{s=1}^t (m_{s-1}-m_s)=m_0 - m_t, t=1,\ldots n,\\
+\log T_{t+1,r}=\log \Lambda_{tB+r}-\log \Lambda_{tB}=m_{tB}-m_{tB+r},\\
+\log \Gamma_{t+1,r}=\log \Lambda_{(t+1)B}-\log \Lambda_{tB+r}=m_{tB+r}-m_{(t+1)B},\\
+r=1,\ldots B.\\
+\log T_{t+1}= m_{tB}-M_{t+1},   \\
+\log \Gamma_{t+1}=M_{t+1}- m_{(t+1)B}
+$$
+
+
+$$
+\begin{aligned}
+\bar Q_{t+1} \odot \bar \Lambda_{t+1}
+&=  Q_{t+1}/\bar \Lambda_{t+1} \odot  \bar \Lambda_{t+1}=Q_{t+1},  \\
+\frac{\bar K_{t+1}}{\bar \Lambda_{t+1}}
+&= \frac{\exp(G_{t+1}-M_{t+1})\odot K_{t+1} }{\exp(m_0 - M_{t+1})} \\
+&={\exp(G_{t+1}-m_{0})\odot K_{t+1} },(\text{not stable}) \\
+\bar Q_{t+1}\odot T_{t+1}
+&= \frac{Q_{t+1} \odot \exp(m_{tB}- M_{t+1})}{\exp(m_0 - M_{t+1})} \\
+&=Q_{t+1}\odot \exp(m_{tB}- m_0). (\text{not stable}) \\
+\Gamma_{t+1}\odot \bar K_{t+1} &=
+\exp(M_{t+1}-m_{(t+1)B}) \odot \exp(G_{t+1}-M_{t+1}) \odot  K_{t+1} \\
+&= \exp(G_{t+1}-m_{(t+1)B})  \odot  K_{t+1}
+\end{aligned}
 $$

@@ -14,4 +14,4 @@ Python Package Template.
   - [ ] Block Parallel Triton
     - [ ] fwd
     - [ ] bwd
-- [ ]
+- [ ] LogExpCumsum
