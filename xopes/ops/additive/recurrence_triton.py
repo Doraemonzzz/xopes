@@ -37,8 +37,10 @@ def _additive_recurrence_fwd(
     O,
     S_INITIAL_STATE,
     DENOM_INITIAL_STATE,
+    M_INITIAL_STATE,
     S_FINAL_STATE,
     DENOM_FINAL_STATE,
+    M_FINAL_STATE,
     b: tl.constexpr,
     h: tl.constexpr,
     n: tl.constexpr,
@@ -62,9 +64,9 @@ def _additive_recurrence_fwd(
     off_d = off_d * BLOCK_D
     off_e = off_e * BLOCK_E
     off_s = off_bh * d * e
-    off_denom = off_bh * d
+    off_denom_m = off_bh * d
     # mask
-    mask_denom = (off_d + tl.arange(0, BLOCK_D) < d)[:, None]
+    mask_denom_m = (off_d + tl.arange(0, BLOCK_D) < d)[:, None]
 
     # get block ptr
     q_trans_block_ptr = tl.make_block_ptr(
@@ -136,23 +138,21 @@ def _additive_recurrence_fwd(
 
         # !!!! dont use tl.make_block_ptr, since it will cause bug
         denom_block_ptr = (
-            DENOM_INITIAL_STATE + off_denom + off_d + tl.arange(0, BLOCK_D)[:, None]
+            DENOM_INITIAL_STATE + off_denom_m + off_d + tl.arange(0, BLOCK_D)[:, None]
+        )
+        m_block_ptr = (
+            M_INITIAL_STATE + off_denom_m + off_d + tl.arange(0, BLOCK_D)[:, None]
         )
 
         s = tl.load(s_block_ptr, boundary_check=(0, 1)).to(tl.float32)
-        # s = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
-        denom = tl.load(denom_block_ptr, mask=mask_denom).to(tl.float32)
-        # denom = tl.zeros([BLOCK_D, 1], dtype=tl.float32)
-        # m = tl.load(m_block_ptr).to(tl.float32)
-        # tl.static_print(s, denom, m)
-
-        # m = tl.zeros([BLOCK_D, 1], dtype=tl.float32) + (-1e5)
+        denom = tl.load(denom_block_ptr, mask=mask_denom_m).to(tl.float32)
+        m = tl.load(m_block_ptr, mask=mask_denom_m).to(tl.float32)
     else:
 
         s = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
         denom = tl.zeros([BLOCK_D, 1], dtype=tl.float32)
 
-    m = tl.zeros([BLOCK_D, 1], dtype=tl.float32) + (-1e5)
+        m = tl.zeros([BLOCK_D, 1], dtype=tl.float32) + (-1e5)
 
     for i in range(n):
         # boundary check on feature dim
@@ -160,14 +160,13 @@ def _additive_recurrence_fwd(
         k_trans = tl.load(k_trans_block_ptr, boundary_check=(0, 1)).to(tl.float32)
         v = tl.load(v_block_ptr, boundary_check=(0, 1)).to(tl.float32)
         g_trans = tl.load(g_trans_block_ptr, boundary_check=(0, 1)).to(tl.float32)
+
         # update params
         # d 1
         m_ = tl.maximum(m, g_trans)
         g_trans = g_trans - m_
         lambda_ = tl.exp(m - m_)
-
-        # tl.device_print("aaa", tl.min(lambda_), tl.max(lambda_))
-
+        # compute
         g_exp_trans = tl.exp(g_trans)
         k_bar_trans = g_exp_trans * k_trans
         # d 1, 1 e -> d e
@@ -179,14 +178,16 @@ def _additive_recurrence_fwd(
         o = tl.sum(o, axis=0)[None, :]
 
         m = m_
+
         tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), boundary_check=(0, 1))
 
+        # update block ptr
         q_trans_block_ptr = tl.advance(q_trans_block_ptr, (0, 1))
         k_trans_block_ptr = tl.advance(k_trans_block_ptr, (0, 1))
         v_block_ptr = tl.advance(v_block_ptr, (1, 0))
         g_trans_block_ptr = tl.advance(g_trans_block_ptr, (0, 1))
         o_block_ptr = tl.advance(o_block_ptr, (1, 0))
-    # tl.device_print("aaa", tl.min(denom))
+
     if OUTPUT_FINAL_STATE:
         s_final_block_ptr = tl.make_block_ptr(
             base=S_FINAL_STATE + off_s,
@@ -205,7 +206,10 @@ def _additive_recurrence_fwd(
 
         # !!!! dont use tl.make_block_ptr, since it will cause bug
         denom_final_block_ptr = (
-            DENOM_FINAL_STATE + off_denom + off_d + tl.arange(0, BLOCK_D)[:, None]
+            DENOM_FINAL_STATE + off_denom_m + off_d + tl.arange(0, BLOCK_D)[:, None]
+        )
+        m_final_block_ptr = (
+            M_FINAL_STATE + off_denom_m + off_d + tl.arange(0, BLOCK_D)[:, None]
         )
 
         tl.store(
@@ -213,12 +217,17 @@ def _additive_recurrence_fwd(
             s.to(s_final_block_ptr.dtype.element_ty),
             boundary_check=(0, 1),
         )
-        # tl.static_print(denom, denom_final_block_ptr)
 
         tl.store(
             denom_final_block_ptr,
             denom.to(denom_final_block_ptr.dtype.element_ty),
-            mask=mask_denom,
+            mask=mask_denom_m,
+        )
+
+        tl.store(
+            m_final_block_ptr,
+            m.to(m_final_block_ptr.dtype.element_ty),
+            mask=mask_denom_m,
         )
 
 
@@ -240,10 +249,11 @@ class AdditiveRecurrenceFunction(torch.autograd.Function):
         )
 
         if initial_state is not None:
-            s_initial_state, denom_initial_state = initial_state
+            s_initial_state, denom_initial_state, m_initial_state = initial_state
         else:
             s_initial_state = None
             denom_initial_state = None
+            m_initial_state = None
 
         if output_final_state:
             s_final_state = torch.empty(
@@ -252,9 +262,13 @@ class AdditiveRecurrenceFunction(torch.autograd.Function):
             denom_final_state = torch.empty(
                 (b, h, d, 1), dtype=torch.float32, device=torch.cuda.current_device()
             )
+            m_final_state = torch.empty(
+                (b, h, d, 1), dtype=torch.float32, device=torch.cuda.current_device()
+            )
         else:
             s_final_state = None
             denom_final_state = None
+            m_final_state = None
 
         USE_INITIAL_STATE = initial_state is not None
         OUTPUT_FINAL_STATE = output_final_state
@@ -273,8 +287,10 @@ class AdditiveRecurrenceFunction(torch.autograd.Function):
             o,
             s_initial_state,
             denom_initial_state,
+            m_initial_state,
             s_final_state,
             denom_final_state,
+            m_final_state,
             b,
             h,
             n,
@@ -289,7 +305,7 @@ class AdditiveRecurrenceFunction(torch.autograd.Function):
         )
 
         if OUTPUT_FINAL_STATE:
-            final_state = (s_final_state, denom_final_state)
+            final_state = (s_final_state, denom_final_state, m_final_state)
         else:
             final_state = None
 

@@ -45,11 +45,11 @@ def additive_rule_recurrence_stable_torch(
     if initial_state is not None:
         s = initial_state[0]
         denom = initial_state[1]
-
+        m = initial_state[2]
     else:
         s = torch.zeros(b, h, d, e).to(torch.float32).to(q.device)
         denom = torch.zeros((b, h, d, 1)).to(q.device)
-    m = torch.ones(b, h, d, 1).to(torch.float32).to(q.device) * (-1e5)
+        m = torch.ones(b, h, d, 1).to(torch.float32).to(q.device) * (-1e5)
 
     o = []
     for i in range(n):
@@ -77,6 +77,6 @@ def additive_rule_recurrence_stable_torch(
 
     final_state = None
     if output_final_state:
-        final_state = (s, denom)
+        final_state = (s, denom, m)
 
     return torch.cat(o, dim=-2).to(q.dtype), final_state
