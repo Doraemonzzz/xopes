@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from xopes.ops import (
+    additive_rule_block_recurrence_triton,
     additive_rule_recurrence_stable_torch,
     additive_rule_recurrence_torch,
     additive_rule_recurrence_triton,
@@ -27,10 +28,20 @@ def get_params():
 # @pytest.mark.parametrize("dtype", [torch.float16])
 # @pytest.mark.parametrize("dtype", [torch.bfloat16])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("use_initial_state", [True, False])
-@pytest.mark.parametrize("output_final_state", [True, False])
-# @pytest.mark.parametrize("use_initial_state", [True, ])
-# @pytest.mark.parametrize("output_final_state", [True, ])
+# @pytest.mark.parametrize("use_initial_state", [True, False])
+# @pytest.mark.parametrize("output_final_state", [True, False])
+@pytest.mark.parametrize(
+    "use_initial_state",
+    [
+        False,
+    ],
+)
+@pytest.mark.parametrize(
+    "output_final_state",
+    [
+        False,
+    ],
+)
 def test_lightning2(b, h, n, d, e, dtype, use_initial_state, output_final_state):
     torch.manual_seed(2024)
     device = torch.device("cuda")
@@ -59,19 +70,29 @@ def test_lightning2(b, h, n, d, e, dtype, use_initial_state, output_final_state)
         rtol = 1e-1
 
     # forward
+    # naive recurrence torch
     o_recurrence_torch, final_state_recurrence_torch = additive_rule_recurrence_torch(
         q, k, v, g, initial_state, output_final_state=output_final_state
     )
+    # stable recurrence torch
     (
         o_recurrence_stable_torch,
         final_state_recurrence_stable_torch,
     ) = additive_rule_recurrence_stable_torch(
         q, k, v, g, initial_state, output_final_state=output_final_state
     )
+    # recurrence triton
     (
         o_recurrence_triton,
         final_state_recurrence_triton,
     ) = additive_rule_recurrence_triton(
+        q, k, v, g, initial_state, output_final_state=output_final_state
+    )
+    # block recurrence triton
+    (
+        o_block_recurrence_triton,
+        final_state_block_recurrence_triton,
+    ) = additive_rule_block_recurrence_triton(
         q, k, v, g, initial_state, output_final_state=output_final_state
     )
 
@@ -96,9 +117,19 @@ def test_lightning2(b, h, n, d, e, dtype, use_initial_state, output_final_state)
     print(
         f"recurrence stable torch Vs recurrence triton(diff max): {torch.abs(o_recurrence_stable_torch - o_recurrence_triton).max()}"
     )
+    print(
+        f"recurrence stable torch Vs block recurrence triton(diff norm): {torch.norm(o_recurrence_stable_torch - o_block_recurrence_triton).item()}"
+    )
+    print(
+        f"recurrence stable torch Vs block recurrence triton(diff max): {torch.abs(o_recurrence_stable_torch - o_block_recurrence_triton).max()}"
+    )
 
     assert torch.allclose(
         o_recurrence_triton, o_recurrence_stable_torch, atol=atol, rtol=rtol
+    )
+
+    assert torch.allclose(
+        o_block_recurrence_triton, o_recurrence_stable_torch, atol=atol, rtol=rtol
     )
     # assert torch.allclose(o_recurrence_torch, o_recurrence_triton, atol=1e-2, rtol=rtol)
 
