@@ -87,7 +87,68 @@ $$
 
 
 
-## block递推
+
+# block递推
+
+前向：
+
+注意下式成立，
+$$
+\begin{aligned}
+\bar o_i &= \log \left(\exp(\bar o_i+m_{i-1}-m_{i})+  \exp(x_i-m_i) \right).
+\end{aligned}
+$$
+故我们维护每个block的最大值：
+$$
+\begin{aligned}
+m&= n/B, \\
+M_0&=  -\infty, \\
+M_i & =\max\{ M_{i-1}, x_{(i-1)B+k},k=1,\ldots, B \}, \\
+\bar O_i &= [\bar o_{(i-1)B+1},\ldots, \bar o_{(i-1)B+B}], \\
+X_i&=[x_{(i-1)B+1},\ldots,  x_{(i-1)B+B}],  \\
+\bar O_i&= \log \left(\exp(\bar O_i+M_{i-1}-M_{i})+  \exp(X_i-M_i) \right),\\
+O_i&= \bar O_i + M_i.
+
+\end{aligned}
+$$
+反向：
+
+注意公式：
+$$
+\begin{aligned}
+dx_i &=  \sum_{j= i}^{n}\frac{\partial l}{\partial o_j} \times \exp(x_i- o_j)
+\end{aligned}
+$$
+
+- 对$n$维度并行；
+- 每个block level cumsum；
+
+考虑下式：
+$$
+y_i=\sum_{j=1}^i x_i.
+$$
+block循环：
+$$
+\begin{aligned}
+Y_0 &=[0, \ldots, 0], \\
+Y_{i}&=Y_{i-1}[-1] + \mathrm{cumsum}(X_i),
+\end{aligned}
+$$
+反向（数值不稳定）：
+$$
+\begin{aligned}
+p_i&=\exp(x_i-o_i), \\
+q_{i+1} &=\exp(x_i -x_{i+1}), \\
+dx_n &= p_n\frac{\partial l}{\partial o_n} ,  \\
+dx_i&= p_i\frac{\partial l}{\partial o_i} \times \exp(x_i- o_i) +  q_{i+1} dx_{i+1}
+
+\end{aligned}
+$$
+block循环需要类乘，暂时不考虑。
+
+
+
+# block并行
 
 前向：
 $$
@@ -110,11 +171,13 @@ $$
 
 反向（数值不稳定版本）：
 
-- 计算$p_i=\exp(x_i-o_i), q_{i+1} =\exp(x_i -x_{i+1})$；
+- 计算
 
 进行递推：
 $$
 \begin{aligned}
+p_i&=\exp(x_i-o_i), \\
+q_{i+1} &=\exp(x_i -x_{i+1}), \\
 dx_n &= p_n\frac{\partial l}{\partial o_n} ,  \\
 dx_i&= p_i\frac{\partial l}{\partial o_i} \times \exp(x_i- o_i) +  q_{i+1} dx_{i+1}
 
