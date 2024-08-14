@@ -14,7 +14,12 @@ Python Package Template.
   - [ ] Block Parallel Triton
     - [ ] fwd
     - [ ] bwd
-- [ ] LogExpCumsum
+- [ ] LogCumsumExp
+  - [ ] Recurrence Triton
+    - [x] fwd
+  - [ ] Block Recurrence Triton
+  - [ ] Block Parallel Triton
+- [ ]
 
 # Note
 ```

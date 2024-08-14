@@ -1,2 +1,2 @@
+from .logcumsumexp_recurrence_triton import logcumsumexp_recurrence_triton
 from .logcumsumexp_torch import logcumsumexp_torch
-from .logcumsumexp_triton import logcumsumexp_recurrence_triton
