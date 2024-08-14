@@ -54,8 +54,6 @@ def _additive_recurrence_fwd(
     OUTPUT_FINAL_STATE: tl.constexpr,  # whether to output final state
 ):
     off_bh = tl.program_id(2)
-    off_bh % h
-    off_bh // h
     off_d, off_e = tl.program_id(0), tl.program_id(1)
     # compute offset
     off_qkg = off_bh * n * d

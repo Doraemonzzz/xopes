@@ -15,3 +15,9 @@ Python Package Template.
     - [ ] fwd
     - [ ] bwd
 - [ ] LogExpCumsum
+
+# Note
+```
+[Feature Add]
+[Bug Fix]
+```

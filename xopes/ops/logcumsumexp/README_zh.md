@@ -1,0 +1,102 @@
+# Naive
+
+前向：
+$$
+\begin{aligned}
+x &=[x_1,\ldots, x_n], \\
+o_i & = \log \sum_{j=1}^{i} \exp(x_j).
+\end{aligned}
+$$
+反向：
+$$
+\begin{aligned}
+dx_i
+& = \frac{\partial l}{\partial x_i}  \\
+& = \sum_{j= i}^{n}\frac{\partial l}{\partial o_j} \times \frac{\partial o_j}{\partial x_i}  \\
+&=  \sum_{j= i}^{n}\frac{\partial l}{\partial o_j} \times \left[ \frac{\exp(x_i)}
+{\sum_{k=1}^{j} \exp(x_k)} \right] \\
+&=  \sum_{j= i}^{n}\frac{\partial l}{\partial o_j} \times \left[ \frac{\exp(x_i)}
+{\sum_{k=1}^{j} \exp(x_k)} \right] \\
+&=  \sum_{j= i}^{n}\frac{\partial l}{\partial o_j} \times \exp(x_i- o_j)
+\end{aligned}
+$$
+
+
+上式前向不稳定，可以改为下式：
+
+前向：
+$$
+\begin{aligned}
+x &=[x_1,\ldots, x_n], \\
+m & =\max_{i=1,\ldots, n}(x_i), \\
+o_i & = m+ \log \sum_{j=1}^{i} \exp(x_j-m).
+\end{aligned}
+$$
+# 递推式
+
+前向：
+$$
+\begin{aligned}
+m_0 &  =-\infty, \\
+o_0 &  =-\infty, \\
+m_i & =\max(m_{i-1}, x_i), \\
+o_i & =  \log \left(\exp(o_{i-1}+m_{i-1}-m_i) + \exp(x_i -m_i)  \right)+m_i, \\
+i&=1,\ldots, n.
+\end{aligned}
+$$
+反向（数值不稳定）：
+$$
+\begin{aligned}
+\frac{dx_i}{\exp(x_{i})}
+& =\sum_{j= i}^{n}\frac{\partial l}{\partial o_j} \times \exp(- o_j) \\
+& =\frac{\partial l}{\partial o_i} \times \exp(- o_i)+ \sum_{j= i+1}^{n}\frac{\partial l}{\partial o_j} \times \exp(- o_j) \\
+&= \frac{\partial l}{\partial o_i} \times \exp(- o_i)+\frac{dx_{i+1}}{\exp(x_{i+1})} \\
+dx_n &= \frac{\partial l}{\partial o_n} \times \exp(x_n- o_n)    \\
+dx_i&= \frac{\partial l}{\partial o_i} \times \exp(x_i- o_i) + \exp(x_i-x_{i+1})dx_{i+1}
+\end{aligned}
+$$
+
+上式可能数值不稳定，需要测试。
+
+
+
+
+## block递推
+
+前向：
+$$
+\begin{aligned}
+x &=[x_1,\ldots, x_n], \\
+\bar o_{i,k} & = \log \sum_{j=iB+1}^{iB+k} \exp(x_j), i=1,\ldots , M, k=1,\ldots, B ,  \\
+\Delta_0 &= -\inf,   \\
+\Delta_i & =\log(\exp(\Delta_{i-1}) +  \exp(\bar o_{i, B}))   \\
+o_{i, k}&= \log\left( \exp(\bar o_{i,k}) + \exp(\Delta_{i}) \right), i=2,\ldots M,k=1,\ldots B.
+\end{aligned}
+$$
+流程：
+
+- 并行计算$\bar o_{i, k}, i=1,\ldots, M$；
+  - 数值稳定版本；
+- 计算$\Delta_i$；
+  - 数值稳定版本；
+- 计算$o_{i,k}$；
+  - 数值稳定版本；
+
+反向（数值不稳定版本）：
+
+- 计算$p_i=\exp(x_i-o_i), q_{i+1} =\exp(x_i -x_{i+1})$；
+
+进行递推：
+$$
+\begin{aligned}
+dx_n &= p_n\frac{\partial l}{\partial o_n} ,  \\
+dx_i&= p_i\frac{\partial l}{\partial o_i} \times \exp(x_i- o_i) +  q_{i+1} dx_{i+1}
+
+\end{aligned}
+$$
+反向（数值稳定版本）：
+
+- 两两分组，(1, n), (2, n - 1), ...；
+- 每一组计算：
+  - $\sum_{j= i}^{n}\frac{\partial l}{\partial o_j} \times \exp(x_i- o_j)$
+  - 这个分组计算；
