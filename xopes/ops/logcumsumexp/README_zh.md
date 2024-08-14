@@ -35,12 +35,38 @@ $$
 # 递推式
 
 前向：
+
+注意到：
+$$
+\begin{aligned}
+o_i
+&= \log \sum_{j=1}^{i} \exp(x_j) \\
+&= \log \sum_{j=1}^{i-1} \exp(x_j) +  \exp(x_i) \\
+&= \log \left(\exp(o_{i-1})+  \exp(x_i) \right)
+\end{aligned}
+$$
+注意到上式不稳定，引入：
+$$
+m_i=\max_{j\le i}\{x_j\}.
+$$
+那么：
+$$
+\begin{aligned}
+o_i
+&= \log \left(\exp(o_{i-1}-m_{i})+  \exp(x_i-m_i) \right) + m_i \\
+o_i-m_i &= \log \left(\exp(o_{i-1}-m_{i-1}+m_{i-1}-m_{i})+  \exp(x_i-m_i) \right) \\
+\bar o_i &= \log \left(\exp(\bar o_i+m_{i-1}-m_{i})+  \exp(x_i-m_i) \right) \\
+o_i & = \bar o_i + m_i
+\end{aligned}
+$$
+整体递推：
 $$
 \begin{aligned}
 m_0 &  =-\infty, \\
-o_0 &  =-\infty, \\
+\bar o_0 &  =-\infty, \\
 m_i & =\max(m_{i-1}, x_i), \\
-o_i & =  \log \left(\exp(o_{i-1}+m_{i-1}-m_i) + \exp(x_i -m_i)  \right)+m_i, \\
+\bar o_i & =  \log \left(\exp(\bar o_{i-1}+m_{i-1}-m_i) + \exp(x_i -m_i)  \right), \\
+o_i &= \bar o_i + m_i ,  \\
 i&=1,\ldots, n.
 \end{aligned}
 $$
