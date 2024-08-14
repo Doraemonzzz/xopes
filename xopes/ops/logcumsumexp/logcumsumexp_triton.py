@@ -5,6 +5,23 @@ import triton.language as tl
 from xopes.utils import contiguous, pack, unpack
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK": 16}, num_warps=2),
+        triton.Config({"BLOCK": 16}, num_warps=4),
+        triton.Config({"BLOCK": 16}, num_warps=8),
+        triton.Config({"BLOCK": 32}, num_warps=2),
+        triton.Config({"BLOCK": 32}, num_warps=4),
+        triton.Config({"BLOCK": 32}, num_warps=8),
+        triton.Config({"BLOCK": 64}, num_warps=2),
+        triton.Config({"BLOCK": 64}, num_warps=4),
+        triton.Config({"BLOCK": 64}, num_warps=8),
+        triton.Config({"BLOCK": 128}, num_warps=2),
+        triton.Config({"BLOCK": 128}, num_warps=4),
+        triton.Config({"BLOCK": 128}, num_warps=8),
+    ],
+    key=["d"],
+)
 @triton.jit
 def _logcumsumexp_recurrence_fwd(
     X,
@@ -80,10 +97,10 @@ class LogCumSumExpRecurrence(torch.autograd.Function):
         o = torch.empty_like(x)
 
         # parallel over batch and feature
-        BLOCK = 16
-        grid = (b, triton.cdiv(d, BLOCK))
+        def grid(meta):
+            return (b, triton.cdiv(d, meta["BLOCK"]))
 
-        _logcumsumexp_recurrence_fwd[grid](x, o, b, n, d, BLOCK)
+        _logcumsumexp_recurrence_fwd[grid](x, o, b, n, d)
 
         o = unpack(o, ps, "* n d", is_list)
         if dim != -2:
