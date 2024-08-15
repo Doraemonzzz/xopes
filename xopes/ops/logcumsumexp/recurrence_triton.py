@@ -6,20 +6,6 @@ from xopes.utils import contiguous, generate_configs, pack, unpack
 
 
 @triton.autotune(
-    # configs=[
-    # triton.Config({"BLOCK": 16}, num_warps=2),
-    # triton.Config({"BLOCK": 16}, num_warps=4),
-    # triton.Config({"BLOCK": 16}, num_warps=8),
-    # triton.Config({"BLOCK": 32}, num_warps=2),
-    # triton.Config({"BLOCK": 32}, num_warps=4),
-    # triton.Config({"BLOCK": 32}, num_warps=8),
-    # triton.Config({"BLOCK": 64}, num_warps=2),
-    # triton.Config({"BLOCK": 64}, num_warps=4),
-    # triton.Config({"BLOCK": 64}, num_warps=8),
-    # triton.Config({"BLOCK": 128}, num_warps=2),
-    # triton.Config({"BLOCK": 128}, num_warps=4),
-    # triton.Config({"BLOCK": 128}, num_warps=8),
-    # ],
     generate_configs({"BLOCK": [16, 32, 64, 128], "num_warps": [2, 4, 8]}),
     key=["d"],
 )
