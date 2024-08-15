@@ -107,7 +107,7 @@ M_{i}  & =\max\{ M_{i-1}, x_{(i-1)B+k},k=1,\ldots, d\}, \\
 \bar O_i &= [\bar o_{(i-1)B+1},\ldots, \bar o_{(i-1)B+B}], \\
 X_i&=[x_{(i-1)B+1},\ldots,  x_{(i-1)B+B}],  \\
 Y_{i, k}&= \log\left(\sum_{j=1}^k\exp(x_{(i-1)B+j}- M_{i}) \right),   \\
-\bar O_i&= \log \left(\exp(\bar O_i+M_{i-1}-M_{i})+  \exp(Y_i) \right),\\
+\bar O_i&= \log \left(\exp(\bar O_{i, B}+M_{i-1}-M_{i})+  \exp(Y_i) \right),\\
 O_i&= \bar O_i + M_i.
 
 \end{aligned}
@@ -173,30 +173,50 @@ dx_i&= p_i\frac{\partial l}{\partial o_i} \times \exp(x_i- o_i) +  q_{i+1} dx_{i
 
 \end{aligned}
 $$
-block循环需要类乘，暂时不考虑。
-
-
+block循环需要累乘，暂时不考虑。
 
 # block并行
 
 前向：
+
+回顾之前的方法：
 $$
 \begin{aligned}
-x &=[x_1,\ldots, x_n], \\
-\bar o_{i,k} & = \log \sum_{j=iB+1}^{iB+k} \exp(x_j), i=1,\ldots , M, k=1,\ldots, B ,  \\
-\Delta_0 &= -\inf,   \\
-\Delta_i & =\log(\exp(\Delta_{i-1}) +  \exp(\bar o_{i, B}))   \\
-o_{i, k}&= \log\left( \exp(\bar o_{i,k}) + \exp(\Delta_{i}) \right), i=2,\ldots M,k=1,\ldots B.
+m&= n/B, \\
+M_0&=  -\infty, \\
+M_{i}  & =\max\{ M_{i-1}, x_{(i-1)B+k},k=1,\ldots, d\}, \\
+\bar D_i &=-\infty, \\
+X_i&=[x_{(i-1)B+1},\ldots,  x_{(i-1)B+B}],  \\
+Y_{i, k}&= \log\left(\sum_{j=1}^k\exp(x_{(i-1)B+j}- M_{i}) \right),   \\
+\bar O_i&= \log \left(\exp(\bar D_{i-1}+M_{i-1}-M_{i})+  \exp(Y_i) \right),\\
+\bar D_{i}& =  \bar O_{i, d},  \\
+O_i&= \bar O_i + M_i.
+
 \end{aligned}
 $$
-流程：
+给出如下方案：
 
-- 并行计算$\bar o_{i, k}, i=1,\ldots, M$；
-  - 数值稳定版本；
-- 计算$\Delta_i$；
-  - 数值稳定版本；
-- 计算$o_{i,k}$；
-  - 数值稳定版本；
+第一阶段，并行计算每个block：
+$$
+\begin{aligned}
+M_{i}&=\max \{ x_{(i-1)B+j}, j=1,\ldots, B\}, \\
+Y_{i, k}  &= \log\left(\sum_{j=1}^k\exp(x_{(i-1)B+j}- M_{i}) \right).
+
+\end{aligned}
+$$
+第二阶段, block递推：
+$$
+\begin{aligned}
+\bar M_0 &=-\infty,  \\
+\bar M_i &= \max\{\bar M_{i-1}, M_{i} \}, \\
+\bar D_i &=-\infty, \\
+\bar O_1 &=  Y_i, \\
+\bar O_i&= \log \left(\exp(\bar D_{i-1}+\bar M_{i-1}-\bar M_{i})+  \exp(Y_i+M_i - \bar M_i) \right), \\
+\bar D_{i}&= \bar O_{i, B}, \\
+O_i & = \bar O_i + \bar M_i.
+\end{aligned}
+$$
+
 
 反向（数值不稳定版本）：
 
