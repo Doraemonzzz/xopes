@@ -103,12 +103,41 @@ $$
 \begin{aligned}
 m&= n/B, \\
 M_0&=  -\infty, \\
-M_i & =\max\{ M_{i-1}, x_{(i-1)B+k},k=1,\ldots, B \}, \\
+M_{i}  & =\max\{ M_{i-1}, x_{(i-1)B+k},k=1,\ldots, d\}, \\
 \bar O_i &= [\bar o_{(i-1)B+1},\ldots, \bar o_{(i-1)B+B}], \\
 X_i&=[x_{(i-1)B+1},\ldots,  x_{(i-1)B+B}],  \\
-\bar O_i&= \log \left(\exp(\bar O_i+M_{i-1}-M_{i})+  \exp(X_i-M_i) \right),\\
+Y_{i, k}&= \log\left(\sum_{j=1}^k\exp(x_{(i-1)B+j}- M_{i}) \right),   \\
+\bar O_i&= \log \left(\exp(\bar O_i+M_{i-1}-M_{i})+  \exp(Y_i) \right),\\
 O_i&= \bar O_i + M_i.
 
+\end{aligned}
+$$
+接下来考虑$Y_{i, k}= \log\left(\sum_{j=1}^k\exp(x_{(i-1)B+j}- M_{i}) \right)$的并行计算，考虑前缀和：
+$$
+\begin{aligned}
+y_i &= \sum_{j\le i} x_j.  \\
+\left[
+\begin{matrix}
+y_1 \\
+\vdots  \\
+y_n
+\end{matrix}
+\right]
+&=\left[
+\begin{matrix}
+1 & 0 & 0 & 0 \\
+1 & 1 & 0 & 0  \\
+\vdots &\vdots  &\vdots &0 \\
+1 & 1 &1 & 1
+\end{matrix}
+\right]
+\left[
+\begin{matrix}
+x_1 \\
+\vdots  \\
+x_n
+\end{matrix}
+\right]
 \end{aligned}
 $$
 反向：
