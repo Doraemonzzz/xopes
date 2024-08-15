@@ -5,7 +5,11 @@ import torch
 import triton
 from lightning_attn.utils import get_memory
 
-from xopes.ops import logcumsumexp_recurrence_triton, logcumsumexp_torch
+from xopes.ops import (
+    logcumsumexp_block_recurrence_triton,
+    logcumsumexp_recurrence_triton,
+    logcumsumexp_torch,
+)
 
 b, n, d = 12, 8192, 2048
 device = torch.device("cuda")
@@ -25,8 +29,8 @@ speed_configs = [
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
-        line_vals=["triton_recurrence", "torch"],
-        line_names=["Triton_recurrence", "Torch"],
+        line_vals=["recurrence_triton", "block_recurrence_triton", "torch"],
+        line_names=["Recurrence_Triton", "Block_Recurrence_Triton", "Torch"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -58,8 +62,10 @@ def bench_speed(b, n, d, dtype, device, mode, provider, dim=-2):
     rep = 100
     x = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
 
-    if provider == "triton_recurrence":
+    if provider == "recurrence_triton":
         module = logcumsumexp_recurrence_triton
+    elif provider == "block_recurrence_triton":
+        module = logcumsumexp_block_recurrence_triton
     else:
         module = logcumsumexp_torch
 
@@ -82,8 +88,8 @@ memory_configs = [
         xlabel="Sequence Length",
         ylabel="Memory(mb)",
         line_arg="provider",
-        line_vals=["triton_recurrence", "torch"],
-        line_names=["Triton_recurrence", "Torch"],
+        line_vals=["recurrence_triton", "block_recurrence_triton", "torch"],
+        line_names=["Recurrence_Triton", "Block_Recurrence_Triton", "Torch"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -114,8 +120,10 @@ def bench_memory(b, n, d, dtype, device, mode, provider):
     rep = 20
     x = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
 
-    if provider == "triton_recurrence":
+    if provider == "recurrence_triton":
         module = logcumsumexp_recurrence_triton
+    elif provider == "block_recurrence_triton":
+        module = logcumsumexp_block_recurrence_triton
     else:
         module = logcumsumexp_torch
 
