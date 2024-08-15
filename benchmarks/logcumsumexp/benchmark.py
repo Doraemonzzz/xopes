@@ -6,6 +6,7 @@ import triton
 from lightning_attn.utils import get_memory
 
 from xopes.ops import (
+    logcumsumexp_block_parallel_triton,
     logcumsumexp_block_recurrence_triton,
     logcumsumexp_recurrence_triton,
     logcumsumexp_torch,
@@ -20,17 +21,32 @@ dtype_map = {
     "bf16": torch.bfloat16,
 }
 
-##### speed benchmark
+module_map = {
+    "recurrence_triton": logcumsumexp_recurrence_triton,
+    "block_recurrence_triton": logcumsumexp_block_recurrence_triton,
+    "block_parallel_triton": logcumsumexp_block_parallel_triton,
+    "torch": logcumsumexp_torch,
+}
 
-speed_configs = [
+configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         x_vals=[2**i for i in range(9, 16)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
-        line_vals=["recurrence_triton", "block_recurrence_triton", "torch"],
-        line_names=["Recurrence_Triton", "Block_Recurrence_Triton", "Torch"],
+        line_vals=[
+            "recurrence_triton",
+            "block_recurrence_triton",
+            "block_parallel_triton",
+            "torch",
+        ],
+        line_names=[
+            "Recurrence_Triton",
+            "Block_Recurrence_Triton",
+            "Blcok_Parallel_Triton",
+            "Torch",
+        ],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -38,36 +54,34 @@ speed_configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"logcumsumexp-speed_{mode}-batch{b}-dim{d}-dtype_{dtype_name}",
+        plot_name=f"logcumsumexp-{bench_type}-{mode}-batch{b}-dim{d}-{dtype_name}",
         args={
             "b": b,
             "d": d,
             "dtype": dtype_map[dtype_name],
             "device": device,
             "mode": mode,
+            "bench_type": bench_type,
         },
     )
     for mode in [
         "fwd",
     ]
     for dtype_name in ["bf16"]
+    for bench_type in ["speed"]
+    # for bench_type in ["speed", "memory"]
 ]
 
 
-@triton.testing.perf_report(speed_configs)
-def bench_speed(b, n, d, dtype, device, mode, provider, dim=-2):
+@triton.testing.perf_report(configs)
+def benchmark(b, n, d, dtype, device, mode, provider, dim=-2, bench_type="speed"):
     torch.manual_seed(2024)
     assert mode in ["fwd", "bwd"]
     warmup = 25
     rep = 100
     x = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
 
-    if provider == "recurrence_triton":
-        module = logcumsumexp_recurrence_triton
-    elif provider == "block_recurrence_triton":
-        module = logcumsumexp_block_recurrence_triton
-    else:
-        module = logcumsumexp_torch
+    module = module_map[provider]
 
     fn = lambda: module(x)
     if mode == "bwd":
@@ -75,78 +89,27 @@ def bench_speed(b, n, d, dtype, device, mode, provider, dim=-2):
         dy = torch.randn((b, n, d), dtype=dtype, device=device)
         fn = lambda: y.backward(dy, retain_graph=True)
 
-    ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+    if bench_type == "speed":
+        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
 
-    return ms
-
-
-##### memory benchmark
-memory_configs = [
-    triton.testing.Benchmark(
-        x_names=["n"],
-        x_vals=[2**i for i in range(9, 16)],
-        xlabel="Sequence Length",
-        ylabel="Memory(mb)",
-        line_arg="provider",
-        line_vals=["recurrence_triton", "block_recurrence_triton", "torch"],
-        line_names=["Recurrence_Triton", "Block_Recurrence_Triton", "Torch"],
-        styles=[
-            ("red", "-"),
-            ("orange", "-"),
-            ("green", "-"),
-            ("blue", "-"),
-            ("black", "-"),
-        ],
-        plot_name=f"logcumsumexp-memory_{mode}-batch{b}-dim{d}-dtype_{dtype_name}",
-        args={
-            "b": b,
-            "d": d,
-            "dtype": dtype_map[dtype_name],
-            "device": device,
-            "mode": mode,
-        },
-    )
-    for mode in [
-        "fwd",
-    ]
-    for dtype_name in ["bf16"]
-]
-
-
-@triton.testing.perf_report(memory_configs)
-def bench_memory(b, n, d, dtype, device, mode, provider):
-    torch.manual_seed(2024)
-    assert mode in ["fwd", "bwd"]
-    rep = 20
-    x = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
-
-    if provider == "recurrence_triton":
-        module = logcumsumexp_recurrence_triton
-    elif provider == "block_recurrence_triton":
-        module = logcumsumexp_block_recurrence_triton
+        return ms
     else:
-        module = logcumsumexp_torch
+        rep = 20
+        try:
+            torch.cuda.reset_peak_memory_stats(device)
+            mb_arr = []
+            for _ in range(rep):
+                fn()
+                mb_arr.append(get_memory(device))
+            mb = np.mean(mb_arr)
+        except:
+            mb = -1
 
-    fn = lambda: module(x)
-    if mode == "bwd":
-        y = fn()
-        dy = torch.randn((b, n, d), dtype=dtype, device=device)
-        fn = lambda: y.backward(dy, retain_graph=True)
-
-    try:
-        torch.cuda.reset_peak_memory_stats(device)
-        mb_arr = []
-        for _ in range(rep):
-            fn()
-            mb_arr.append(get_memory(device))
-        mb = np.mean(mb_arr)
-    except:
-        mb = -1
-
-    return mb
+        return mb
 
 
 save_path = "stat/logcumsumexp"
 os.makedirs(save_path, exist_ok=True)
-bench_speed.run(save_path=save_path, print_data=True)
-bench_memory.run(save_path=save_path, print_data=True)
+benchmark.run(save_path=save_path, print_data=True)
+# bench_speed.run(save_path=save_path, print_data=True)
+# bench_memory.run(save_path=save_path, print_data=True)
