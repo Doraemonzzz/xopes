@@ -68,11 +68,55 @@ def _logcumsumexp_recurrence_fwd(
         # o_block_ptr = tl.advance(o_block_ptr, (1, 0))
 
 
+@triton.autotune(
+    generate_configs({"BLOCK": [16, 32, 64, 128], "num_warps": [2, 4, 8]}),
+    key=["d"],
+)
+@triton.jit
+def _logcumsumexp_recurrence_bwd(
+    X,
+    O,
+    DX,
+    b: tl.constexpr,
+    n: tl.constexpr,
+    d: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    off_b = tl.program_id(0)
+    off_d = tl.program_id(1)
+    # compute offset
+    off = off_b * n * d + off_d * BLOCK
+
+    m = tl.full([BLOCK], float("-inf"), dtype=tl.float32)
+    o = tl.full([BLOCK], float("-inf"), dtype=tl.float32)
+    x_block_ptr = X + off + tl.arange(0, BLOCK)
+    o_block_ptr = O + off + tl.arange(0, BLOCK)
+    mask = off_d * BLOCK + tl.arange(0, BLOCK) < d
+
+    for i in range(n):
+        # x = tl.load(x_block_ptr, boundary_check=(0, 1)).to(tl.float32)
+
+        x = tl.load(x_block_ptr, mask=mask).to(tl.float32)
+        m_ = tl.maximum(x, m)
+
+        o = tl.log(tl.exp(o + m - m_) + tl.exp(x - m_))
+        m = m_
+        o_res = o + m
+
+        # tl.store(o_block_ptr, o_res.to(o_block_ptr.dtype.element_ty), boundary_check=(0, 1))
+        tl.store(o_block_ptr, o_res.to(o_block_ptr.dtype.element_ty), mask=mask)
+
+        x_block_ptr += d
+        o_block_ptr += d
+
+        # x_block_ptr = tl.advance(x_block_ptr, (1, 0))
+        # o_block_ptr = tl.advance(o_block_ptr, (1, 0))
+
+
 class LogCumSumExpRecurrence(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, dim=-2):
-        x.dtype
         if dim >= 0:
             dim -= len(x.shape)
 
@@ -89,6 +133,11 @@ class LogCumSumExpRecurrence(torch.autograd.Function):
 
         _logcumsumexp_recurrence_fwd[grid](x, o, b, n, d)
 
+        ctx.save_for_backward(x, o)
+        ctx.dim = dim
+        ctx.ps = ps
+        ctx.is_list = is_list
+
         o = unpack(o, ps, "* n d", is_list)
         if dim != -2:
             o = o.transpose(-2, dim).contiguous()
@@ -98,7 +147,23 @@ class LogCumSumExpRecurrence(torch.autograd.Function):
     @staticmethod
     @contiguous
     def backward(ctx, do):
-        return None
+        x, o = ctx.x, ctx.o
+        dim = ctx.dim
+        ps = ctx.ps
+
+        dx = torch.empty_like(x)
+
+        # parallel over batch and feature
+        def grid(meta):
+            return (b, triton.cdiv(d, meta["BLOCK"]))
+
+        _logcumsumexp_recurrence_bwd[grid](x, do, dx, b, n, d)
+
+        dx = unpack(dx, ps, "* n d", is_list)
+        if dim != -2:
+            dx = dx.transpose(-2, dim).contiguous()
+
+        return dx, None
 
 
 def logcumsumexp_recurrence_triton(x, dim=-2):

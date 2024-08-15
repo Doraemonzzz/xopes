@@ -13,6 +13,7 @@ from xopes.ops import (
 )
 
 b, n, d = 12, 8192, 2048
+b, n, d = 1, 8192, 2048
 device = torch.device("cuda")
 
 dtype_map = {
