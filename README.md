@@ -18,6 +18,7 @@ Python Package Template.
   - [ ] Recurrence Triton
     - [x] fwd
   - [ ] Block Recurrence Triton
+    - [x] fwd
   - [ ] Block Parallel Triton
 - [ ]
 
