@@ -1,3 +1,4 @@
+from .block_parallel_triton import logcumsumexp_block_parallel_triton
 from .block_recurrence_triton import logcumsumexp_block_recurrence_triton
 from .recurrence_triton import logcumsumexp_recurrence_triton
 from .torch import logcumsumexp_torch

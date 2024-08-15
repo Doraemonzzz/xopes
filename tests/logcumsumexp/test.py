@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from xopes.ops import (
+    logcumsumexp_block_parallel_triton,
     logcumsumexp_block_recurrence_triton,
     logcumsumexp_recurrence_triton,
     logcumsumexp_torch,
@@ -16,6 +17,8 @@ def get_params():
         (6, 100, 256),
         (6, 100, 1000),
         (6, 100, 257),
+        (6, 128, 257),
+        (6, 129, 257),
     ]
 
     return shape
@@ -36,21 +39,33 @@ def test_lightning2(dim, dtype, shape):
 
     # forward
     o_logcumsumexp_torch = logcumsumexp_torch(x, dim=dim)
-
     o_logcumsumexp_recurrence_triton = logcumsumexp_recurrence_triton(x, dim=dim)
-    o_logcumsumexp_block_triton = logcumsumexp_block_recurrence_triton(x, dim=dim)
+    o_logcumsumexp_block_recurrence_triton = logcumsumexp_block_recurrence_triton(
+        x, dim=dim
+    )
+    o_logcumsumexp_block_parallel_triton = logcumsumexp_block_parallel_triton(
+        x, dim=dim
+    )
 
     assert torch.allclose(
         o_logcumsumexp_torch, o_logcumsumexp_recurrence_triton, atol=atol, rtol=rtol
     ), f"o diff: {torch.abs(o_logcumsumexp_torch - o_logcumsumexp_recurrence_triton).max().item()}"
     assert torch.allclose(
-        o_logcumsumexp_torch, o_logcumsumexp_block_triton, atol=atol, rtol=rtol
-    ), f"o diff: {torch.abs(o_logcumsumexp_torch - o_logcumsumexp_recurrence_triton).max().item()}"
-
-    # print(torch.norm(o_logcumsumexp_block_triton - o_logcumsumexp_torch).item())
+        o_logcumsumexp_torch,
+        o_logcumsumexp_block_recurrence_triton,
+        atol=atol,
+        rtol=rtol,
+    ), f"o diff: {torch.abs(o_logcumsumexp_torch - o_logcumsumexp_block_recurrence_triton).max().item()}"
+    assert torch.allclose(
+        o_logcumsumexp_torch, o_logcumsumexp_block_parallel_triton, atol=atol, rtol=rtol
+    ), f"o diff: {torch.abs(o_logcumsumexp_torch - o_logcumsumexp_block_parallel_triton).max().item()}"
 
     # print(o_logcumsumexp_block_triton[0])
     # print(o_logcumsumexp_torch[0])
     # print(torch.norm(o_logcumsumexp_block_triton[0] - o_logcumsumexp_torch[0]).item())
     # print(torch.norm(o_logcumsumexp_block_triton[1] - o_logcumsumexp_torch[1]).item())
+
+    # print(torch.norm(o_logcumsumexp_recurrence_triton - o_logcumsumexp_torch).item())
+    # print(torch.norm(o_logcumsumexp_block_recurrence_triton - o_logcumsumexp_torch).item())
+    # print(torch.norm(o_logcumsumexp_block_parallel_triton - o_logcumsumexp_torch).item())
     # assert False

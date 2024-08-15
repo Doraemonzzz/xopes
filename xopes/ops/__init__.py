@@ -6,6 +6,7 @@ from .additive import (
 )
 from .base import base_rule_recurrence_torch, base_rule_recurrence_triton
 from .logcumsumexp import (
+    logcumsumexp_block_parallel_triton,
     logcumsumexp_block_recurrence_triton,
     logcumsumexp_recurrence_triton,
     logcumsumexp_torch,

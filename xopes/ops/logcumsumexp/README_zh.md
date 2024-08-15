@@ -107,7 +107,7 @@ M_{i}  & =\max\{ M_{i-1}, x_{(i-1)B+k},k=1,\ldots, d\}, \\
 \bar O_i &= [\bar o_{(i-1)B+1},\ldots, \bar o_{(i-1)B+B}], \\
 X_i&=[x_{(i-1)B+1},\ldots,  x_{(i-1)B+B}],  \\
 Y_{i, k}&= \log\left(\sum_{j=1}^k\exp(x_{(i-1)B+j}- M_{i}) \right),   \\
-\bar O_i&= \log \left(\exp(\bar O_{i, B}+M_{i-1}-M_{i})+  \exp(Y_i) \right),\\
+\bar O_i&= \log \left(\exp(\bar O_{i-1, B}+M_{i-1}-M_{i})+  \exp(Y_i) \right),\\
 O_i&= \bar O_i + M_i.
 
 \end{aligned}
@@ -183,13 +183,11 @@ block循环需要累乘，暂时不考虑。
 $$
 \begin{aligned}
 m&= n/B, \\
-M_0&=  -\infty, \\
 M_{i}  & =\max\{ M_{i-1}, x_{(i-1)B+k},k=1,\ldots, d\}, \\
 \bar D_i &=-\infty, \\
 X_i&=[x_{(i-1)B+1},\ldots,  x_{(i-1)B+B}],  \\
 Y_{i, k}&= \log\left(\sum_{j=1}^k\exp(x_{(i-1)B+j}- M_{i}) \right),   \\
-\bar O_i&= \log \left(\exp(\bar D_{i-1}+M_{i-1}-M_{i})+  \exp(Y_i) \right),\\
-\bar D_{i}& =  \bar O_{i, d},  \\
+\bar O_i&= \log \left(\exp(\bar O_{i-1, d}+M_{i-1}-M_{i})+  \exp(Y_i) \right),\\
 O_i&= \bar O_i + M_i.
 
 \end{aligned}
@@ -209,10 +207,8 @@ $$
 \begin{aligned}
 \bar M_0 &=-\infty,  \\
 \bar M_i &= \max\{\bar M_{i-1}, M_{i} \}, \\
-\bar D_i &=-\infty, \\
 \bar O_1 &=  Y_i, \\
-\bar O_i&= \log \left(\exp(\bar D_{i-1}+\bar M_{i-1}-\bar M_{i})+  \exp(Y_i+M_i - \bar M_i) \right), \\
-\bar D_{i}&= \bar O_{i, B}, \\
+\bar O_i&= \log \left(\exp(\bar O_{i-1,B}+\bar M_{i-1}-\bar M_{i})+  \exp(Y_i+M_i - \bar M_i) \right), \\
 O_i & = \bar O_i + \bar M_i.
 \end{aligned}
 $$

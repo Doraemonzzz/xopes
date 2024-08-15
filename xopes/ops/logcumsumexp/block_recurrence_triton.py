@@ -12,7 +12,7 @@ from xopes.utils import contiguous, generate_configs, pack, unpack
     key=["n", "d"],
 )
 @triton.jit
-def _logcumsumexp_recurrence_fwd(
+def _logcumsumexp_block_recurrence_fwd(
     X,
     O,
     b: tl.constexpr,
@@ -86,11 +86,11 @@ class LogCumSumExpBlockRecurrence(torch.autograd.Function):
         b, n, d = x.shape
         o = torch.empty_like(x)
 
-        # parallel over batch, sequence and feature
+        # parallel over batch and feature
         def grid(meta):
             return (b, triton.cdiv(d, meta["BLOCK_D"]))
 
-        _logcumsumexp_recurrence_fwd[grid](x, o, b, n, d)
+        _logcumsumexp_block_recurrence_fwd[grid](x, o, b, n, d)
 
         o = unpack(o, ps, "* n d", is_list)
         if dim != -2:
