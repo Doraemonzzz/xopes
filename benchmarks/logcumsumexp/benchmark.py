@@ -42,9 +42,9 @@ configs = [
             "torch",
         ],
         line_names=[
-            "Recurrence_Triton",
-            "Block_Recurrence_Triton",
-            "Blcok_Parallel_Triton",
+            "R_Triton",
+            "BR_Triton",
+            "BP_Triton",
             "Torch",
         ],
         styles=[
@@ -68,8 +68,7 @@ configs = [
         "fwd",
     ]
     for dtype_name in ["bf16"]
-    for bench_type in ["speed"]
-    # for bench_type in ["speed", "memory"]
+    for bench_type in ["speed", "memory"]
 ]
 
 
@@ -111,5 +110,3 @@ def benchmark(b, n, d, dtype, device, mode, provider, dim=-2, bench_type="speed"
 save_path = "stat/logcumsumexp"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
-# bench_speed.run(save_path=save_path, print_data=True)
-# bench_memory.run(save_path=save_path, print_data=True)
