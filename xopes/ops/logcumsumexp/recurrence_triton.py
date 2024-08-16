@@ -77,6 +77,7 @@ def _logcumsumexp_recurrence_bwd(
     X,
     O,
     DX,
+    DO,
     b: tl.constexpr,
     n: tl.constexpr,
     d: tl.constexpr,
@@ -87,30 +88,32 @@ def _logcumsumexp_recurrence_bwd(
     # compute offset
     off = off_b * n * d + off_d * BLOCK
 
-    m = tl.full([BLOCK], float("-inf"), dtype=tl.float32)
-    o = tl.full([BLOCK], float("-inf"), dtype=tl.float32)
     x_block_ptr = X + off + tl.arange(0, BLOCK)
     o_block_ptr = O + off + tl.arange(0, BLOCK)
+    dx_block_ptr = DX + off + tl.arange(0, BLOCK)
+    do_block_ptr = DO + off + tl.arange(0, BLOCK)
     mask = off_d * BLOCK + tl.arange(0, BLOCK) < d
 
     for i in range(n):
-        # x = tl.load(x_block_ptr, boundary_check=(0, 1)).to(tl.float32)
-
         x = tl.load(x_block_ptr, mask=mask).to(tl.float32)
-        m_ = tl.maximum(x, m)
+        o_block_ptr_ = o_block_ptr
+        do_block_ptr_ = do_block_ptr
+        dx = tl.zeros([BLOCK], dtype=tl.float32)
+        for j in range(i, n):
+            o = tl.load(o_block_ptr_, mask=mask).to(tl.float32)
+            do = tl.load(do_block_ptr_, mask=mask).to(tl.float32)
 
-        o = tl.log(tl.exp(o + m - m_) + tl.exp(x - m_))
-        m = m_
-        o_res = o + m
+            dx += do * tl.exp(x - o)
 
-        # tl.store(o_block_ptr, o_res.to(o_block_ptr.dtype.element_ty), boundary_check=(0, 1))
-        tl.store(o_block_ptr, o_res.to(o_block_ptr.dtype.element_ty), mask=mask)
+            o_block_ptr_ += d
+            do_block_ptr_ += d
+
+        tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
 
         x_block_ptr += d
         o_block_ptr += d
-
-        # x_block_ptr = tl.advance(x_block_ptr, (1, 0))
-        # o_block_ptr = tl.advance(o_block_ptr, (1, 0))
+        dx_block_ptr += d
+        do_block_ptr += d
 
 
 class LogCumSumExpRecurrence(torch.autograd.Function):
@@ -135,8 +138,6 @@ class LogCumSumExpRecurrence(torch.autograd.Function):
 
         ctx.save_for_backward(x, o)
         ctx.dim = dim
-        ctx.ps = ps
-        ctx.is_list = is_list
 
         o = unpack(o, ps, "* n d", is_list)
         if dim != -2:
@@ -147,17 +148,22 @@ class LogCumSumExpRecurrence(torch.autograd.Function):
     @staticmethod
     @contiguous
     def backward(ctx, do):
-        x, o = ctx.x, ctx.o
+        x, o = ctx.saved_tensors
         dim = ctx.dim
-        ps = ctx.ps
+        b, n, d = x.shape
 
         dx = torch.empty_like(x)
+
+        if dim != -2:
+            do = do.transpose(-2, dim).contiguous()
+
+        do, ps, is_list = pack(do, "* n d")
 
         # parallel over batch and feature
         def grid(meta):
             return (b, triton.cdiv(d, meta["BLOCK"]))
 
-        _logcumsumexp_recurrence_bwd[grid](x, do, dx, b, n, d)
+        _logcumsumexp_recurrence_bwd[grid](x, o, dx, do, b, n, d)
 
         dx = unpack(dx, ps, "* n d", is_list)
         if dim != -2:
