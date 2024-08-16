@@ -84,9 +84,10 @@ def _logcumsumexp_recurrence_bwd(
     BLOCK: tl.constexpr,
 ):
     off_b = tl.program_id(0)
-    off_d = tl.program_id(1)
+    off_n = tl.program_id(1)
+    off_d = tl.program_id(2)
     # compute offset
-    off = off_b * n * d + off_d * BLOCK
+    off = off_b * n * d + off_n * d + off_d * BLOCK
 
     x_block_ptr = X + off + tl.arange(0, BLOCK)
     o_block_ptr = O + off + tl.arange(0, BLOCK)
@@ -94,26 +95,18 @@ def _logcumsumexp_recurrence_bwd(
     do_block_ptr = DO + off + tl.arange(0, BLOCK)
     mask = off_d * BLOCK + tl.arange(0, BLOCK) < d
 
-    for i in range(n):
-        x = tl.load(x_block_ptr, mask=mask).to(tl.float32)
-        o_block_ptr_ = o_block_ptr
-        do_block_ptr_ = do_block_ptr
-        dx = tl.zeros([BLOCK], dtype=tl.float32)
-        for j in range(i, n):
-            o = tl.load(o_block_ptr_, mask=mask).to(tl.float32)
-            do = tl.load(do_block_ptr_, mask=mask).to(tl.float32)
+    x = tl.load(x_block_ptr, mask=mask).to(tl.float32)
+    dx = tl.zeros([BLOCK], dtype=tl.float32)
+    for j in range(off_n, n):
+        o = tl.load(o_block_ptr, mask=mask).to(tl.float32)
+        do = tl.load(do_block_ptr, mask=mask).to(tl.float32)
 
-            dx += do * tl.exp(x - o)
+        dx += do * tl.exp(x - o)
 
-            o_block_ptr_ += d
-            do_block_ptr_ += d
-
-        tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
-
-        x_block_ptr += d
         o_block_ptr += d
-        dx_block_ptr += d
         do_block_ptr += d
+
+    tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
 
 
 class LogCumSumExpRecurrence(torch.autograd.Function):
@@ -159,9 +152,9 @@ class LogCumSumExpRecurrence(torch.autograd.Function):
 
         do, ps, is_list = pack(do, "* n d")
 
-        # parallel over batch and feature
+        # parallel over batch, sequence and feature
         def grid(meta):
-            return (b, triton.cdiv(d, meta["BLOCK"]))
+            return (b, n, triton.cdiv(d, meta["BLOCK"]))
 
         _logcumsumexp_recurrence_bwd[grid](x, o, dx, do, b, n, d)
 
