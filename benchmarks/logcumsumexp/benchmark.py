@@ -38,14 +38,14 @@ configs = [
         line_arg="provider",
         line_vals=[
             "recurrence_triton",
-            "block_recurrence_triton",
-            "block_parallel_triton",
+            # "block_recurrence_triton",
+            # "block_parallel_triton",
             "torch",
         ],
         line_names=[
             "R_Triton",
-            "BR_Triton",
-            "BP_Triton",
+            # "BR_Triton",
+            # "BP_Triton",
             "Torch",
         ],
         styles=[
@@ -66,7 +66,8 @@ configs = [
         },
     )
     for mode in [
-        "fwd",
+        # "fwd",
+        "bwd"
     ]
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
