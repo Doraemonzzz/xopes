@@ -5,6 +5,7 @@ from .additive import (
     additive_rule_recurrence_triton,
 )
 from .base import base_rule_recurrence_torch, base_rule_recurrence_triton
+from .grpe import grpe_recurrence_torch
 from .logcumsumexp import (
     logcumsumexp_block_parallel_triton,
     logcumsumexp_block_recurrence_triton,

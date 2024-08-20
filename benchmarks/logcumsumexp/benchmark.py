@@ -37,8 +37,8 @@ configs = [
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            "recurrence_triton",
-            # "block_recurrence_triton",
+            # "recurrence_triton",
+            "block_recurrence_triton",
             # "block_parallel_triton",
             "torch",
         ],
