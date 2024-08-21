@@ -1,1 +1,2 @@
+from .block_recurrence_torch import grpe_block_recurrence_torch
 from .recurrence_torch import grpe_recurrence_torch

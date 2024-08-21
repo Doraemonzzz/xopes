@@ -10,8 +10,8 @@ def grpe_recurrence_torch(
     # m = exp(alpha - beta * beta ^ T)
     identity = torch.eye(d, device=torch.cuda.current_device())
     order_one_term = alpha.unsqueeze(-1) * identity
-    beta.unsqueeze(-1) * beta.unsqueeze(-2)
-    log_m = order_one_term - identity
+    order_two_term = beta.unsqueeze(-1) * beta.unsqueeze(-2)
+    log_m = order_one_term - order_two_term
     m = torch.matrix_exp(log_m)
 
     if initial_state is not None:
@@ -56,7 +56,6 @@ if __name__ == "__main__":
     beta = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
     initial_state = None
     output_final_state = False
-    # do = torch.randn((b, h, n, e), dtype=dtype, device=device)
 
     o_recurrence_torch, final_state_recurrence_torch = grpe_recurrence_torch(
         q, k, v, alpha, beta, initial_state, output_final_state=output_final_state
