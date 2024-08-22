@@ -2,6 +2,7 @@ date=$(date '+%Y-%m-%d-%H:%M:%S')
 
 file=benchmark
 folder=logcumsumexp
+folder=grpe
 
 mkdir -p $folder/log
 

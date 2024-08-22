@@ -2,16 +2,18 @@ import torch
 
 
 def grpe_recurrence_torch(
-    q, k, v, alpha, beta, initial_state=None, output_final_state=False
+    q, k, v, alpha, beta, gamma, initial_state=None, output_final_state=False
 ):
     b, h, n, d = q.shape
     e = v.shape[-1]
 
-    # m = exp(alpha - beta * beta ^ T)
+    # m = exp(alpha + beta * gamma * gamma ^ T)
     identity = torch.eye(d, device=torch.cuda.current_device())
     order_one_term = alpha.unsqueeze(-1) * identity
-    order_two_term = beta.unsqueeze(-1) * beta.unsqueeze(-2)
-    log_m = order_one_term - order_two_term
+    order_two_term = (
+        beta.unsqueeze(-1).unsqueeze(-1) * gamma.unsqueeze(-1) * gamma.unsqueeze(-2)
+    )
+    log_m = order_one_term + order_two_term
     m = torch.matrix_exp(log_m)
 
     if initial_state is not None:
@@ -50,13 +52,21 @@ if __name__ == "__main__":
     q = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
     k = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
     v = (torch.randn((b, h, n, e), dtype=dtype, device=device)).requires_grad_()
-    alpha = F.logsigmoid(
-        torch.randn((b, h, n, d), dtype=dtype, device=device)
+    lower_bound = 0.95
+    alpha = torch.log(
+        lower_bound
+        + (1 - lower_bound)
+        * F.sigmoid(torch.randn((b, h, n, d), dtype=dtype, device=device))
     ).requires_grad_()
-    beta = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
+    beta = torch.log(
+        lower_bound
+        + (1 - lower_bound)
+        * F.sigmoid(torch.randn((b, h, n), dtype=dtype, device=device))
+    ).requires_grad_()
+    gamma = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
     initial_state = None
     output_final_state = False
 
     o_recurrence_torch, final_state_recurrence_torch = grpe_recurrence_torch(
-        q, k, v, alpha, beta, initial_state, output_final_state=output_final_state
+        q, k, v, alpha, beta, gamma, initial_state, output_final_state
     )

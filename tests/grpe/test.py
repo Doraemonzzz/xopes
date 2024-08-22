@@ -2,7 +2,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from xopes.ops import grpe_block_recurrence_torch, grpe_recurrence_torch
+from xopes.ops import grpe_recurrence_torch, grpe_recurrence_triton
 
 
 def get_params():
@@ -11,11 +11,13 @@ def get_params():
         # (6, 8, 2, 128, 64),
         # standard shape
         # (6, 8, 128, 128, 64),
-        # (6, 8, 128, 128, 128),
-        # (6, 8, 128, 256, 128),
+        # (6, 8,
+        # 128, 128, 128),
+        # (6, 8, 10, 64, 64),
+        (6, 8, 1024, 64, 64),
         # special shape
         # (6, 8, 128, 127, 129),
-        (6, 8, 230, 127, 129),
+        # (6, 8, 230, 127, 129),
     ]
 
     return array
@@ -37,7 +39,7 @@ def get_params():
 @pytest.mark.parametrize(
     "output_final_state",
     [
-        False,
+        True,
     ],
 )
 @pytest.mark.parametrize("BLOCK_SIZE", [32])
@@ -47,11 +49,18 @@ def test(b, h, n, d, e, dtype, use_initial_state, output_final_state, BLOCK_SIZE
     q = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
     k = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
     v = (torch.randn((b, h, n, e), dtype=dtype, device=device)).requires_grad_()
-    alpha = F.logsigmoid(
-        torch.randn((b, h, n, d), dtype=dtype, device=device)
+    lower_bound = 0.95
+    alpha = torch.log(
+        lower_bound
+        + (1 - lower_bound)
+        * F.sigmoid(torch.randn((b, h, n, d), dtype=dtype, device=device))
     ).requires_grad_()
-    # beta = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
-    beta = F.normalize(
+    beta = torch.log(
+        lower_bound
+        + (1 - lower_bound)
+        * F.sigmoid(torch.randn((b, h, n), dtype=dtype, device=device))
+    ).requires_grad_()
+    gamma = F.normalize(
         torch.randn((b, h, n, d), dtype=dtype, device=device)
     ).requires_grad_()
     do = torch.randn((b, h, n, e), dtype=dtype, device=device)
@@ -71,28 +80,32 @@ def test(b, h, n, d, e, dtype, use_initial_state, output_final_state, BLOCK_SIZE
     # forward
     # naive recurrence torch
     o_recurrence_torch, final_state_recurrence_torch = grpe_recurrence_torch(
-        q, k, v, alpha, beta, initial_state, output_final_state=output_final_state
+        q, k, v, alpha, beta, gamma, initial_state, output_final_state
     )
-    (
-        o_block_recurrence_torch,
-        final_state_block_recurrence_torch,
-    ) = grpe_block_recurrence_torch(
-        q,
-        k,
-        v,
-        alpha,
-        beta,
-        initial_state,
-        output_final_state=output_final_state,
-        BLOCK_SIZE=BLOCK_SIZE,
+    o_recurrence_triton, final_state_recurrence_triton = grpe_recurrence_triton(
+        q, k, v, alpha, beta, gamma, initial_state, output_final_state
     )
+    # (
+    #     o_block_recurrence_torch,
+    #     final_state_block_recurrence_torch,
+    # ) = grpe_block_recurrence_torch(
+    #     q,
+    #     k,
+    #     v,
+    #     alpha,
+    #     beta,
+    #     initial_state,
+    #     output_final_state=output_final_state,
+    #     BLOCK_SIZE=BLOCK_SIZE,
+    # )
 
-    print(torch.norm(o_recurrence_torch - o_block_recurrence_torch))
+    print(torch.norm(o_recurrence_torch - o_recurrence_triton))
+    print(torch.norm(final_state_recurrence_torch - final_state_recurrence_triton))
 
-    print(torch.norm(o_recurrence_torch[:, :, 0] - o_block_recurrence_torch[:, :, 0]))
-    print(torch.norm(o_recurrence_torch[:, :, 1] - o_block_recurrence_torch[:, :, 1]))
-    print(torch.norm(o_recurrence_torch[:, :, -1] - o_block_recurrence_torch[:, :, -1]))
+    # print(torch.norm(o_recurrence_torch[:, :, 0] - o_block_recurrence_torch[:, :, 0]))
+    # print(torch.norm(o_recurrence_torch[:, :, 1] - o_block_recurrence_torch[:, :, 1]))
+    # print(torch.norm(o_recurrence_torch[:, :, -1] - o_block_recurrence_torch[:, :, -1]))
     print(o_recurrence_torch[0, 0, -1, -5:])
-    print(o_block_recurrence_torch[0, 0, -1, -5:])
+    print(o_recurrence_triton[0, 0, -1, -5:])
 
     assert False

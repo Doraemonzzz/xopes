@@ -142,7 +142,7 @@ def grpe_block_recurrence_torch(
 
         s_intra = torch.matmul(mi, s_intra) + ki.transpose(-1, -2) * vi
 
-        oi_intra = torch.matmul(qi, s_intra)
+        oi_intra = torch.matmul(qi, s_intra.to(qi.dtype))
         o_intra.append(oi_intra)
 
     o_intra = torch.cat(o_intra, dim=-2)
@@ -160,10 +160,12 @@ def grpe_block_recurrence_torch(
     # b h l d d
     s_inter = torch.stack(s_inter_list, dim=-3)
     # b h l B d d
-    m_cumprod = torch.matrix_exp(log_m_cumsum)
+    m_cumprod = torch.matrix_exp(log_m_cumsum.contiguous())
     # b h l B d
-    q_cumprod = torch.einsum("... d, ... d e-> ... e", q, m_cumprod)
-    o_inter = torch.einsum("... B d, ... d e -> ... B e", q_cumprod, s_inter)
+    q_cumprod = torch.einsum("... d, ... d e-> ... e", q, m_cumprod.to(q.dtype))
+    o_inter = torch.einsum(
+        "... B d, ... d e -> ... B e", q_cumprod, s_inter.to(q.dtype)
+    )
 
     o = o_intra + o_inter
     o = rearrange(o, "b h n B d -> b h (n B) d")[:, :, :n, :]
@@ -184,10 +186,20 @@ if __name__ == "__main__":
     q = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
     k = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
     v = (torch.randn((b, h, n, e), dtype=dtype, device=device)).requires_grad_()
-    alpha = F.logsigmoid(
+    lower_bound = 0.95
+    alpha = torch.log(
+        lower_bound
+        + (1 - lower_bound)
+        * F.sigmoid(torch.randn((b, h, n, d), dtype=dtype, device=device))
+    ).requires_grad_()
+    beta = torch.log(
+        lower_bound
+        + (1 - lower_bound)
+        * F.sigmoid(torch.randn((b, h, n), dtype=dtype, device=device))
+    ).requires_grad_()
+    gamma = F.normalize(
         torch.randn((b, h, n, d), dtype=dtype, device=device)
     ).requires_grad_()
-    beta = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
     initial_state = None
     output_final_state = False
 
@@ -195,5 +207,5 @@ if __name__ == "__main__":
         o_block_recurrence_torch,
         final_state_block_recurrence_torch,
     ) = grpe_block_recurrence_torch(
-        q, k, v, alpha, beta, initial_state, output_final_state=output_final_state
+        q, k, v, alpha, beta, initial_state, output_final_state
     )
