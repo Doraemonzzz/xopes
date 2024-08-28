@@ -10,11 +10,12 @@ def get_params():
         # (6, 8, 1, 128, 64),
         # (6, 8, 2, 128, 64),
         # standard shape
-        # (6, 8, 128, 128, 64),
-        # (6, 8,
-        # 128, 128, 128),
+        # (1, 1, 64, 128, 64),
+        (6, 8, 128, 128, 64),
+        # (6, 8, 128, 128, 128),
         # (6, 8, 10, 64, 64),
-        (6, 8, 1024, 64, 64),
+        # (6, 8, 20, 64, 64),
+        # (6, 8, 128, 64, 64),
         # special shape
         # (6, 8, 128, 127, 129),
         # (6, 8, 230, 127, 129),
@@ -33,7 +34,7 @@ def get_params():
 @pytest.mark.parametrize(
     "use_initial_state",
     [
-        False,
+        True,
     ],
 )
 @pytest.mark.parametrize(
@@ -94,6 +95,7 @@ def test(b, h, n, d, e, dtype, use_initial_state, output_final_state, BLOCK_SIZE
     #     v,
     #     alpha,
     #     beta,
+    #     gamma,
     #     initial_state,
     #     output_final_state=output_final_state,
     #     BLOCK_SIZE=BLOCK_SIZE,
@@ -101,11 +103,19 @@ def test(b, h, n, d, e, dtype, use_initial_state, output_final_state, BLOCK_SIZE
 
     print(torch.norm(o_recurrence_torch - o_recurrence_triton))
     print(torch.norm(final_state_recurrence_torch - final_state_recurrence_triton))
+    # print(torch.norm(o_recurrence_torch - o_block_recurrence_torch))
+    # print(torch.norm(final_state_recurrence_torch - final_state_recurrence_triton))
 
     # print(torch.norm(o_recurrence_torch[:, :, 0] - o_block_recurrence_torch[:, :, 0]))
     # print(torch.norm(o_recurrence_torch[:, :, 1] - o_block_recurrence_torch[:, :, 1]))
     # print(torch.norm(o_recurrence_torch[:, :, -1] - o_block_recurrence_torch[:, :, -1]))
-    print(o_recurrence_torch[0, 0, -1, -5:])
-    print(o_recurrence_triton[0, 0, -1, -5:])
+    print(o_recurrence_torch[-1, -1, -1, -5:])
+    print(o_recurrence_triton[-1, -1, -1, -5:])
+
+    print(final_state_recurrence_torch[0, 0, :5, :5])
+    print(final_state_recurrence_triton[0, 0, :5, :5])
+
+    # print(o_recurrence_torch[-1, 0, -1, :])
+    # print(o_recurrence_triton[-1, 0, -1, :])
 
     assert False

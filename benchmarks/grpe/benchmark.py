@@ -8,7 +8,7 @@ from lightning_attn.utils import get_memory
 
 from xopes.ops import grpe_recurrence_torch, grpe_recurrence_triton
 
-b, h, n, d = 4, 64, 8192, 64
+b, h, n, d = 4, 32, 8192, 64
 e = 64
 device = torch.device("cuda")
 
@@ -39,7 +39,8 @@ configs = [
             "torch",
         ],
         line_names=[
-            "BR_Torch",
+            "Triton",
+            # "BR_Torch",
             "Torch",
         ],
         styles=[
@@ -49,7 +50,7 @@ configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"grpe-{bench_type}-{mode}-batch{b}-dim{d}-{dtype_name}",
+        plot_name=f"grpe-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
             "b": b,
             "d": d,

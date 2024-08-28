@@ -3,11 +3,16 @@ import torch.nn.functional as F
 from einops import rearrange
 
 
-def pad(x, BLOCK_SIZE=64):
+def pad(x, BLOCK_SIZE=64, dim=-2):
+    if dim != -2:
+        x = x.transpose(dim, -2)
     n = x.shape[-2]
     final_len = (n + BLOCK_SIZE - 1) // BLOCK_SIZE * BLOCK_SIZE
     if final_len != n:
         x = F.pad(x, (0, 0, 0, final_len - n))
+
+    if dim != -2:
+        x = x.transpose(dim, -2)
 
     return x
 
@@ -26,83 +31,28 @@ def cumsum_and_revcumsum(x, dim=-1):
     return x_cumsum.contiguous(), x_rev_cumsum.contiguous()
 
 
-##### unstable: intra left product
-# def grpe_block_recurrence_torch(q, k, v, alpha, beta, initial_state=None, output_final_state=False, BLOCK_SIZE=64):
-#     b, h, n, d = q.shape
-#     e = v.shape[-1]
-
-#     q, k, v, alpha, beta = map(lambda x: pad(x, BLOCK_SIZE), [q, k, v, alpha, beta])
-#     q, k, v, alpha, beta = map(lambda x: rearrange(x, 'b h (n B) d -> b h n B d', B=BLOCK_SIZE), [q, k, v, alpha, beta])
-
-#     if initial_state is not None:
-#         s = initial_state
-#     else:
-#         s = torch.zeros(b, h, d, e).to(torch.float32).to(q.device)
-
-#     # compute cumsum
-#     alpha_cumsum, alpha_revcumsum = cumsum_and_revcumsum(alpha, dim=-2)
-#     # b h n B d d
-#     beta_out_product = beta.unsqueeze(-1) * beta.unsqueeze(-2)
-#     beta_out_product_cumsum, beta_out_product_revcumsum = cumsum_and_revcumsum(beta_out_product, dim=-3)
-#     # compute matrix
-#     identity = torch.eye(d, device=torch.cuda.current_device())
-#     log_m_cumsum = alpha_cumsum.unsqueeze(-1) * identity - beta_out_product_cumsum
-#     log_m_revcumsum = alpha_revcumsum.unsqueeze(-1) * identity - beta_out_product_revcumsum
-#     # m_cumprod = torch.matrix_exp(log_m_cumsum)
-#     # m_revcumprod = torch.matrix_exp(log_m_revcumsum)
-#     # mask
-#     mask = torch.tril(torch.ones((BLOCK_SIZE, BLOCK_SIZE), device=torch.cuda.current_device()))
-
-#     l = n // BLOCK_SIZE
-#     o = []
-#     for i in range(l):
-#         # b h B d
-#         qi = q[:, :, i]
-#         ki = k[:, :, i]
-#         vi = v[:, :, i]
-#         # b h B d d
-#         m_cumprod_i = torch.matrix_exp(log_m_cumsum[:, :, i].contiguous())
-#         m_cumprod_inverse_i = torch.matrix_exp(-log_m_cumsum[:, :, i].contiguous())
-#         m_revcumprod_i = torch.matrix_exp(log_m_revcumsum[:, :, i].contiguous())
-
-#         tmp = torch.einsum('... r s, ... s t -> ... s t', m_cumprod_i, m_cumprod_inverse_i)
-
-#         qi_cum_prod = torch.einsum('... d e, ... d -> ... e', m_cumprod_i, qi)
-#         ki_cum_prod_inverse = torch.einsum('... d e, ... d -> ... e', m_cumprod_inverse_i, ki)
-#         ki_cum_prod = torch.einsum('... d e, ... d -> ... e', m_cumprod_i, ki)
-#         ki_revcum_prod = torch.einsum('... d e, ... d -> ... e', m_revcumprod_i, ki)
-
-#         o_intra = (torch.matmul(qi_cum_prod, ki_cum_prod_inverse.transpose(-1, -2)) * mask) @ vi
-#         o_inter = qi_cum_prod @ s
-
-#         s = m_cumprod_i[:, :, -1] @ s + ki_revcum_prod.transpose(-1, -2) @ vi
-
-#         oi = o_intra + o_inter
-
-#         o.append(oi)
-
-#     o = torch.stack(o, dim=-3)
-#     o = rearrange(o, 'b h n B d -> b h (n B) d')[:, :, :n, :]
-
-#     final_state = None
-#     if output_final_state:
-#         final_state = s
-
-#     return o, final_state
-
-
 def grpe_block_recurrence_torch(
-    q, k, v, alpha, beta, initial_state=None, output_final_state=False, BLOCK_SIZE=64
+    q,
+    k,
+    v,
+    alpha,
+    beta,
+    gamma,
+    initial_state=None,
+    output_final_state=False,
+    BLOCK_SIZE=64,
 ):
     b, h, n, d = q.shape
     e = v.shape[-1]
 
-    q, k, v, alpha, beta = map(lambda x: pad(x, BLOCK_SIZE), [q, k, v, alpha, beta])
+    q, k, v, alpha, gamma = map(lambda x: pad(x, BLOCK_SIZE), [q, k, v, alpha, gamma])
+    beta = pad(beta, BLOCK_SIZE, dim=-1)
     n_pad = q.shape[-2]
-    q, k, v, alpha, beta = map(
+    q, k, v, alpha, gamma = map(
         lambda x: rearrange(x, "b h (n B) d -> b h n B d", B=BLOCK_SIZE),
-        [q, k, v, alpha, beta],
+        [q, k, v, alpha, gamma],
     )
+    beta = rearrange(beta, "b h (n B) -> b h n B", B=BLOCK_SIZE)
 
     if initial_state is not None:
         s = initial_state
@@ -112,13 +62,15 @@ def grpe_block_recurrence_torch(
     # compute cumsum
     alpha_cumsum, alpha_revcumsum = cumsum_and_revcumsum(alpha, dim=-2)
     # b h l B d d
-    beta_out_product = beta.unsqueeze(-1) * beta.unsqueeze(-2)
-    beta_out_product_cumsum, beta_out_product_revcumsum = cumsum_and_revcumsum(
-        beta_out_product, dim=-3
+
+    gamma_out_product = gamma.unsqueeze(-1) * gamma.unsqueeze(-2)
+    gamma_out_product = beta.unsqueeze(-1).unsqueeze(-1) * gamma_out_product
+    gamma_out_product_cumsum, gamma_out_product_revcumsum = cumsum_and_revcumsum(
+        gamma_out_product, dim=-3
     )
     # compute matrix
     identity = torch.eye(d, device=torch.cuda.current_device())
-    log_m_cumsum = alpha_cumsum.unsqueeze(-1) * identity - beta_out_product_cumsum
+    log_m_cumsum = alpha_cumsum.unsqueeze(-1) * identity + gamma_out_product_cumsum
 
     l = n_pad // BLOCK_SIZE
     o = []
@@ -135,9 +87,14 @@ def grpe_block_recurrence_torch(
         vi = v[:, :, :, i : i + 1]
         alpha_i = alpha[:, :, :, i]
         beta_i = beta[:, :, :, i]
+        gamma_i = gamma[:, :, :, i]
         # b h l d d
-        beta_i_out_product = beta_i.unsqueeze(-1) * beta_i.unsqueeze(-2)
-        log_mi = alpha_i.unsqueeze(-1) * identity - beta_i_out_product
+        gamma_i_out_product = (
+            beta_i.unsqueeze(-1).unsqueeze(-1)
+            * gamma_i.unsqueeze(-1)
+            * gamma_i.unsqueeze(-2)
+        )
+        log_mi = alpha_i.unsqueeze(-1) * identity + gamma_i_out_product
         mi = torch.matrix_exp(log_mi)
 
         s_intra = torch.matmul(mi, s_intra) + ki.transpose(-1, -2) * vi
@@ -207,5 +164,5 @@ if __name__ == "__main__":
         o_block_recurrence_torch,
         final_state_block_recurrence_torch,
     ) = grpe_block_recurrence_torch(
-        q, k, v, alpha, beta, initial_state, output_final_state
+        q, k, v, alpha, beta, gamma, initial_state, output_final_state
     )
