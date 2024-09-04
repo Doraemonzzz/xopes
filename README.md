@@ -35,4 +35,5 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 [Feature Add]
 [Bug Fix]
 [Benchmark Add]
+[Document Add]
 ```
