@@ -1,6 +1,6 @@
-# Python-Package-Template
+# Xopes
 
-Python Package Template.
+Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 # Todo
 - [ ] Additive Recurrence
@@ -22,11 +22,13 @@ Python Package Template.
   - [ ] Block Parallel Triton
     - [x] fwd
 - [ ] Lrpe
-  - [x] cosine
+  - [x] Cosine Triton
     - [x] fwd
     - [x] bwd
   - [ ]
-- [ ]
+- [ ] Tpe
+  - [ ] Triton
+- [ ] 1
 
 # Note
 ```
