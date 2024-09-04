@@ -21,6 +21,11 @@ Python Package Template.
     - [x] fwd
   - [ ] Block Parallel Triton
     - [x] fwd
+- [ ] Lrpe
+  - [x] cosine
+    - [x] fwd
+    - [x] bwd
+  - [ ]
 - [ ]
 
 # Note
