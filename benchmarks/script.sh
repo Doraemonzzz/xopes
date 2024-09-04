@@ -3,6 +3,7 @@ date=$(date '+%Y-%m-%d-%H:%M:%S')
 file=benchmark
 folder=logcumsumexp
 folder=grpe
+folder=lrpe_cosine
 
 mkdir -p $folder/log
 

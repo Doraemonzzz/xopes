@@ -94,3 +94,10 @@ def get_threshold(dtype):
         torch.bfloat16,
     ], "dtype {dtype} not supported"
     return THRESHOLD_DICT[dtype]
+
+
+def get_memory(device):
+    mb_used = torch.cuda.max_memory_allocated(device) / 1024 / 1024
+    torch.cuda.reset_peak_memory_stats(device)
+
+    return mb_used
