@@ -101,19 +101,34 @@ def test(b, h, n, d, e, dtype, use_initial_state, output_final_state, BLOCK_SIZE
     #     BLOCK_SIZE=BLOCK_SIZE,
     # )
 
+    # backward
+    o_recurrence_torch.backward(do)
+    dq_recurrence_torch, q.grad = q.grad.clone(), None
+    dk_recurrence_torch, k.grad = k.grad.clone(), None
+    dv_recurrence_torch, v.grad = v.grad.clone(), None
+
+    o_recurrence_triton.backward(do)
+    dq_recurrence_triton, q.grad = q.grad.clone(), None
+    dk_recurrence_triton, k.grad = k.grad.clone(), None
+    dv_recurrence_triton, v.grad = v.grad.clone(), None
+
     print(torch.norm(o_recurrence_torch - o_recurrence_triton))
     print(torch.norm(final_state_recurrence_torch - final_state_recurrence_triton))
     # print(torch.norm(o_recurrence_torch - o_block_recurrence_torch))
     # print(torch.norm(final_state_recurrence_torch - final_state_recurrence_triton))
 
+    print(torch.norm(dq_recurrence_torch - dq_recurrence_triton))
+    print(torch.norm(dk_recurrence_torch - dk_recurrence_triton))
+    print(torch.norm(dv_recurrence_torch - dv_recurrence_triton))
+
     # print(torch.norm(o_recurrence_torch[:, :, 0] - o_block_recurrence_torch[:, :, 0]))
     # print(torch.norm(o_recurrence_torch[:, :, 1] - o_block_recurrence_torch[:, :, 1]))
     # print(torch.norm(o_recurrence_torch[:, :, -1] - o_block_recurrence_torch[:, :, -1]))
-    print(o_recurrence_torch[-1, -1, -1, -5:])
-    print(o_recurrence_triton[-1, -1, -1, -5:])
+    # print(o_recurrence_torch[-1, -1, -1, -5:])
+    # print(o_recurrence_triton[-1, -1, -1, -5:])
 
-    print(final_state_recurrence_torch[0, 0, :5, :5])
-    print(final_state_recurrence_triton[0, 0, :5, :5])
+    # print(final_state_recurrence_torch[0, 0, :5, :5])
+    # print(final_state_recurrence_triton[0, 0, :5, :5])
 
     # print(o_recurrence_torch[-1, 0, -1, :])
     # print(o_recurrence_triton[-1, 0, -1, :])

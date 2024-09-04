@@ -6,7 +6,7 @@ import triton
 from einops import pack as pack_
 from einops import unpack as unpack_
 
-from .constant import XOPES_DEBUG
+from .constant import THRESHOLD_DICT, XOPES_DEBUG
 
 
 def contiguous(fn):
@@ -85,3 +85,12 @@ def generate_configs(input_dict):
         return configs[:1]
     else:
         return configs
+
+
+def get_threshold(dtype):
+    assert dtype in [
+        torch.float16,
+        torch.float32,
+        torch.bfloat16,
+    ], "dtype {dtype} not supported"
+    return THRESHOLD_DICT[dtype]

@@ -5,6 +5,7 @@ folder=additive
 # folder=base
 folder=logcumsumexp
 folder=grpe
+folder=lrpe_cosine
 
 mkdir -p $folder/log
 

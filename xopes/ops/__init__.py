@@ -16,3 +16,4 @@ from .logcumsumexp import (
     logcumsumexp_recurrence_triton,
     logcumsumexp_torch,
 )
+from .lrpe import lrpe_cosine_torch, lrpe_cosine_triton
