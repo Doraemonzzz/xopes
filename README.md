@@ -32,4 +32,5 @@ Python Package Template.
 ```
 [Feature Add]
 [Bug Fix]
+[Benchmark Add]
 ```
