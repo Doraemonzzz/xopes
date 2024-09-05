@@ -28,7 +28,7 @@ def _lrpe_cosine_fwd(
     o_cos_block_ptr = O + offset_o + tl.arange(0, d)
     o_sin_block_ptr = O + offset_o + d + tl.arange(0, d)
 
-    x = tl.load(x_block_ptr)
+    x = tl.load(x_block_ptr).to(tl.float32)
     theta = tl.load(theta_block_ptr).to(tl.float32) * off_n
     o_cos = x * tl.cos(theta)
     o_sin = x * tl.sin(theta)
@@ -106,8 +106,6 @@ def lrpe_cosine_triton(x, theta):
 
 if __name__ == "__main__":
     # unit test
-    pass
-
     b, h, n, d = 2, 8, 128, 64
     dtype = torch.float32
     device = torch.cuda.current_device()
