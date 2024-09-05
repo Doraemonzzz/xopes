@@ -1,5 +1,6 @@
 import functools
 import itertools
+import math
 
 import torch
 import triton
@@ -38,6 +39,10 @@ def max_power_of_2_divisor(n):
     d = int(d)
 
     return d
+
+
+def next_power_of_two(x):
+    return 2 ** (math.ceil(math.log(x, 2)))
 
 
 def pack(tensors, pattern):

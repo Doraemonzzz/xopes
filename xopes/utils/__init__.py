@@ -5,6 +5,7 @@ from .utils import (
     get_memory,
     get_threshold,
     max_power_of_2_divisor,
+    next_power_of_two,
     pack,
     unpack,
 )
