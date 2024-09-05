@@ -6,7 +6,7 @@ from xopes.utils import contiguous, next_power_of_two
 
 
 @triton.jit
-def _md_lrpe_cosine_fwd(
+def _md_lrpe_cosine_parallel_fwd(
     X,
     Theta,
     O,
@@ -20,12 +20,14 @@ def _md_lrpe_cosine_fwd(
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
-    off_n = tl.program_id(2)
+    off_nm = tl.program_id(2)
+    off_n = off_nm // m
+    off_m = off_nm % m
     # compute offset
     offset_x = off_b * h * n * d + off_h * n * d + off_n * d
     offset_theta = off_h * e
     offset_o = off_b * h * n * 2 * d + off_h * n * 2 * d + off_n * 2 * d
-    offset_d = m * e
+    offset_d = off_m * e
 
     # compute from the last theta block
     x_block_ptr = X + offset_x + offset_d + tl.arange(0, e)
@@ -38,34 +40,27 @@ def _md_lrpe_cosine_fwd(
 
     c = off_n
     offset = 0
-    theta_ = tl.load(theta_block_ptr).to(tl.float32)
-    for i in range(m):
-        # update block ptr
-        shape_block_ptr -= 1
-        x_block_ptr -= e
-        o_cos_block_ptr -= e
-        o_sin_block_ptr -= e
-        offset_d -= e
-        mask = (offset_d + tl.arange(0, e)) < d
-
+    for i in range(m - off_m):
         # compute dim
         dim = tl.sum(tl.load(shape_block_ptr, mask=shape_mask, other=0).to(tl.int32))
         offset = c % dim
         c = c // dim
 
-        # compute
-        x = tl.load(x_block_ptr, mask=mask, other=0).to(tl.float32)
-        theta = theta_ * offset
-        o_cos = x * tl.cos(theta)
-        o_sin = x * tl.sin(theta)
+    theta_ = tl.load(theta_block_ptr).to(tl.float32)
+    mask = (offset_d + tl.arange(0, e)) < d
+    # compute
+    x = tl.load(x_block_ptr, mask=mask, other=0).to(tl.float32)
+    theta = theta_ * offset
+    o_cos = x * tl.cos(theta)
+    o_sin = x * tl.sin(theta)
 
-        # save
-        tl.store(o_cos_block_ptr, o_cos.to(o_cos_block_ptr.dtype.element_ty), mask=mask)
-        tl.store(o_sin_block_ptr, o_sin.to(o_sin_block_ptr.dtype.element_ty), mask=mask)
+    # save
+    tl.store(o_cos_block_ptr, o_cos.to(o_cos_block_ptr.dtype.element_ty), mask=mask)
+    tl.store(o_sin_block_ptr, o_sin.to(o_sin_block_ptr.dtype.element_ty), mask=mask)
 
 
 @triton.jit
-def _md_lrpe_cosine_bwd(
+def _md_lrpe_cosine_parallel_bwd(
     X,
     Theta,
     DO,
@@ -80,12 +75,14 @@ def _md_lrpe_cosine_bwd(
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
-    off_n = tl.program_id(2)
+    off_nm = tl.program_id(2)
+    off_n = off_nm // m
+    off_m = off_nm % m
     # compute offset
     offset_x = off_b * h * n * d + off_h * n * d + off_n * d
     offset_theta = off_h * e
     offset_o = off_b * h * n * 2 * d + off_h * n * 2 * d + off_n * 2 * d
-    offset_d = m * e
+    offset_d = off_m * e
 
     # compute from the last theta block
     theta_block_ptr = Theta + offset_theta + tl.arange(0, e)
@@ -98,28 +95,21 @@ def _md_lrpe_cosine_bwd(
 
     c = off_n
     offset = 0
-    theta_ = tl.load(theta_block_ptr).to(tl.float32)
-    for i in range(m):
-        # update block ptr
-        shape_block_ptr -= 1
-        dx_block_ptr -= e
-        do_cos_block_ptr -= e
-        do_sin_block_ptr -= e
-        offset_d -= e
-        mask = (offset_d + tl.arange(0, e)) < d
-
+    for i in range(m - off_m):
         # compute dim
         dim = tl.sum(tl.load(shape_block_ptr, mask=shape_mask, other=0).to(tl.int32))
         offset = c % dim
         c = c // dim
 
-        # compute
-        do_cos = tl.load(do_cos_block_ptr, mask=mask, other=0).to(tl.float32)
-        do_sin = tl.load(do_sin_block_ptr, mask=mask, other=0).to(tl.float32)
-        theta = theta_ * offset
-        dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
+    theta_ = tl.load(theta_block_ptr).to(tl.float32)
+    mask = (offset_d + tl.arange(0, e)) < d
+    # compute
+    do_cos = tl.load(do_cos_block_ptr, mask=mask, other=0).to(tl.float32)
+    do_sin = tl.load(do_sin_block_ptr, mask=mask, other=0).to(tl.float32)
+    theta = theta_ * offset
+    dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
 
-        tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
+    tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
 
 
 class MdLrpeCosine(torch.autograd.Function):
@@ -135,8 +125,8 @@ class MdLrpeCosine(torch.autograd.Function):
         output_shape[-1] *= 2
 
         o = torch.empty(output_shape, dtype=x.dtype, device=x.device)
-        grid = (b, h, n)
-        _md_lrpe_cosine_fwd[grid](x, theta, o, shape, b, h, n, d, e, m)
+        grid = (b, h, n * m)
+        _md_lrpe_cosine_parallel_fwd[grid](x, theta, o, shape, b, h, n, d, e, m)
 
         ctx.save_for_backward(x, theta, shape)
 
@@ -152,13 +142,13 @@ class MdLrpeCosine(torch.autograd.Function):
         m = len(shape)
 
         dx = torch.empty_like(x)
-        grid = (b, h, n)
-        _md_lrpe_cosine_bwd[grid](x, theta, do, dx, shape, b, h, n, d, e, m)
+        grid = (b, h, n * m)
+        _md_lrpe_cosine_parallel_bwd[grid](x, theta, do, dx, shape, b, h, n, d, e, m)
 
         return dx, None, None
 
 
-def md_lrpe_cosine_triton(x, theta, shape=None):
+def md_lrpe_cosine_parallel_triton(x, theta, shape=None):
     # x: b, h, ..., d
     # theta: h, next_power_of_two((d + len(shape) - 1) // len(shape))
     if shape is None:
@@ -184,5 +174,5 @@ if __name__ == "__main__":
     shape = shape[:-1] + (shape[-1] * 2,)
     do = torch.randn(shape, dtype=dtype, device=device)
 
-    o = md_lrpe_cosine_triton(x, theta)
+    o = md_lrpe_cosine_parallel_triton(x, theta)
     o.backward(do)

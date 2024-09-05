@@ -8,7 +8,7 @@ from xopes.ops import md_lrpe_cosine_torch, md_lrpe_cosine_triton
 from xopes.utils import get_memory, next_power_of_two
 
 b, h, n, d = 12, 12, 8192, 128
-dim = 3
+dim = 1
 device = torch.device("cuda")
 
 dtype_map = {
@@ -22,12 +22,16 @@ module_map = {
     "torch": md_lrpe_cosine_torch,
 }
 
+x_vals_map = {
+    1: [2**i for i in range(8, 16)],
+    2: [2**i for i in range(4, 8)],
+    3: [2**i for i in range(2, 6)],
+}
+
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        x_vals=[2**i for i in range(4, 8)]
-        if dim == 2
-        else [2**i for i in range(2, 6)],
+        x_vals=x_vals_map[dim],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",

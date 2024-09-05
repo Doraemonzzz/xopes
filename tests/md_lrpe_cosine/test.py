@@ -1,7 +1,11 @@
 import pytest
 import torch
 
-from xopes.ops import md_lrpe_cosine_torch, md_lrpe_cosine_triton
+from xopes.ops import (
+    md_lrpe_cosine_parallel_triton,
+    md_lrpe_cosine_torch,
+    md_lrpe_cosine_triton,
+)
 from xopes.utils import get_threshold, next_power_of_two
 
 
@@ -39,6 +43,7 @@ def test(dtype, shape):
     # forward
     o_md_lrpe_cosine_torch = md_lrpe_cosine_torch(x, theta)
     o_md_lrpe_cosine_triton = md_lrpe_cosine_triton(x, theta)
+    o_md_lrpe_cosine_parallel_triton = md_lrpe_cosine_parallel_triton(x, theta)
 
     # backward
     o_md_lrpe_cosine_torch.backward(do, retain_graph=True)
@@ -47,14 +52,23 @@ def test(dtype, shape):
     o_md_lrpe_cosine_triton.backward(do, retain_graph=True)
     dx_md_lrpe_cosine_triton, x.grad = x.grad.clone(), None
 
+    o_md_lrpe_cosine_parallel_triton.backward(do, retain_graph=True)
+    dx_md_lrpe_cosine_parallel_triton, x.grad = x.grad.clone(), None
+
     atol, rtol = get_threshold(dtype)
 
     # forward
     assert torch.allclose(
         o_md_lrpe_cosine_torch, o_md_lrpe_cosine_triton, atol=atol, rtol=rtol
     ), f"o diff: {torch.abs(o_md_lrpe_cosine_torch - o_md_lrpe_cosine_triton).max().item()}"
+    assert torch.allclose(
+        o_md_lrpe_cosine_torch, o_md_lrpe_cosine_parallel_triton, atol=atol, rtol=rtol
+    ), f"o diff: {torch.abs(o_md_lrpe_cosine_torch - o_md_lrpe_cosine_parallel_triton).max().item()}"
 
     # backward
     assert torch.allclose(
         dx_md_lrpe_cosine_torch, dx_md_lrpe_cosine_triton, atol=atol, rtol=rtol
     ), f"dx diff: {torch.abs(dx_md_lrpe_cosine_torch - dx_md_lrpe_cosine_triton).max().item()}"
+    assert torch.allclose(
+        dx_md_lrpe_cosine_torch, dx_md_lrpe_cosine_parallel_triton, atol=atol, rtol=rtol
+    ), f"dx diff: {torch.abs(dx_md_lrpe_cosine_torch - dx_md_lrpe_cosine_parallel_triton).max().item()}"

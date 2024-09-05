@@ -1,1 +1,5 @@
-from .cosine import md_lrpe_cosine_torch, md_lrpe_cosine_triton
+from .cosine import (
+    md_lrpe_cosine_parallel_triton,
+    md_lrpe_cosine_torch,
+    md_lrpe_cosine_triton,
+)
