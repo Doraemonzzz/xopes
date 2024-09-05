@@ -43,7 +43,6 @@ def _md_lrpe_cosine_fwd(
         # update block ptr
         shape_block_ptr -= 1
         x_block_ptr -= e
-        # theta_block_ptr -= e
         o_cos_block_ptr -= e
         o_sin_block_ptr -= e
         offset_d -= e

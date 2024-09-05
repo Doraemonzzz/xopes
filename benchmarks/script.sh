@@ -4,6 +4,7 @@ file=benchmark
 folder=logcumsumexp
 folder=grpe
 folder=lrpe_cosine
+folder=md_lrpe_cosine
 
 mkdir -p $folder/log
 

@@ -24,16 +24,9 @@ def md_lrpe_cosine_torch(x, theta, shape=None):
         _basis.append(c)
         c *= a
     _basis = _basis[::-1]
-    # _basis = torch.cumprod(
-    #     torch.tensor([1] + array[:-1]), dim=0, dtype=torch.int32
-    # )
-    print(_basis)
     _basis = torch.tensor(_basis)
-    print(index.shape, _basis.shape)
 
     indice = (index * _basis.to(x.device)).sum(dim=-1).to(torch.int32)
-    print(index)
-    print(indice)
 
     # h, d -> h, ..., d
     for _ in range(m):
@@ -48,7 +41,6 @@ def md_lrpe_cosine_torch(x, theta, shape=None):
     cos = theta.cos()
     sin = theta.sin()
 
-    print(x.shape, cos.shape, theta.shape)
     output = torch.cat([x * cos, x * sin], dim=-1)
 
     return output.to(x.dtype)
