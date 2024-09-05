@@ -4,11 +4,17 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops import md_lrpe_cosine_torch, md_lrpe_cosine_triton
+from xopes.ops import (
+    md_lrpe_cosine_parallel_triton,
+    md_lrpe_cosine_torch,
+    md_lrpe_cosine_triton,
+)
 from xopes.utils import get_memory, next_power_of_two
 
 b, h, n, d = 12, 12, 8192, 128
 dim = 1
+dim = 2
+dim = 3
 device = torch.device("cuda")
 
 dtype_map = {
@@ -19,13 +25,14 @@ dtype_map = {
 
 module_map = {
     "triton": md_lrpe_cosine_triton,
+    "triton_parallel": md_lrpe_cosine_parallel_triton,
     "torch": md_lrpe_cosine_torch,
 }
 
 x_vals_map = {
     1: [2**i for i in range(8, 16)],
     2: [2**i for i in range(4, 8)],
-    3: [2**i for i in range(2, 6)],
+    3: [2**i for i in range(2, 5)],
 }
 
 configs = [
@@ -37,10 +44,12 @@ configs = [
         line_arg="provider",
         line_vals=[
             "triton",
+            "triton_parallel",
             "torch",
         ],
         line_names=[
             "Triton",
+            "Triton Parallel",
             "Torch",
         ],
         styles=[
