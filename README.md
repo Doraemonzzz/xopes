@@ -26,12 +26,14 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
     - [x] fwd
     - [x] bwd
     - [ ] Add offset
+    - [ ] Auto config
 - [ ] MdLrpe
   - [x] Cosine Triton
     - [x] fwd
     - [x] bwd
     - [ ] Add offset
     - [ ] Readme
+    - [ ] Auto config
 - [ ] Tpe
   - [ ] Triton
 - [ ]
