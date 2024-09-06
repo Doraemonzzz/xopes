@@ -17,17 +17,6 @@ def md_lrpe_cosine_torch(x, theta, shape=None):
     grid = torch.meshgrid(array)
     index = torch.stack(grid, dim=-1)
 
-    array = shape.tolist()[::-1]
-    _basis = []
-    c = 1
-    for a in array:
-        _basis.append(c)
-        c *= a
-    _basis = _basis[::-1]
-    _basis = torch.tensor(_basis)
-
-    indice = (index * _basis.to(x.device)).sum(dim=-1).to(torch.int32)
-
     # h, d -> h, ..., d
     for _ in range(m):
         theta = theta.unsqueeze(1)

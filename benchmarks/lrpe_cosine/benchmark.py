@@ -44,7 +44,7 @@ configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"lrpe_cosine-{bench_type}-{mode}-batch{b}-dim{d}-{dtype_name}",
+        plot_name=f"lrpe_cosine-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
             "b": b,
             "h": h,
