@@ -36,7 +36,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
     - [ ] Auto config
 - [ ] Tpe
   - [ ] Triton
-- [ ]
+- [ ] Linear Attention Output Gate
 
 # Note
 ```
