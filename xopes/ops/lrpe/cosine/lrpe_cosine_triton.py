@@ -2,9 +2,13 @@ import torch
 import triton
 import triton.language as tl
 
-from xopes.utils import contiguous
+from xopes.utils import contiguous, generate_configs
 
 
+@triton.autotune(
+    generate_configs({"num_warps": [2, 4, 8]}),
+    key=["h", "n", "d"],
+)
 @triton.jit
 def _lrpe_cosine_fwd(
     X,
@@ -37,6 +41,10 @@ def _lrpe_cosine_fwd(
     tl.store(o_sin_block_ptr, o_sin.to(o_cos_block_ptr.dtype.element_ty))
 
 
+@triton.autotune(
+    generate_configs({"num_warps": [2, 4, 8]}),
+    key=["h", "n", "d"],
+)
 @triton.jit
 def _lrpe_cosine_bwd(
     X,
@@ -77,7 +85,9 @@ class LrpeCosine(torch.autograd.Function):
         b, h, n, d = x.shape
         o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
 
-        grid = (b, h, n)
+        def grid(meta):
+            return (b, h, n)
+
         _lrpe_cosine_fwd[grid](x, theta, o, b, h, n, d)
 
         ctx.save_for_backward(x, theta)
@@ -92,7 +102,9 @@ class LrpeCosine(torch.autograd.Function):
 
         dx = torch.empty_like(x)
 
-        grid = (b, h, n)
+        def grid(meta):
+            return (b, h, n)
+
         _lrpe_cosine_bwd[grid](x, theta, do, dx, b, h, n, d)
 
         return dx, None

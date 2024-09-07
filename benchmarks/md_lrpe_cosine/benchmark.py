@@ -13,8 +13,8 @@ from xopes.utils import get_memory, next_power_of_two
 
 b, h, n, d = 12, 12, 8192, 128
 dim = 1
-dim = 2
-dim = 3
+# dim = 2
+# dim = 3
 device = torch.device("cuda")
 
 dtype_map = {
@@ -32,7 +32,7 @@ module_map = {
 x_vals_map = {
     1: [2**i for i in range(8, 16)],
     2: [2**i for i in range(4, 8)],
-    3: [2**i for i in range(2, 5)],
+    3: [2**i for i in range(2, 6)],
 }
 
 configs = [
@@ -94,14 +94,24 @@ def benchmark(b, h, n, d, dtype, device, mode, provider, bench_type="speed"):
 
     module = module_map[provider]
 
-    fn = lambda: module(x, theta)
+    try:
+        fn = lambda: module(x, theta)
+    except:
+        fn = None
+
     if mode == "bwd":
-        y = fn()
-        dy = torch.randn(shape, dtype=dtype, device=device)
-        fn = lambda: y.backward(dy, retain_graph=True)
+        try:
+            y = fn()
+            dy = torch.randn(shape, dtype=dtype, device=device)
+            fn = lambda: y.backward(dy, retain_graph=True)
+        except:
+            fn = None
 
     if bench_type == "speed":
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        try:
+            ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        except:
+            ms = -1
 
         return ms
     else:

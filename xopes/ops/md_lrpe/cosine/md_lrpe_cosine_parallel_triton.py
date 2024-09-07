@@ -2,9 +2,13 @@ import torch
 import triton
 import triton.language as tl
 
-from xopes.utils import contiguous, next_power_of_two
+from xopes.utils import contiguous, generate_configs, next_power_of_two
 
 
+@triton.autotune(
+    generate_configs({"num_warps": [2, 4, 8]}),
+    key=["h", "n", "d", "m"],
+)
 @triton.jit
 def _md_lrpe_cosine_parallel_fwd(
     X,
@@ -59,6 +63,10 @@ def _md_lrpe_cosine_parallel_fwd(
     tl.store(o_sin_block_ptr, o_sin.to(o_sin_block_ptr.dtype.element_ty), mask=mask)
 
 
+@triton.autotune(
+    generate_configs({"num_warps": [2, 4, 8]}),
+    key=["h", "n", "d", "m"],
+)
 @triton.jit
 def _md_lrpe_cosine_parallel_bwd(
     X,
@@ -125,7 +133,10 @@ class MdLrpeCosine(torch.autograd.Function):
         output_shape[-1] *= 2
 
         o = torch.empty(output_shape, dtype=x.dtype, device=x.device)
-        grid = (b, h, n * m)
+
+        def grid(meta):
+            return (b, h, n * m)
+
         _md_lrpe_cosine_parallel_fwd[grid](x, theta, o, shape, b, h, n, d, e, m)
 
         ctx.save_for_backward(x, theta, shape)
@@ -142,7 +153,10 @@ class MdLrpeCosine(torch.autograd.Function):
         m = len(shape)
 
         dx = torch.empty_like(x)
-        grid = (b, h, n * m)
+
+        def grid(meta):
+            return (b, h, n * m)
+
         _md_lrpe_cosine_parallel_bwd[grid](x, theta, do, dx, shape, b, h, n, d, e, m)
 
         return dx, None, None
