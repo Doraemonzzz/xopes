@@ -20,6 +20,7 @@ dtype_map = {
 module_map = {
     "triton": lrpe_cosine_triton,
     "torch": lrpe_cosine_torch,
+    "torch_compile": torch.compile(lrpe_cosine_torch),
 }
 
 configs = [
@@ -32,11 +33,9 @@ configs = [
         line_vals=[
             "triton",
             "torch",
+            "torch_compile",
         ],
-        line_names=[
-            "Triton",
-            "Torch",
-        ],
+        line_names=["Triton", "Torch", "Torch C"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -75,8 +74,8 @@ def benchmark(b, h, n, d, dtype, device, mode, provider, bench_type="speed"):
     fn = lambda: module(x, theta)
     if mode == "bwd":
         y = fn()
-        dy = torch.randn((b, h, n, 2 * d), dtype=dtype, device=device)
-        fn = lambda: y.backward(dy, retain_graph=True)
+        do = torch.randn((b, h, n, 2 * d), dtype=dtype, device=device)
+        fn = lambda: y.backward(do, retain_graph=True)
 
     if bench_type == "speed":
         ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)

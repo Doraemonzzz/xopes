@@ -6,8 +6,8 @@ folder=base
 folder=logcumsumexp
 folder=grpe
 folder=lrpe_cosine
-folder=md_lrpe_cosine
-folder=flao_non_causal
+# folder=md_lrpe_cosine
+# folder=flao_non_causal
 
 mkdir -p $folder/log
 

@@ -15,9 +15,9 @@ def get_params():
     return shape
 
 
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("shape", get_params())
-def test(dtype, shape):
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test(shape, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     b, h, n, d = shape
