@@ -13,9 +13,9 @@ from xopes.ops import (
 from xopes.utils import get_memory, next_power_of_two
 
 b, h, n, d = 12, 12, 8192, 128
-b, h, n, d = 1, 12, 8192, 128
-dim = 1
-dim = 2
+# b, h, n, d = 1, 12, 8192, 128
+# dim = 1
+# dim = 2
 dim = 3
 device = torch.device("cuda")
 
