@@ -101,37 +101,22 @@ def _md_lrpe_cosine_cache_bwd(
     off_n = tl.program_id(2)
     # compute offset
     offset_x = off_b * h * n * d + off_h * n * d + off_n * d
-    off_h * e
     offset_o = off_b * h * n * 2 * d + off_h * n * 2 * d + off_n * 2 * d
-    offset_d = m * e
     offset_theta_cache = off_h * n * d + off_n * d
 
-    # compute from the last theta block
-    theta_cache_block_ptr = ThetaCache + offset_theta_cache + offset_d + tl.arange(0, e)
-    dx_block_ptr = DX + offset_x + offset_d + tl.arange(0, e)
-    do_cos_block_ptr = DO + offset_o + offset_d + tl.arange(0, e)
-    do_sin_block_ptr = DO + offset_o + offset_d + d + tl.arange(0, e)
-    # triton only support load block at least 16 elements, use this to get shape
-    shape_block_ptr = Shape + m + tl.arange(0, 16)
-    tl.arange(0, 16) < 1
+    # compute in parallel
+    theta_cache_block_ptr = ThetaCache + offset_theta_cache + tl.arange(0, d)
+    dx_block_ptr = DX + offset_x + tl.arange(0, d)
+    do_cos_block_ptr = DO + offset_o + tl.arange(0, d)
+    do_sin_block_ptr = DO + offset_o + d + tl.arange(0, d)
 
-    for i in range(m):
-        # update block ptr
-        shape_block_ptr -= 1
-        dx_block_ptr -= e
-        do_cos_block_ptr -= e
-        do_sin_block_ptr -= e
-        offset_d -= e
-        theta_cache_block_ptr -= e
-        mask = (offset_d + tl.arange(0, e)) < d
+    # compute
+    theta = tl.load(theta_cache_block_ptr).to(tl.float32)
+    do_cos = tl.load(do_cos_block_ptr).to(tl.float32)
+    do_sin = tl.load(do_sin_block_ptr).to(tl.float32)
+    dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
 
-        # compute
-        theta = tl.load(theta_cache_block_ptr, mask=mask, other=0).to(tl.float32)
-        do_cos = tl.load(do_cos_block_ptr, mask=mask, other=0).to(tl.float32)
-        do_sin = tl.load(do_sin_block_ptr, mask=mask, other=0).to(tl.float32)
-        dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
-
-        tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
+    tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty))
 
 
 class MdLrpeCosineCache(torch.autograd.Function):
