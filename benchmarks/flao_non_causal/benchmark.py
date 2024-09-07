@@ -50,7 +50,7 @@ configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"flao-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
+        plot_name=f"flao-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-dim{e}-{dtype_name}",
         args={
             "b": b,
             "h": h,
@@ -87,9 +87,9 @@ def benchmark(b, h, n, m, d, e, dtype, device, mode, provider, bench_type="speed
 
     fn = lambda: module(q, k, v, g)
     if mode == "bwd":
-        y = fn()
-        dy = torch.randn((b, h, n, e), dtype=dtype, device=device)
-        fn = lambda: y.backward(dy, retain_graph=True)
+        o = fn()
+        do = torch.randn((b, h, n, e), dtype=dtype, device=device)
+        fn = lambda: o.backward(do, retain_graph=True)
 
     if bench_type == "speed":
         ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
