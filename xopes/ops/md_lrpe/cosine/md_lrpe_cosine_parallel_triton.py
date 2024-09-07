@@ -45,6 +45,7 @@ def _md_lrpe_cosine_parallel_fwd(
     c = off_n
     offset = 0
     for i in range(m - off_m):
+        shape_block_ptr -= 1
         # compute dim
         dim = tl.sum(tl.load(shape_block_ptr, mask=shape_mask, other=0).to(tl.int32))
         offset = c % dim
@@ -104,6 +105,7 @@ def _md_lrpe_cosine_parallel_bwd(
     c = off_n
     offset = 0
     for i in range(m - off_m):
+        shape_block_ptr -= 1
         # compute dim
         dim = tl.sum(tl.load(shape_block_ptr, mask=shape_mask, other=0).to(tl.int32))
         offset = c % dim
