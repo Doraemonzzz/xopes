@@ -161,3 +161,4 @@ cython_debug/
 
 log/
 stat/
+torch_compile/

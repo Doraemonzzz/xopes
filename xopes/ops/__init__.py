@@ -19,6 +19,7 @@ from .logcumsumexp import (
 )
 from .lrpe import lrpe_cosine_torch, lrpe_cosine_triton
 from .md_lrpe import (
+    md_lrpe_cosine_cache_triton,
     md_lrpe_cosine_parallel_triton,
     md_lrpe_cosine_torch,
     md_lrpe_cosine_triton,

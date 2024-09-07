@@ -28,9 +28,9 @@ def md_lrpe_cosine_torch(x, theta, shape=None):
 
     theta = torch.cat(theta_list, dim=-1)[..., :d]
 
-    # # when x is flatten, we need to pack theta
-    # if len(x.shape) == 4:  # b h n d
-    #     theta, ps = pack([theta], "h * d")
+    # when x is flatten, we need to pack theta
+    if len(x.shape) == 4:  # b h n d
+        theta, ps = pack([theta], "h * d")
 
     cos = theta.cos()
     sin = theta.sin()
