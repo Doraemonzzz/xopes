@@ -28,12 +28,22 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
     - [ ] Add offset
     - [x] Auto config
 - [ ] MdLrpe
+  - [ ] Readme
   - [x] Cosine Triton
     - [x] fwd
     - [x] bwd
     - [ ] Add offset
-    - [ ] Readme
-    - [ ] Auto config
+    - [x] Auto config
+  - [ ] Cosine Parallel Triton
+    - [x] fwd
+    - [x] bwd
+    - [ ] Add offset
+    - [x] Auto config
+  - [ ] Cosine Cache Triton
+    - [x] fwd
+    - [x] bwd
+    - [ ] Add offset
+    - [x] Auto config
 - [ ] Tpe
   - [ ] Triton
 - [ ] Fuse Linear Attention Output Gate (flao)
