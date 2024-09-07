@@ -2,11 +2,12 @@ date=$(date '+%Y-%m-%d-%H:%M:%S')
 
 file=test
 folder=additive
-# folder=base
+folder=base
 folder=logcumsumexp
 folder=grpe
 folder=lrpe_cosine
-# folder=md_lrpe_cosine
+folder=md_lrpe_cosine
+folder=flao_non_causal
 
 mkdir -p $folder/log
 

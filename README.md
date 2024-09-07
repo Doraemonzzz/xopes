@@ -36,7 +36,10 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
     - [ ] Auto config
 - [ ] Tpe
   - [ ] Triton
-- [ ] Linear Attention Output Gate
+- [ ] Fuse Linear Attention Output Gate (flao)
+  - [x] Lao Torch (Linear Attention Output Gate)
+  - [x] Flao Torch
+- [ ]
 
 # Note
 ```
