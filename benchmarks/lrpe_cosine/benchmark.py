@@ -8,7 +8,7 @@ from xopes.ops import lrpe_cosine_torch, lrpe_cosine_triton
 from xopes.utils import get_memory
 
 b, h, n, d = 12, 12, 8192, 128
-# b, h, n, d = 12, 12, 8192, 64
+b, h, n, d = 12, 12, 8192, 64
 device = torch.device("cuda")
 
 dtype_map = {
