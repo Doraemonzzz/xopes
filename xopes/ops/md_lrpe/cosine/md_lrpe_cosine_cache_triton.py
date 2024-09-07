@@ -107,7 +107,6 @@ def _md_lrpe_cosine_cache_bwd(
     offset_theta_cache = off_h * n * d + off_n * d
 
     # compute from the last theta block
-    # theta_block_ptr = Theta + offset_theta + tl.arange(0, e)
     theta_cache_block_ptr = ThetaCache + offset_theta_cache + offset_d + tl.arange(0, e)
     dx_block_ptr = DX + offset_x + offset_d + tl.arange(0, e)
     do_cos_block_ptr = DO + offset_o + offset_d + tl.arange(0, e)
@@ -116,7 +115,6 @@ def _md_lrpe_cosine_cache_bwd(
     shape_block_ptr = Shape + m + tl.arange(0, 16)
     tl.arange(0, 16) < 1
 
-    # theta_ = tl.load(theta_block_ptr).to(tl.float32)
     for i in range(m):
         # update block ptr
         shape_block_ptr -= 1
@@ -126,11 +124,6 @@ def _md_lrpe_cosine_cache_bwd(
         offset_d -= e
         theta_cache_block_ptr -= e
         mask = (offset_d + tl.arange(0, e)) < d
-
-        # # compute dim
-        # dim = tl.sum(tl.load(shape_block_ptr, mask=shape_mask, other=0).to(tl.int32))
-        # offset = c % dim
-        # c = c // dim
 
         # compute
         theta = tl.load(theta_cache_block_ptr, mask=mask, other=0).to(tl.float32)

@@ -49,6 +49,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - [ ] Fuse Linear Attention Output Gate (flao)
   - [x] Lao Torch (Linear Attention Output Gate)
   - [x] Flao Torch
+- [ ] Custom benchmark function
+  - [ ] https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
 - [ ]
 
 # Note

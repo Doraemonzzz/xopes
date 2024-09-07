@@ -5,6 +5,7 @@ import torch
 import triton
 
 from xopes.ops import (
+    md_lrpe_cosine_cache_triton,
     md_lrpe_cosine_parallel_triton,
     md_lrpe_cosine_torch,
     md_lrpe_cosine_triton,
@@ -12,9 +13,10 @@ from xopes.ops import (
 from xopes.utils import get_memory, next_power_of_two
 
 b, h, n, d = 12, 12, 8192, 128
+b, h, n, d = 1, 12, 8192, 128
 dim = 1
-# dim = 2
-# dim = 3
+dim = 2
+dim = 3
 device = torch.device("cuda")
 
 dtype_map = {
@@ -25,6 +27,7 @@ dtype_map = {
 
 module_map = {
     "triton": md_lrpe_cosine_triton,
+    "triton_cache": md_lrpe_cosine_cache_triton,
     "triton_parallel": md_lrpe_cosine_parallel_triton,
     "torch": md_lrpe_cosine_torch,
     "torch_compile": torch.compile(md_lrpe_cosine_torch),
@@ -45,11 +48,12 @@ configs = [
         line_arg="provider",
         line_vals=[
             "triton",
+            "triton_cache",
             "triton_parallel",
             "torch",
             "torch_compile",
         ],
-        line_names=["Triton", "Triton Parallel", "Torch", "Torch C"],
+        line_names=["Tri", "Tri Ca", "Tri P", "Tor", "Tor C"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -62,6 +66,7 @@ configs = [
             "b": b,
             "h": h,
             "d": d,
+            "dim": dim,
             "dtype": dtype_map[dtype_name],
             "device": device,
             "mode": mode,
@@ -75,7 +80,7 @@ configs = [
 
 
 @triton.testing.perf_report(configs)
-def benchmark(b, h, n, d, dtype, device, mode, provider, bench_type="speed"):
+def benchmark(b, h, n, d, dim, dtype, device, mode, provider, bench_type="speed"):
     torch.manual_seed(2024)
     assert mode in ["fwd", "bwd"]
     warmup = 25
