@@ -27,6 +27,7 @@ module_map = {
     "triton": md_lrpe_cosine_triton,
     "triton_parallel": md_lrpe_cosine_parallel_triton,
     "torch": md_lrpe_cosine_torch,
+    "torch_compile": torch.compile(md_lrpe_cosine_torch),
 }
 
 x_vals_map = {
@@ -46,12 +47,9 @@ configs = [
             "triton",
             "triton_parallel",
             "torch",
+            "torch_compile",
         ],
-        line_names=[
-            "Triton",
-            "Triton Parallel",
-            "Torch",
-        ],
+        line_names=["Triton", "Triton Parallel", "Torch", "Torch C"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
