@@ -1,5 +1,7 @@
 # A800
 
+$-1$ indicate error.
+
 ## Head dim = 128
 
 1d version, sequence length is $n$.
