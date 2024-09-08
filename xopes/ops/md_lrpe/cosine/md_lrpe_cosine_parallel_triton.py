@@ -6,7 +6,8 @@ from xopes.utils import contiguous, generate_configs, next_power_of_two
 
 
 @triton.autotune(
-    generate_configs({"num_warps": [2, 4, 8]}),
+    generate_configs({"num_warps": [1, 2, 4, 8]}),
+    # generate_configs({"num_warps": [1, 2, 4, 8, 16, 32]}),
     key=["h", "n", "d", "m"],
 )
 @triton.jit

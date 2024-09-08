@@ -4,7 +4,11 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops import flao_non_causal_torch, lao_non_causal_torch
+from xopes.ops import (
+    flao_non_causal_torch,
+    flao_non_causal_triton,
+    lao_non_causal_torch,
+)
 from xopes.utils import get_memory
 
 b, h, n, m, d, e = 12, 12, 1024, 1024, 128, 128
@@ -22,6 +26,7 @@ module_map = {
     "lao_torch_complie": torch.compile(lao_non_causal_torch),
     "flao_torch": flao_non_causal_torch,
     "flao_torch_complie": torch.compile(flao_non_causal_torch),
+    "flao_triton": flao_non_causal_triton,
 }
 
 configs = [
@@ -36,13 +41,9 @@ configs = [
             "lao_torch_complie",
             "flao_torch",
             "flao_torch_complie",
+            "flao_triton",
         ],
-        line_names=[
-            "Lao Torch",
-            "Lao Torch C",
-            "Flao Torch",
-            "Flao Torch C",
-        ],
+        line_names=["Lao Tor", "Lao Tor C", "Flao Tor", "Flao Tor C", "Flao Tri"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -63,7 +64,8 @@ configs = [
             "bench_type": bench_type,
         },
     )
-    for mode in ["fwd", "bwd"]
+    # for mode in ["fwd", "bwd"]
+    for mode in ["fwd"]
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
 ]

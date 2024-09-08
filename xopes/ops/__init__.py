@@ -5,7 +5,7 @@ from .additive import (
     additive_rule_recurrence_triton,
 )
 from .base import base_rule_recurrence_torch, base_rule_recurrence_triton
-from .flao import flao_non_causal_torch, lao_non_causal_torch
+from .flao import flao_non_causal_torch, flao_non_causal_triton, lao_non_causal_torch
 from .grpe import (
     grpe_block_recurrence_torch,
     grpe_recurrence_torch,

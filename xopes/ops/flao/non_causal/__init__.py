@@ -1,2 +1,3 @@
 from .flao_non_causal_torch import flao_non_causal_torch
+from .flao_non_causal_triton import flao_non_causal_triton
 from .lao_non_causal_torch import lao_non_causal_torch
