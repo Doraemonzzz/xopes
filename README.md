@@ -53,6 +53,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
     - [x] Flao Torch
     - [x] Flao Triton
       - [x] fwd
+        - [x] Autotune
       - [x] bwd (in torch since no speed advantage)
     - [ ] Flao Left Product Triton
       - [ ] fwd
