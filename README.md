@@ -25,24 +25,32 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [x] Cosine Triton
     - [ ] Document
     - [x] fwd
+      - [ ] fn
     - [x] bwd
+      - [ ] fn
     - [ ] Add offset
     - [x] Auto config
 - [ ] MdLrpe
   - [ ] Readme
   - [x] Cosine Triton
     - [x] fwd
+      - [ ] fn
     - [x] bwd
+      - [ ] fn
     - [ ] Add offset
     - [x] Auto config
   - [ ] Cosine Parallel Triton
     - [x] fwd
+      - [ ] fn
     - [x] bwd
+      - [ ] fn
     - [ ] Add offset
     - [x] Auto config
   - [ ] Cosine Cache Triton
     - [x] fwd
+      - [ ] fn
     - [x] bwd
+      - [ ] fn
     - [ ] Add offset
     - [x] Auto config
 - [ ] Tpe
