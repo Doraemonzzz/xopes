@@ -11,17 +11,14 @@ class FusedLinearAttentionOutputGate(torch.autograd.Function):
         qkv = torch.matmul(q, kv)
         o = g * qkv
 
-        ctx.save_for_backward(q, k, v, g)
+        ctx.save_for_backward(q, k, v, g, kv, qkv)
 
         return o
 
     @staticmethod
     @contiguous
     def backward(ctx, do):
-        q, k, v, g = ctx.saved_tensors
-
-        kv = torch.einsum("... n d, ... n e -> ... d e", k, v)
-        qkv = torch.matmul(q, kv)
+        q, k, v, g, kv, qkv = ctx.saved_tensors
 
         dg = do * qkv
         dqkv = do * g

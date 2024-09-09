@@ -64,8 +64,7 @@ configs = [
             "bench_type": bench_type,
         },
     )
-    # for mode in ["fwd", "bwd"]
-    for mode in ["fwd"]
+    for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
 ]

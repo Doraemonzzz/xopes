@@ -13,18 +13,13 @@ from xopes.utils import contiguous, generate_configs
             "num_warps": [2, 4, 8],
         }
     ),
-    # generate_configs({"BLOCK_NM": [64, 128], "BLOCK_E": [64, 128], "num_warps": [2, 4, 8]}),
-    # generate_configs({"BLOCK_NM": [64, 128], "BLOCK_E": [64, 128],}),
-    # generate_configs({"BLOCK_NM": [64], "BLOCK_E": [64],}),
     key=["n", "m", "d", "e"],
 )
 @triton.jit
-def _flao_non_causal_fwd(
-    Q,
+def _flao_non_causal_kv(
     K,
     V,
-    G,
-    O,
+    KV,
     b: tl.constexpr,
     h: tl.constexpr,
     n: tl.constexpr,
@@ -37,18 +32,17 @@ def _flao_non_causal_fwd(
     BLOCK_E: tl.constexpr,
 ):
     off_bh = tl.program_id(0)
-    off_bh // h
-    off_bh % h
     off_block_d = tl.program_id(1)
     off_block_e = tl.program_id(2)
     # compute offset
     offset_d = off_block_d * BLOCK_D
     offset_e = off_block_e * BLOCK_E
-    offset_q = off_bh * n * d + offset_d
+    off_bh * n * d + offset_d
     offset_k = off_bh * m * d + offset_d
     offset_v = off_bh * m * e + offset_e
-    offset_g = off_bh * n * e + offset_e
-    offset_o = off_block_d * b * h * n * e + off_bh * n * e + offset_e
+    off_bh * n * e + offset_e
+    off_block_d * b * h * n * e + off_bh * n * e + offset_e
+    offset_kv = off_bh * d * e + offset_d * e + offset_e
     # mask
     d_mask = (offset_d + tl.arange(0, BLOCK_D)) < d
     e_mask = (offset_e + tl.arange(0, BLOCK_E)) < e
@@ -64,6 +58,12 @@ def _flao_non_causal_fwd(
         V
         + offset_v
         + tl.arange(0, BLOCK_NM)[:, None] * e
+        + tl.arange(0, BLOCK_E)[None, :]
+    )
+    kv_block_ptr = (
+        KV
+        + offset_kv
+        + tl.arange(0, BLOCK_D)[:, None] * e
         + tl.arange(0, BLOCK_E)[None, :]
     )
     array = tl.arange(0, BLOCK_NM)
@@ -84,6 +84,60 @@ def _flao_non_causal_fwd(
         v_block_ptr += BLOCK_NM * e
         array += BLOCK_NM
 
+    tl.store(
+        kv_block_ptr,
+        kv.to(kv_block_ptr.dtype.element_ty),
+        mask=d_mask[:, None] & e_mask[None, :],
+    )
+
+
+@triton.autotune(
+    generate_configs(
+        {
+            "BLOCK_NM": [16, 32, 64, 128],
+            "BLOCK_E": [16, 32, 64, 128],
+            "num_warps": [2, 4, 8],
+        }
+    ),
+    key=["n", "m", "d", "e"],
+)
+@triton.jit
+def _flao_non_causal_fwd(
+    Q,
+    G,
+    KV,
+    O,
+    b: tl.constexpr,
+    h: tl.constexpr,
+    n: tl.constexpr,
+    m: tl.constexpr,
+    d: tl.constexpr,
+    e: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    NUM_BLOCK_D: tl.constexpr,
+    BLOCK_NM: tl.constexpr,
+    BLOCK_E: tl.constexpr,
+):
+    NUM_BLOCK_N = tl.cdiv(n, BLOCK_NM)
+    off_bhn = tl.program_id(0)
+    off_bh = off_bhn // NUM_BLOCK_N
+    off_n = off_bhn % NUM_BLOCK_N
+    off_block_d = tl.program_id(1)
+    off_block_e = tl.program_id(2)
+    # compute offset
+    offset_d = off_block_d * BLOCK_D
+    offset_e = off_block_e * BLOCK_E
+    offset_n = off_n * BLOCK_NM
+    offset_q = off_bh * n * d + offset_n * d + offset_d
+    offset_g = off_bh * n * e + offset_n * e + offset_e
+    offset_o = off_block_d * b * h * n * e + off_bh * n * e + offset_n * e + offset_e
+    offset_kv = off_bh * d * e + offset_d * e + offset_e
+    # mask
+    d_mask = (offset_d + tl.arange(0, BLOCK_D)) < d
+    e_mask = (offset_e + tl.arange(0, BLOCK_E)) < e
+
+    array = tl.arange(0, BLOCK_NM)
+
     # compute qkv
     q_block_ptr = (
         Q
@@ -97,31 +151,35 @@ def _flao_non_causal_fwd(
         + tl.arange(0, BLOCK_NM)[:, None] * e
         + tl.arange(0, BLOCK_E)[None, :]
     )
+    kv_block_ptr = (
+        KV
+        + offset_kv
+        + tl.arange(0, BLOCK_D)[:, None] * e
+        + tl.arange(0, BLOCK_E)[None, :]
+    )
     o_block_ptr = (
         O
         + offset_o
         + tl.arange(0, BLOCK_NM)[:, None] * e
         + tl.arange(0, BLOCK_E)[None, :]
     )
-    array = tl.arange(0, BLOCK_NM)
+
+    array = offset_n + tl.arange(0, BLOCK_NM)
     NUM_BLOCK_N = tl.cdiv(n, BLOCK_NM)
 
-    for i in range(0, NUM_BLOCK_N):
-        mask = (array < n)[:, None]
-        q = tl.load(q_block_ptr, mask=mask & d_mask[None, :], other=0).to(tl.float32)
-        g = tl.load(g_block_ptr, mask=mask & e_mask[None, :], other=0).to(tl.float32)
+    mask = (array < n)[:, None]
+    q = tl.load(q_block_ptr, mask=mask & d_mask[None, :], other=0).to(tl.float32)
+    kv = tl.load(kv_block_ptr, mask=d_mask[:, None] & e_mask[None, :], other=0).to(
+        tl.float32
+    )
+    g = tl.load(g_block_ptr, mask=mask & e_mask[None, :], other=0).to(tl.float32)
 
-        qkv = tl.dot(q, kv)
-        o = g * qkv
+    qkv = tl.dot(q, kv)
+    o = g * qkv
 
-        tl.store(
-            o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask & e_mask[None, :]
-        )
-
-        q_block_ptr += BLOCK_NM * d
-        g_block_ptr += BLOCK_NM * e
-        o_block_ptr += BLOCK_NM * e
-        array += BLOCK_NM
+    tl.store(
+        o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask & e_mask[None, :]
+    )
 
 
 class FusedLinearAttentionOutputGate(torch.autograd.Function):
@@ -136,16 +194,39 @@ class FusedLinearAttentionOutputGate(torch.autograd.Function):
         # block_d = d
         num_block_d = triton.cdiv(d, block_d)
         # split over q, k head dim to severel chunk of block_d
-        o = torch.empty(num_block_d, b, h, n, e, dtype=q.dtype, device=q.device)
+        kv = torch.empty(b, h, d, e, dtype=torch.float32, device=q.device)
 
         def grid(meta):
             return (b * h, num_block_d, triton.cdiv(e, meta["BLOCK_E"]))
 
-        _flao_non_causal_fwd[grid](
-            q,
+        # compute kv first
+        _flao_non_causal_kv[grid](
             k,
             v,
+            kv,
+            b,
+            h,
+            n,
+            m,
+            d,
+            e,
+            block_d,
+            num_block_d,
+        )
+
+        o = torch.empty(num_block_d, b, h, n, e, dtype=q.dtype, device=q.device)
+
+        def grid(meta):
+            return (
+                b * h * triton.cdiv(n, meta["BLOCK_NM"]),
+                num_block_d,
+                triton.cdiv(e, meta["BLOCK_E"]),
+            )
+
+        _flao_non_causal_fwd[grid](
+            q,
             g,
+            kv,
             o,
             b,
             h,
@@ -157,16 +238,25 @@ class FusedLinearAttentionOutputGate(torch.autograd.Function):
             num_block_d,
         )
 
-        ctx.save_for_backward(q, k, v, g)
-
         o = o.sum(dim=0)
+
+        ctx.save_for_backward(q, k, v, g, kv)
 
         return o
 
     @staticmethod
     @contiguous
     def backward(ctx, do):
-        q, k, v, g = ctx.saved_tensors
+        q, k, v, g, kv = ctx.saved_tensors
+
+        qkv = torch.matmul(q, kv.to(q.dtype))
+
+        dg = do * qkv
+        dqkv = do * g
+        dq = torch.einsum("... n e, ... d e -> ... n d", dqkv, kv.to(q.dtype))
+        dkv = torch.einsum("... n d, ... n e -> ... d e", q, dqkv)
+        dk = torch.einsum("... n e, ... d e -> ... n d", v, dkv)
+        dv = torch.einsum("... n d, ... d e -> ... n e", k, dkv)
 
         return dq, dk, dv, dg
 
@@ -177,10 +267,6 @@ def flao_non_causal_triton(q, k, v, g):
 
 if __name__ == "__main__":
     # unit test
-    import os
-
-    os.environ["XOPES_DEBUG"] = "True"
-
     dtype = torch.bfloat16
     device = torch.cuda.current_device()
 
@@ -192,4 +278,4 @@ if __name__ == "__main__":
     do = torch.randn((b, h, n, e), dtype=dtype, device=device)
 
     o = flao_non_causal_triton(q, k, v, g)
-    # o.backward(do)
+    o.backward(do)
