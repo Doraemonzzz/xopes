@@ -1,5 +1,6 @@
 import torch
 
+from xopes.ops.act import act_torch
 from xopes.ops.flao.non_causal import flao_non_causal_fn
 
 
@@ -8,14 +9,22 @@ def flao_al_non_causal(
     k,
     v,
     g,
-    q_act=None,
-    k_act=None,
-    v_act=None,
-    g_act=None,
+    q_act="none",
+    q_act_dim=None,
+    k_act="none",
+    k_act_dim=None,
+    v_act="none",
+    v_act_dim=None,
+    g_act="none",
+    g_act_dim=None,
     theta=None,
     shape=None,
 ):
     # use act fn here
+    q = act_torch(q, q_act, q_act_dim)
+    k = act_torch(k, k_act, k_act_dim)
+    v = act_torch(v, v_act, v_act_dim)
+    g = act_torch(g, g_act, g_act_dim)
 
     # use lrpe
     if theta is not None:
