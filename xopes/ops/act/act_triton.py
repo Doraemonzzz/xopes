@@ -13,22 +13,22 @@ ACT_DICT_BWD_TRITON = {
 }
 
 
-def act_triton(act, x, dim=None):
+def act_triton(x, act, dim=None):
     if dim is None:
         fn = ACT_DICT_TRITON[act]
 
     return fn(x)
 
 
-def act_fwd_triton(act, x, dim=None):
+def act_fwd_triton(x, act, dim=None):
     if dim is None:
         fn = ACT_DICT_FWD_TRITON[act]
 
     return fn(x)
 
 
-def act_bwd_triton(act, x, dim=None):
+def act_bwd_triton(x, do, act, dim=None):
     if dim is None:
         fn = ACT_DICT_FWD_TRITON[act]
 
-    return fn(x)
+    return fn(x, do)

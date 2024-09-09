@@ -2,6 +2,8 @@ import torch
 
 from xopes.ops.act import act_torch
 from xopes.ops.flao.non_causal import flao_non_causal_fn
+from xopes.ops.lrpe import lrpe_consine_fn  # noqa
+from xopes.ops.md_lrpe import md_lrpe_consine_fn  # noqa
 
 
 def flao_al_non_causal(
@@ -28,7 +30,7 @@ def flao_al_non_causal(
 
     # use lrpe
     if theta is not None:
-        if len(q.shape) == 4:  # 1d case
+        if len(q.shape) == 4 and (shape is None or len(shape.shape) == 1):  # 1d case
             q = lrpe_consine_fn(q, theta)
             k = lrpe_consine_fn(k, theta)
         else:
