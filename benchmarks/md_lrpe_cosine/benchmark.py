@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops import (
+from xopes.ops.md_lrpe.cosine import (
     md_lrpe_cosine_cache_triton,
     md_lrpe_cosine_parallel_triton,
     md_lrpe_cosine_torch,

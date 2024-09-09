@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops import lrpe_cosine_torch, lrpe_cosine_triton
+from xopes.ops.lrpe.cosine import lrpe_cosine_torch, lrpe_cosine_triton
 from xopes.utils import get_memory
 
 b, h, n, d = 12, 12, 8192, 128

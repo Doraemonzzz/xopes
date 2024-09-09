@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from xopes.ops import lrpe_cosine_torch, lrpe_cosine_triton
+from xopes.ops.lrpe.cosine import lrpe_cosine_torch, lrpe_cosine_triton
 from xopes.utils import get_threshold
 
 
