@@ -9,10 +9,10 @@
 Input:
 $$
 \begin{aligned}
-\mathbf Q &:n, d,\\
-\mathbf K &:  m, d,\\
-\mathbf V &:  m, e,\\
-\mathbf G &:  n, e,\\
+\mathbf Q &:n, d, \\
+\mathbf K &:  m, d, \\
+\mathbf V &:  m, e, \\
+\mathbf G &:  n, e, \\
 \mathbf {dO}&: n, e.
 \end{aligned}
 $$
