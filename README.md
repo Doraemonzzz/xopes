@@ -23,6 +23,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
     - [x] fwd
 - [ ] Lrpe
   - [x] Cosine Triton
+    - [ ] Document
     - [x] fwd
     - [x] bwd
     - [ ] Add offset
@@ -53,8 +54,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
     - [x] Flao Torch
     - [x] Flao Triton
       - [x] fwd
-        - [x] Autotune
       - [x] bwd (in torch since no speed advantage)
+      - [x] autotune
     - [ ] Flao Left Product Triton
       - [ ] fwd
       - [ ] bwd

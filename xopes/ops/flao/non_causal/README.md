@@ -6,20 +6,34 @@
 - `flao_non_causal_torch`: Fused Linear Attention With Output Gate Pytorch, with manually computed gradients.
 - `flao_non_causal_triton`: The Triton version of `flao_non_causal_torch`, where the forward pass is implemented using Triton, and the backward pass is implemented using Torch (as I found no speed advantage in the forward pass.)
 
-Input:
+Fwd input:
 $$
 \begin{aligned}
-\mathbf Q &:n, d, \\
-\mathbf K &:  m, d, \\
-\mathbf V &:  m, e, \\
-\mathbf G &:  n, e, \\
-\mathbf {dO}&: n, e.
+\mathbf Q \in \mathbb R^{n\times d},
+\mathbf K \in \mathbb R^{m\times d},
+\mathbf V \in \mathbb R^{m\times e},
+\mathbf G \in \mathbb R^{n\times e}.
 \end{aligned}
 $$
 
-Output:
+Fwd output:
 $$
-\mathbf O:  n, e.
+\mathbf O \in \mathbb R^{n\times e}.
+$$
+
+Bwd input:
+$$
+\begin{aligned}
+\mathbf {dQ} \in \mathbb R^{n\times d},
+\mathbf {dK} \in \mathbb R^{m\times d},
+\mathbf {dV} \in \mathbb R^{m\times e},
+\mathbf {dG} \in \mathbb R^{n\times e}.
+\end{aligned}
+$$
+
+Bwd output:
+$$
+\mathbf {dO}\in \mathbb R^{n\times e}.
 $$
 
 Where $n, m$ denotes the sequence length, and $d, e$ denotes the head dimension.
