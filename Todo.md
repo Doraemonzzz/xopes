@@ -21,10 +21,10 @@
   - [x] Cosine Triton
     - [ ] Document
     - [x] fwd
-      - [ ] fn
+      - [x] fn
     - [x] bwd
-      - [ ] fn
-    - [ ] Add offset
+      - [x] fn
+    - [x] Add offset
     - [x] Auto config
 - [ ] MdLrpe
   - [ ] Readme
