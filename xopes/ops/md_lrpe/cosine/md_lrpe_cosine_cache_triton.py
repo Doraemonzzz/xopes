@@ -10,7 +10,7 @@ from xopes.utils import contiguous, generate_configs, next_power_of_two
     key=["h", "n", "d", "m"],
 )
 @triton.jit
-def _md_lrpe_cosine_cache_fwd(
+def _md_lrpe_cosine_cache_fwd_triton(
     X,
     Theta,
     O,
@@ -44,7 +44,7 @@ def _md_lrpe_cosine_cache_fwd(
     shape_block_ptr = Shape + m + tl.arange(0, 16)
     shape_mask = tl.arange(0, 16) < 1
 
-    c = off_n
+    c = off_n - l
     offset = 0
 
     if off_n >= l:
@@ -89,7 +89,7 @@ def _md_lrpe_cosine_cache_fwd(
     key=["h", "n", "d", "m"],
 )
 @triton.jit
-def _md_lrpe_cosine_cache_bwd(
+def _md_lrpe_cosine_cache_bwd_triton(
     X,
     Theta,
     ThetaCache,
@@ -162,7 +162,7 @@ def md_lrpe_cosine_cache_fwd_triton(x, theta, shape, l=0):
     def grid(meta):
         return (b, h, n)
 
-    _md_lrpe_cosine_cache_fwd[grid](
+    _md_lrpe_cosine_cache_fwd_triton[grid](
         x, theta, o, theta_cache, shape, b, h, n, l, d, e, m
     )
 
@@ -179,7 +179,7 @@ def md_lrpe_cosine_cache_bwd_triton(x, theta, theta_cache, do, shape, l=0):
     def grid(meta):
         return (b, h, n)
 
-    _md_lrpe_cosine_cache_bwd[grid](
+    _md_lrpe_cosine_cache_bwd_triton[grid](
         x, theta, theta_cache, do, dx, shape, b, h, n, d, e, m
     )
 
@@ -190,7 +190,7 @@ def md_lrpe_cosine_cache_triton(x, theta, shape, l=0):
     # x: b, h, n, d; n = l + prod(shape)
     # theta: h, next_power_of_two((d + len(shape) - 1) // len(shape))
     # shape: n1, ... , nm
-    # l: we do not do lrpe cosine on the first l elements
+    # l: we do not do lrpe cosine on the first l tokens
     assert (x.shape[-1] % theta.shape[-1] == 0) or (
         theta.shape[-1] == next_power_of_two(theta.shape[-1])
     ), "theta.shape[-1] must be be devided by x.shape[-1] and or be power of 2"
@@ -202,21 +202,31 @@ if __name__ == "__main__":
     from einops import pack
 
     # unit test
-    shape = tuple([2, 8, 128, 128, 64])
+    shape = tuple([2, 8, 32, 32, 64])
+    l = 2
+    b = shape[0]
     h = shape[1]
     d = shape[-1]
     m = len(shape) - 3
     e = next_power_of_two((d + m - 1) // m)
     dtype = torch.float32
     device = torch.cuda.current_device()
-    x = (torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
+
+    x = torch.randn(shape, dtype=dtype, device=device)
     x, ps_x = pack([x], "b h * d")
+    if l > 0:
+        token = torch.randn((b, h, l, d), dtype=dtype, device=device)
+        x = torch.cat([token, x], dim=-2)
+    x = x.requires_grad_()
 
     theta = torch.randn((h, e), dtype=dtype, device=device)
     shape = shape[:-1] + (shape[-1] * 2,)
 
     do = torch.randn(shape, dtype=dtype, device=device)
     do, ps_do = pack([do], "b h * d")
+    if l > 0:
+        do_token = torch.randn((b, h, l, 2 * d), dtype=dtype, device=device)
+        do = torch.cat([do_token, do], dim=-2)
 
     o = md_lrpe_cosine_cache_triton(x, theta, shape=shape[2:-1])
     o.backward(do)
