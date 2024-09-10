@@ -1,11 +1,13 @@
 import torch
 
 
-def lrpe_cosine_torch(x, theta):
+def lrpe_cosine_torch(x, theta, offset=0):
     # x: b, h, n, d
     # theta: h, d
     n = x.shape[-2]
-    index = torch.arange(n, device=torch.cuda.current_device(), dtype=torch.int64)
+    index = offset + torch.arange(
+        n, device=torch.cuda.current_device(), dtype=torch.int64
+    )
     theta = torch.einsum("h d, n -> h n d", theta.float(), index)
     cos = theta.cos()
     sin = theta.sin()

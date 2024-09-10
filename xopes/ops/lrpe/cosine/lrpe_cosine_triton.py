@@ -14,6 +14,7 @@ def _lrpe_cosine_triton_fwd(
     X,
     Theta,
     O,
+    offset: tl.constexpr,
     b: tl.constexpr,
     h: tl.constexpr,
     n: tl.constexpr,
@@ -33,7 +34,7 @@ def _lrpe_cosine_triton_fwd(
     o_sin_block_ptr = O + offset_o + d + tl.arange(0, d)
 
     x = tl.load(x_block_ptr).to(tl.float32)
-    theta = tl.load(theta_block_ptr).to(tl.float32) * off_n
+    theta = tl.load(theta_block_ptr).to(tl.float32) * (off_n + offset)
     o_cos = x * tl.cos(theta)
     o_sin = x * tl.sin(theta)
 
@@ -51,6 +52,7 @@ def _lrpe_cosine_triton_bwd(
     Theta,
     DO,
     DX,
+    offset: tl.constexpr,
     b: tl.constexpr,
     h: tl.constexpr,
     n: tl.constexpr,
@@ -72,7 +74,7 @@ def _lrpe_cosine_triton_bwd(
     do_cos = tl.load(do_cos_block_ptr).to(tl.float32)
     do_sin = tl.load(do_sin_block_ptr).to(tl.float32)
 
-    theta = tl.load(theta_block_ptr).to(tl.float32) * off_n
+    theta = tl.load(theta_block_ptr).to(tl.float32) * (off_n + offset)
     dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
 
     tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty))
@@ -81,9 +83,10 @@ def _lrpe_cosine_triton_bwd(
 class LrpeCosineTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
-    def forward(ctx, x, theta):
-        o = lrpe_cosine_triton_fwd(x, theta)
+    def forward(ctx, x, theta, offset=0):
+        o = lrpe_cosine_triton_fwd(x, theta, offset)
         ctx.save_for_backward(x, theta)
+        ctx.offset = offset
 
         return o
 
@@ -91,24 +94,25 @@ class LrpeCosineTriton(torch.autograd.Function):
     @contiguous
     def backward(ctx, do):
         x, theta = ctx.saved_tensors
-        dx = lrpe_cosine_triton_bwd(x, theta, do)
+        offset = ctx.offset
+        dx = lrpe_cosine_triton_bwd(x, theta, do, offset)
 
-        return dx, None
+        return dx, None, None
 
 
-def lrpe_cosine_triton_fwd(x, theta):
+def lrpe_cosine_triton_fwd(x, theta, offset=0):
     b, h, n, d = x.shape
     o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
 
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_triton_fwd[grid](x, theta, o, b, h, n, d)
+    _lrpe_cosine_triton_fwd[grid](x, theta, o, offset, b, h, n, d)
 
     return o
 
 
-def lrpe_cosine_triton_bwd(x, theta, do):
+def lrpe_cosine_triton_bwd(x, theta, do, offset=0):
     b, h, n, d = x.shape
 
     dx = torch.empty_like(x)
@@ -116,15 +120,15 @@ def lrpe_cosine_triton_bwd(x, theta, do):
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_triton_bwd[grid](x, theta, do, dx, b, h, n, d)
+    _lrpe_cosine_triton_bwd[grid](x, theta, do, dx, offset, b, h, n, d)
 
     return dx
 
 
-def lrpe_cosine_triton(x, theta):
+def lrpe_cosine_triton(x, theta, offset=0):
     # x: b, h, n, d
     # theta: h, d
-    return LrpeCosineTriton.apply(x, theta)
+    return LrpeCosineTriton.apply(x, theta, offset)
 
 
 if __name__ == "__main__":

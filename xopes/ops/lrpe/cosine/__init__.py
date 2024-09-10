@@ -7,12 +7,12 @@ from .lrpe_cosine_triton import (
 
 
 def lrpe_cosine_fn(x, theta, offset=0):
-    return lrpe_cosine_triton(x, theta)
+    return lrpe_cosine_triton(x, theta, offset)
 
 
 def lrpe_cosine_fwd(x, theta, offset=0):
-    return lrpe_cosine_triton_fwd(x, theta)
+    return lrpe_cosine_triton_fwd(x, theta, offset)
 
 
 def lrpe_cosine_bwd(x, theta, offset=0):
-    return lrpe_cosine_triton_bwd(x, theta)
+    return lrpe_cosine_triton_bwd(x, theta, offset)
