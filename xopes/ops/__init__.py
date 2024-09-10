@@ -18,4 +18,4 @@ from .logcumsumexp import (
     logcumsumexp_torch,
 )
 from .lrpe import lrpe_bwd, lrpe_fn, lrpe_fwd
-from .md_lrpe import md_lrpe_cosine_fn
+from .md_lrpe import md_lrpe_bwd, md_lrpe_fn, md_lrpe_fwd

@@ -148,21 +148,6 @@ class MdLrpeCosineTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, theta, shape, l=0):
-        # b, h, d = x.shape[0], x.shape[1], x.shape[-1]
-        # e = theta.shape[-1]
-        # n = torch.prod(shape).item()
-        # m = len(shape)
-
-        # output_shape = list(x.shape)
-        # output_shape[-1] *= 2
-
-        # o = torch.empty(output_shape, dtype=x.dtype, device=x.device)
-
-        # def grid(meta):
-        #     return (b, h, n)
-
-        # _md_lrpe_cosine_fwd[grid](x, theta, o, shape, b, h, n, d, e, m)
-
         o = md_lrpe_cosine_fwd_triton(x, theta, shape, l)
 
         ctx.save_for_backward(x, theta, shape)
@@ -175,18 +160,6 @@ class MdLrpeCosineTriton(torch.autograd.Function):
     def backward(ctx, do):
         x, theta, shape = ctx.saved_tensors
         l = ctx.l
-
-        # b, h, d = x.shape[0], x.shape[1], x.shape[-1]
-        # e = theta.shape[-1]
-        # n = torch.prod(shape).item()
-        # m = len(shape)
-
-        # dx = torch.empty_like(x)
-
-        # def grid(meta):
-        #     return (b, h, n)
-
-        # _md_lrpe_cosine_bwd[grid](x, theta, do, dx, shape, b, h, n, d, e, m)
 
         dx = md_lrpe_cosine_bwd_triton(x, theta, do, shape, l)
 
