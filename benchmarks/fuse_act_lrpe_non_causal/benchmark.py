@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import torch
+import torch._dynamo
 import triton
 
 from xopes.ops.flao.fuse_act_lrpe_non_causal import (
@@ -10,7 +11,6 @@ from xopes.ops.flao.fuse_act_lrpe_non_causal import (
 )
 from xopes.utils import get_memory
 
-import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 
 b, h, n, m, d, e = 12, 12, 1024, 1024, 128, 128
@@ -58,7 +58,10 @@ configs = [
             # "flao_fal_torch_complie",
         ],
         # line_names=["Flao Tor", "Flao Tor C", "Flao F Tor", "Flao F Tor C"],
-        line_names=["Flao Tor", "Flao F Tor",],
+        line_names=[
+            "Flao Tor",
+            "Flao F Tor",
+        ],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -102,7 +105,8 @@ def benchmark(b, h, n, m, d, e, dtype, device, mode, provider, bench_type="speed
 
     module = module_map[provider]
 
-    fn = lambda: module(        q,
+    fn = lambda: module(
+        q,
         k,
         v,
         g,
@@ -118,7 +122,8 @@ def benchmark(b, h, n, m, d, e, dtype, device, mode, provider, bench_type="speed
         shape,
         lrpe_type,
         offset,
-        l,)
+        l,
+    )
     if mode == "bwd":
         o = fn()
         do = torch.randn((b, h, n, e), dtype=dtype, device=device)
