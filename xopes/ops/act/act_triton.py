@@ -1,34 +1,39 @@
+from xopes.utils import identity
+
 from .fn import _silu_bwd, _silu_fwd, silu
 
-ACT_DICT_TRITON = {
+ACT_TRITON_DICT = {
     "silu": silu,
+    "none": identity,
 }
 
-ACT_DICT_FWD_TRITON = {
+ACT_FWD_TRITON_DICT = {
     "silu": _silu_fwd,
+    "none": identity,
 }
 
-ACT_DICT_BWD_TRITON = {
+ACT_BWD_TRITON_DICT = {
     "silu": _silu_bwd,
+    "none": identity,
 }
 
 
 def act_triton(x, act, dim=None):
     if dim is None:
-        fn = ACT_DICT_TRITON[act]
+        fn = ACT_TRITON_DICT[act]
 
     return fn(x)
 
 
 def act_fwd_triton(x, act, dim=None):
     if dim is None:
-        fn = ACT_DICT_FWD_TRITON[act]
+        fn = ACT_FWD_TRITON_DICT[act]
 
-    return fn(x)
+        return fn(x)
 
 
 def act_bwd_triton(x, do, act, dim=None):
     if dim is None:
-        fn = ACT_DICT_FWD_TRITON[act]
+        fn = ACT_BWD_TRITON_DICT[act]
 
-    return fn(x, do)
+        return fn(x)

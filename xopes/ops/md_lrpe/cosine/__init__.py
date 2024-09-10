@@ -16,8 +16,8 @@ def md_lrpe_cosine_fn(x, theta, shape, l=0):
 
 
 def md_lrpe_cosine_fwd(x, theta, shape, l=0):
-    return md_lrpe_cosine_cache_fwd_triton(x, theta, shape, l)
+    return md_lrpe_cosine_fwd_triton(x, theta, shape, l)
 
 
-def md_lrpe_cosine_bwd(x, theta, theta_cache, do, shape, l=0):
-    return md_lrpe_cosine_cache_bwd_triton(x, theta, theta_cache, do, shape, l)
+def md_lrpe_cosine_bwd(x, theta, do, shape, l=0):
+    return md_lrpe_cosine_bwd_triton(x, theta, do, shape, l)

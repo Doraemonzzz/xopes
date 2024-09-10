@@ -23,6 +23,6 @@ def lrpe_fwd(x, theta, offset=0, lrpe_type="cosine", **kwargs):
     return fn(x, theta, offset)
 
 
-def lrpe_bwd(x, theta, offset=0, lrpe_type="cosine", **kwargs):
+def lrpe_bwd(x, theta, do, offset=0, lrpe_type="cosine", **kwargs):
     fn = LRPE_BWD_DICT[lrpe_type]
-    return fn(x, theta, offset)
+    return fn(x, theta, do, offset)

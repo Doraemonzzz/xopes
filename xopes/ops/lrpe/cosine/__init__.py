@@ -14,5 +14,5 @@ def lrpe_cosine_fwd(x, theta, offset=0):
     return lrpe_cosine_fwd_triton(x, theta, offset)
 
 
-def lrpe_cosine_bwd(x, theta, offset=0):
-    return lrpe_cosine_bwd_triton(x, theta, offset)
+def lrpe_cosine_bwd(x, theta, do, offset=0):
+    return lrpe_cosine_bwd_triton(x, theta, do, offset)

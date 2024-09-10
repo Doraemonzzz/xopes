@@ -106,3 +106,7 @@ def get_memory(device):
     torch.cuda.reset_peak_memory_stats(device)
 
     return mb_used
+
+
+def identity(x, **kwargs):
+    return x

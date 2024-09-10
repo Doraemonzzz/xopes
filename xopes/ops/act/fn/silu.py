@@ -32,5 +32,8 @@ class Silu(torch.autograd.Function):
         return x
 
 
-def silu(x):
+def silu(
+    x,
+    **kwargs,
+):
     return Silu.apply(x)

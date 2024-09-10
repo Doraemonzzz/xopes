@@ -4,6 +4,7 @@ from .utils import (
     generate_configs,
     get_memory,
     get_threshold,
+    identity,
     max_power_of_2_divisor,
     next_power_of_two,
     pack,

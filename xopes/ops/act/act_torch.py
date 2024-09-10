@@ -1,15 +1,17 @@
 import torch.nn.functional as F
 
-ACT_DICT_TORCH = {
+from xopes.utils import identity
+
+ACT_TORCH_DICT = {
     "relu": F.relu,
     "sigmoid": F.sigmoid,
     "silu": F.silu,
-    "none": lambda x: x,
+    "none": identity,
 }
 
 
-def act_torch(act, x, dim=None):
+def act_torch(x, act, dim=None):
     if dim is None:
-        fn = ACT_DICT_TORCH[act]
+        fn = ACT_TORCH_DICT[act]
 
-    return fn(x)
+        return fn(x)
