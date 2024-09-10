@@ -1,1 +1,1 @@
-from .silu import _silu_bwd, _silu_fwd, silu
+from .silu import silu, silu_bwd, silu_fwd

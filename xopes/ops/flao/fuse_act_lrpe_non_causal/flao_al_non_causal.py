@@ -6,7 +6,7 @@ from xopes.ops.lrpe import lrpe_fn  # noqa
 from xopes.ops.md_lrpe import md_lrpe_fn  # noqa
 
 
-def flao_al_non_causal(
+def flao_al_non_causal_torch(
     q,
     k,
     v,
@@ -26,9 +26,11 @@ def flao_al_non_causal(
     offset=0,
     l=0,
 ):
-    if shape is None:
-        shape = q.shape[2:-1]
-    shape = torch.tensor(shape, dtype=torch.int32, device=q.device)
+    if theta is not None:
+        if shape is None:
+            shape = q.shape[2:-1]
+        shape = torch.tensor(shape, dtype=torch.int32, device=q.device)
+
     # use act fn here
     q = act_torch(q, q_act, q_act_dim)
     k = act_torch(k, k_act, k_act_dim)

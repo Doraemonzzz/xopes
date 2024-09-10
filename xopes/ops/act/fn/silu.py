@@ -16,7 +16,7 @@ class Silu(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x):
-        o = _silu_fwd(x)
+        o = silu_fwd(x)
 
         ctx.save_for_backward(x)
 
@@ -27,9 +27,21 @@ class Silu(torch.autograd.Function):
     def backward(ctx, do):
         x = ctx.saved_tensors
 
-        _silu_bwd(x, do)
+        dx = silu_bwd(x, do)
 
-        return x
+        return dx
+
+
+def silu_fwd(x):
+    o = _silu_fwd(x)
+
+    return o
+
+
+def silu_bwd(x, do):
+    dx = _silu_bwd(x, do)
+
+    return dx
 
 
 def silu(

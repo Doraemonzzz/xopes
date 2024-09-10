@@ -1,6 +1,6 @@
-from xopes.utils import identity
+from xopes.utils import identity, identity_bwd, identity_fwd
 
-from .fn import _silu_bwd, _silu_fwd, silu
+from .fn import silu, silu_bwd, silu_fwd
 
 ACT_TRITON_DICT = {
     "silu": silu,
@@ -8,13 +8,13 @@ ACT_TRITON_DICT = {
 }
 
 ACT_FWD_TRITON_DICT = {
-    "silu": _silu_fwd,
-    "none": identity,
+    "silu": silu_fwd,
+    "none": identity_fwd,
 }
 
 ACT_BWD_TRITON_DICT = {
-    "silu": _silu_bwd,
-    "none": identity,
+    "silu": silu_bwd,
+    "none": identity_bwd,
 }
 
 
@@ -36,4 +36,4 @@ def act_bwd_triton(x, do, act, dim=None):
     if dim is None:
         fn = ACT_BWD_TRITON_DICT[act]
 
-        return fn(x)
+        return fn(x, do)

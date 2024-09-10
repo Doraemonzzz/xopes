@@ -110,3 +110,11 @@ def get_memory(device):
 
 def identity(x, **kwargs):
     return x
+
+
+def identity_fwd(x, **kwargs):
+    return x
+
+
+def identity_bwd(x, do, **kwargs):
+    return do
