@@ -17,9 +17,9 @@
     - [x] fwd
   - [ ] Block Parallel Triton
     - [x] fwd
-- [ ] Lrpe
+- [x] Lrpe
   - [x] Cosine Triton
-    - [ ] Document
+    - [x] Document
     - [x] fwd
       - [x] fn
     - [x] bwd
