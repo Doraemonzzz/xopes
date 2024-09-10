@@ -30,24 +30,17 @@
   - [ ] Readme
   - [x] Cosine Triton
     - [x] fwd
-      - [ ] fn
+      - [x] fn
     - [x] bwd
-      - [ ] fn
-    - [ ] Add offset
+      - [x] fn
+    - [x] Add extra token support
     - [x] Auto config
-  - [ ] Cosine Parallel Triton
+  - [x] Cosine Cache Triton
     - [x] fwd
-      - [ ] fn
+      - [x] fn
     - [x] bwd
-      - [ ] fn
-    - [ ] Add offset
-    - [x] Auto config
-  - [ ] Cosine Cache Triton
-    - [x] fwd
-      - [ ] fn
-    - [x] bwd
-      - [ ] fn
-    - [ ] Add offset
+      - [x] fn
+    - [x] Add extra token support
     - [x] Auto config
 - [ ] Tpe
   - [ ] Triton
