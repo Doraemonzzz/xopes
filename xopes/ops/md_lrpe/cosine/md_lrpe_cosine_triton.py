@@ -10,7 +10,7 @@ from xopes.utils import contiguous, generate_configs, next_power_of_two
     key=["h", "n", "d", "m"],
 )
 @triton.jit
-def _md_lrpe_cosine_fwd(
+def _md_lrpe_cosine_fwd_triton(
     X,
     Theta,
     O,
@@ -18,6 +18,7 @@ def _md_lrpe_cosine_fwd(
     b: tl.constexpr,
     h: tl.constexpr,
     n: tl.constexpr,
+    l: tl.constexpr,
     d: tl.constexpr,
     e: tl.constexpr,
     m: tl.constexpr,
@@ -40,9 +41,15 @@ def _md_lrpe_cosine_fwd(
     shape_block_ptr = Shape + m + tl.arange(0, 16)
     shape_mask = tl.arange(0, 16) < 1
 
-    c = off_n
+    c = off_n - l
     offset = 0
-    theta_ = tl.load(theta_block_ptr).to(tl.float32)
+
+    if off_n >= l:
+        theta_ = tl.load(theta_block_ptr).to(tl.float32)
+    else:
+        # concat((x, 0)) = concat(x * cos(0), x * sin(0))
+        theta_ = tl.zeros((e,), dtype=tl.float32)
+
     for i in range(m):
         # update block ptr
         shape_block_ptr -= 1
@@ -73,7 +80,7 @@ def _md_lrpe_cosine_fwd(
     key=["h", "n", "d", "m"],
 )
 @triton.jit
-def _md_lrpe_cosine_bwd(
+def _md_lrpe_cosine_bwd_triton(
     X,
     Theta,
     DO,
@@ -82,6 +89,7 @@ def _md_lrpe_cosine_bwd(
     b: tl.constexpr,
     h: tl.constexpr,
     n: tl.constexpr,
+    l: tl.constexpr,
     d: tl.constexpr,
     e: tl.constexpr,
     m: tl.constexpr,
@@ -104,9 +112,15 @@ def _md_lrpe_cosine_bwd(
     shape_block_ptr = Shape + m + tl.arange(0, 16)
     shape_mask = tl.arange(0, 16) < 1
 
-    c = off_n
+    c = off_n - l
     offset = 0
-    theta_ = tl.load(theta_block_ptr).to(tl.float32)
+
+    if off_n >= l:
+        theta_ = tl.load(theta_block_ptr).to(tl.float32)
+    else:
+        # concat((x, 0)) = concat(x * cos(0), x * sin(0))
+        theta_ = tl.zeros((e,), dtype=tl.float32)
+
     for i in range(m):
         # update block ptr
         shape_block_ptr -= 1
@@ -130,26 +144,29 @@ def _md_lrpe_cosine_bwd(
         tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
 
 
-class MdLrpeCosine(torch.autograd.Function):
+class MdLrpeCosineTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
-    def forward(ctx, x, theta, shape):
-        b, h, d = x.shape[0], x.shape[1], x.shape[-1]
-        e = theta.shape[-1]
-        n = torch.prod(shape).item()
-        m = len(shape)
+    def forward(ctx, x, theta, shape, l=0):
+        # b, h, d = x.shape[0], x.shape[1], x.shape[-1]
+        # e = theta.shape[-1]
+        # n = torch.prod(shape).item()
+        # m = len(shape)
 
-        output_shape = list(x.shape)
-        output_shape[-1] *= 2
+        # output_shape = list(x.shape)
+        # output_shape[-1] *= 2
 
-        o = torch.empty(output_shape, dtype=x.dtype, device=x.device)
+        # o = torch.empty(output_shape, dtype=x.dtype, device=x.device)
 
-        def grid(meta):
-            return (b, h, n)
+        # def grid(meta):
+        #     return (b, h, n)
 
-        _md_lrpe_cosine_fwd[grid](x, theta, o, shape, b, h, n, d, e, m)
+        # _md_lrpe_cosine_fwd[grid](x, theta, o, shape, b, h, n, d, e, m)
+
+        o = md_lrpe_cosine_fwd_triton(x, theta, shape, l)
 
         ctx.save_for_backward(x, theta, shape)
+        ctx.l = l
 
         return o
 
@@ -157,46 +174,99 @@ class MdLrpeCosine(torch.autograd.Function):
     @contiguous
     def backward(ctx, do):
         x, theta, shape = ctx.saved_tensors
-        b, h, d = x.shape[0], x.shape[1], x.shape[-1]
-        e = theta.shape[-1]
-        n = torch.prod(shape).item()
-        m = len(shape)
+        l = ctx.l
 
-        dx = torch.empty_like(x)
+        # b, h, d = x.shape[0], x.shape[1], x.shape[-1]
+        # e = theta.shape[-1]
+        # n = torch.prod(shape).item()
+        # m = len(shape)
 
-        def grid(meta):
-            return (b, h, n)
+        # dx = torch.empty_like(x)
 
-        _md_lrpe_cosine_bwd[grid](x, theta, do, dx, shape, b, h, n, d, e, m)
+        # def grid(meta):
+        #     return (b, h, n)
 
-        return dx, None, None
+        # _md_lrpe_cosine_bwd[grid](x, theta, do, dx, shape, b, h, n, d, e, m)
+
+        dx = md_lrpe_cosine_bwd_triton(x, theta, do, shape, l)
+
+        return dx, None, None, None
 
 
-def md_lrpe_cosine_triton(x, theta, shape=None):
-    # x: b, h, ..., d
+def md_lrpe_cosine_fwd_triton(x, theta, shape, l=0):
+    b, h, n, d = x.shape
+    e = theta.shape[-1]
+    m = len(shape)
+
+    output_shape = list(x.shape)
+    output_shape[-1] *= 2
+
+    o = torch.empty(output_shape, dtype=x.dtype, device=x.device)
+
+    def grid(meta):
+        return (b, h, n)
+
+    _md_lrpe_cosine_fwd_triton[grid](x, theta, o, shape, b, h, n, l, d, e, m)
+
+    return o
+
+
+def md_lrpe_cosine_bwd_triton(x, theta, do, shape, l=0):
+    b, h, n, d = x.shape
+    e = theta.shape[-1]
+    m = len(shape)
+
+    dx = torch.empty_like(x)
+
+    def grid(meta):
+        return (b, h, n)
+
+    _md_lrpe_cosine_bwd_triton[grid](x, theta, do, dx, shape, b, h, n, l, d, e, m)
+
+    return dx
+
+
+def md_lrpe_cosine_triton(x, theta, shape=None, l=0):
+    # x: b, h, n, d; n = l + prod(shape)
     # theta: h, next_power_of_two((d + len(shape) - 1) // len(shape))
-    if shape is None:
-        shape = x.shape[2:-1]
-    assert theta.shape[-1] == next_power_of_two(
-        theta.shape[-1]
-    ), "theta.shape[-1] must be power of 2"
+    # shape: n1, ... , nm
+    # l: we do not do lrpe cosine on the first l tokens
+    assert (x.shape[-1] % theta.shape[-1] == 0) or (
+        theta.shape[-1] == next_power_of_two(theta.shape[-1])
+    ), "theta.shape[-1] must be be devided by x.shape[-1] and or be power of 2"
     shape = torch.tensor(shape, dtype=torch.int32, device=x.device)
-    return MdLrpeCosine.apply(x, theta, shape)
+    return MdLrpeCosineTriton.apply(x, theta, shape, l)
 
 
 if __name__ == "__main__":
+    from einops import pack
+
     # unit test
-    shape = tuple([2, 8, 128, 128, 64])
+    shape = tuple([2, 8, 32, 32, 64])
+    l = 2
+    b = shape[0]
     h = shape[1]
     d = shape[-1]
     m = len(shape) - 3
     e = next_power_of_two((d + m - 1) // m)
     dtype = torch.float32
     device = torch.cuda.current_device()
-    x = (torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
+
+    x = torch.randn(shape, dtype=dtype, device=device)
+    x, ps_x = pack([x], "b h * d")
+    if l > 0:
+        token = torch.randn((b, h, l, d), dtype=dtype, device=device)
+        x = torch.cat([token, x], dim=-2)
+    x = x.requires_grad_()
+
     theta = torch.randn((h, e), dtype=dtype, device=device)
     shape = shape[:-1] + (shape[-1] * 2,)
-    do = torch.randn(shape, dtype=dtype, device=device)
 
-    o = md_lrpe_cosine_triton(x, theta)
+    do = torch.randn(shape, dtype=dtype, device=device)
+    do, ps_do = pack([do], "b h * d")
+    if l > 0:
+        do_token = torch.randn((b, h, l, 2 * d), dtype=dtype, device=device)
+        do = torch.cat([do_token, do], dim=-2)
+
+    o = md_lrpe_cosine_triton(x, theta, shape=shape[2:-1])
     o.backward(do)
