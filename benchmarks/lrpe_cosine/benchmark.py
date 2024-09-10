@@ -73,9 +73,9 @@ def benchmark(b, h, n, d, dtype, device, mode, provider, bench_type="speed"):
 
     fn = lambda: module(x, theta)
     if mode == "bwd":
-        y = fn()
+        o = fn()
         do = torch.randn((b, h, n, 2 * d), dtype=dtype, device=device)
-        fn = lambda: y.backward(do, retain_graph=True)
+        fn = lambda: o.backward(do, retain_graph=True)
 
     if bench_type == "speed":
         ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
