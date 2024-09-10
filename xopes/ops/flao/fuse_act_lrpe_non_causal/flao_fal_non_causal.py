@@ -115,9 +115,7 @@ class FusedLinearAttentionOutputGateFusedActLrpeTorch(torch.autograd.Function):
             q_ = act_fwd(q, q_act, q_act_dim)
             k_ = act_fwd(k, k_act, k_act_dim)
             if len(shape.shape) == 1:  # 1d case
-                # print("aaa", q_.shape, dq_.shape)
                 dq_ = lrpe_bwd(q_, theta, dq_, offset, lrpe_type)
-                # print(dq_.shape)
                 dk_ = lrpe_bwd(k_, theta, dk_, offset, lrpe_type)
             else:
                 dq_ = md_lrpe_bwd(q_, theta, dq_, shape, l, lrpe_type)
