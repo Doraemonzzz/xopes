@@ -10,7 +10,7 @@ from xopes.utils import contiguous, generate_configs
     key=["h", "n", "d"],
 )
 @triton.jit
-def _lrpe_cosine_fwd(
+def _lrpe_cosine_triton_fwd(
     X,
     Theta,
     O,
@@ -46,7 +46,7 @@ def _lrpe_cosine_fwd(
     key=["h", "n", "d"],
 )
 @triton.jit
-def _lrpe_cosine_bwd(
+def _lrpe_cosine_triton_bwd(
     X,
     Theta,
     DO,
@@ -78,18 +78,11 @@ def _lrpe_cosine_bwd(
     tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty))
 
 
-class LrpeCosine(torch.autograd.Function):
+class LrpeCosineTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, theta):
-        b, h, n, d = x.shape
-        o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
-
-        def grid(meta):
-            return (b, h, n)
-
-        _lrpe_cosine_fwd[grid](x, theta, o, b, h, n, d)
-
+        o = lrpe_cosine_triton_fwd(x, theta)
         ctx.save_for_backward(x, theta)
 
         return o
@@ -98,22 +91,40 @@ class LrpeCosine(torch.autograd.Function):
     @contiguous
     def backward(ctx, do):
         x, theta = ctx.saved_tensors
-        b, h, n, d = x.shape
-
-        dx = torch.empty_like(x)
-
-        def grid(meta):
-            return (b, h, n)
-
-        _lrpe_cosine_bwd[grid](x, theta, do, dx, b, h, n, d)
+        dx = lrpe_cosine_triton_bwd(x, theta, do)
 
         return dx, None
+
+
+def lrpe_cosine_triton_fwd(x, theta):
+    b, h, n, d = x.shape
+    o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
+
+    def grid(meta):
+        return (b, h, n)
+
+    _lrpe_cosine_triton_fwd[grid](x, theta, o, b, h, n, d)
+
+    return o
+
+
+def lrpe_cosine_triton_bwd(x, theta, do):
+    b, h, n, d = x.shape
+
+    dx = torch.empty_like(x)
+
+    def grid(meta):
+        return (b, h, n)
+
+    _lrpe_cosine_triton_bwd[grid](x, theta, do, dx, b, h, n, d)
+
+    return dx
 
 
 def lrpe_cosine_triton(x, theta):
     # x: b, h, n, d
     # theta: h, d
-    return LrpeCosine.apply(x, theta)
+    return LrpeCosineTriton.apply(x, theta)
 
 
 if __name__ == "__main__":
