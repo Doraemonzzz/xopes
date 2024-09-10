@@ -119,7 +119,7 @@ def _md_lrpe_cosine_cache_bwd(
     tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty))
 
 
-class MdLrpeCosineCache(torch.autograd.Function):
+class MdLrpeCosineCacheTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, theta, shape):
@@ -175,7 +175,7 @@ def md_lrpe_cosine_cache_triton(x, theta, shape=None):
         theta.shape[-1]
     ), "theta.shape[-1] must be power of 2"
     shape = torch.tensor(shape, dtype=torch.int32, device=x.device)
-    return MdLrpeCosineCache.apply(x, theta, shape)
+    return MdLrpeCosineCacheTriton.apply(x, theta, shape)
 
 
 if __name__ == "__main__":

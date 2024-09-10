@@ -10,7 +10,7 @@ from xopes.utils import contiguous, generate_configs
     key=["h", "n", "d"],
 )
 @triton.jit
-def _lrpe_cosine_triton_fwd(
+def _lrpe_cosine_fwd_triton(
     X,
     Theta,
     O,
@@ -47,7 +47,7 @@ def _lrpe_cosine_triton_fwd(
     key=["h", "n", "d"],
 )
 @triton.jit
-def _lrpe_cosine_triton_bwd(
+def _lrpe_cosine_bwd_triton(
     X,
     Theta,
     DO,
@@ -84,7 +84,7 @@ class LrpeCosineTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, theta, offset=0):
-        o = lrpe_cosine_triton_fwd(x, theta, offset)
+        o = lrpe_cosine_fwd_triton(x, theta, offset)
         ctx.save_for_backward(x, theta)
         ctx.offset = offset
 
@@ -95,24 +95,24 @@ class LrpeCosineTriton(torch.autograd.Function):
     def backward(ctx, do):
         x, theta = ctx.saved_tensors
         offset = ctx.offset
-        dx = lrpe_cosine_triton_bwd(x, theta, do, offset)
+        dx = lrpe_cosine_bwd_triton(x, theta, do, offset)
 
         return dx, None, None
 
 
-def lrpe_cosine_triton_fwd(x, theta, offset=0):
+def lrpe_cosine_fwd_triton(x, theta, offset=0):
     b, h, n, d = x.shape
     o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
 
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_triton_fwd[grid](x, theta, o, offset, b, h, n, d)
+    _lrpe_cosine_fwd_triton[grid](x, theta, o, offset, b, h, n, d)
 
     return o
 
 
-def lrpe_cosine_triton_bwd(x, theta, do, offset=0):
+def lrpe_cosine_bwd_triton(x, theta, do, offset=0):
     b, h, n, d = x.shape
 
     dx = torch.empty_like(x)
@@ -120,7 +120,7 @@ def lrpe_cosine_triton_bwd(x, theta, do, offset=0):
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_triton_bwd[grid](x, theta, do, dx, offset, b, h, n, d)
+    _lrpe_cosine_bwd_triton[grid](x, theta, do, dx, offset, b, h, n, d)
 
     return dx
 
