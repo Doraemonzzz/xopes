@@ -10,10 +10,9 @@
 
 Fwd input:
 $$
-\begin{aligned}
 \mathbf X \in \mathbb R^{n\times d}, \mathbf \theta \in \mathbb R^{d},
-\mathrm{offset}\in \mathbb N.
-\end{aligned}
+\mathrm{offset}\in \mathbb N, \\
+\text{act: activation function name}, \text{dim: activation function operate dim}.
 $$
 
 Fwd output:
@@ -39,6 +38,7 @@ Where $n$ denotes the sequence length, and $d$ denotes the head dimension, $\mat
 $$
 \begin{aligned}
 \Theta_{st} &= (\mathrm{offset}+s) \theta_{t} , \Theta\in \mathbb R^{n\times d}, \\
+{\mathbf {\bar X}}&=f_{\text{act}}(\mathbf X),\\
 \mathbf O &=\mathrm{concat}([\mathbf X  \odot \cos(\Theta),\mathbf X  \odot  \sin(\Theta)])
 \in \mathbb R^{n\times 2d}.
 \end{aligned}
@@ -53,6 +53,7 @@ $$
 &\Theta_{st} = (\mathrm{offset}+s) \theta_{t} , \Theta\in \mathbb R^{n\times d}, \\
 &\mathbf{dO} =\mathrm{concat}[\mathbf{dO}_{\cos},\mathbf{dO}_{\sin}],\\
 &\mathbf{dO}_{\cos},\mathbf{dO}_{\sin} \in \mathbb R^{n\times d},  \\
-&\mathbf{dX} = \mathbf{dO}_{\cos} \odot \cos(\Theta) + \mathbf{dO}_{\sin}\odot \sin( \Theta).
+&\mathbf{d{\bar X}} = \mathbf{dO}_{\cos} \odot \cos(\Theta) + \mathbf{dO}_{\sin}\odot \sin( \Theta), \\
+&\mathbf {d X} = f'_{\text{act}}(\mathbf{d{\bar X}}).
 \end{aligned}
 $$
