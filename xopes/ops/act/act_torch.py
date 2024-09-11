@@ -9,9 +9,17 @@ ACT_TORCH_DICT = {
     "none": identity,
 }
 
+ACT_DIM_TORCH_DICT = {
+    "softmax": F.softmax,
+}
+
 
 def act_torch(x, act, dim=None):
     if dim is None:
         fn = ACT_TORCH_DICT[act]
 
         return fn(x)
+    else:
+        fn = ACT_DIM_TORCH_DICT[act]
+
+        return fn(x, dim=dim)

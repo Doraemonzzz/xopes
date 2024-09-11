@@ -1,5 +1,11 @@
 # Activation function
 
+## Notation
+
+Input: $\mathbf x\in \mathbb R^d$.
+
+Output: $\mathbf x\in \mathbb R^d$.
+
 
 
 ## Relu
@@ -7,7 +13,7 @@
 ### Fwd
 
 $$
-\mathbf O =\mathbf X\odot \mathbf 1_{\mathbf X\ge 0}.
+\mathbf {do} =\mathbf x\odot \mathbf 1_{\mathbf x\ge 0}.
 $$
 
 
@@ -15,10 +21,8 @@ $$
 ### Bwd
 
 $$
-\mathbf {dX} = \mathbf {dO} \odot \mathbf 1_{\mathbf X\ge 0}.
+\mathbf {dx} = \mathbf {do} \odot \mathbf 1_{\mathbf x\ge 0}.
 $$
-
-
 
 
 
@@ -27,7 +31,7 @@ $$
 ### Fwd
 
 $$
-\mathbf O = \mathrm{Sigmoid}(\mathbf X).
+\mathbf o = \mathrm{Sigmoid}(\mathbf x).
 $$
 
 
@@ -36,9 +40,9 @@ $$
 
 $$
 \begin{aligned}
-\mathbf {dX}
-&=\mathbf {dO} \odot
- \mathrm{Sigmoid}(\mathbf X) \odot (1- \mathrm{Sigmoid}(\mathbf X))
+\mathbf {dx}
+&=\mathbf {do} \odot
+ \mathrm{Sigmoid}(\mathbf x) \odot (1- \mathrm{Sigmoid}(\mathbf x)).
 
 \end{aligned}
 $$
@@ -52,7 +56,7 @@ $$
 ### Fwd
 
 $$
-\mathbf O =\mathbf X\odot \mathrm{Sigmoid}(\mathbf X).
+\mathbf o =\mathbf x\odot \mathrm{Sigmoid}(\mathbf x).
 $$
 
 
@@ -61,11 +65,49 @@ $$
 
 $$
 \begin{aligned}
-\mathbf {dX}
-&=\mathbf {dO} \odot
-[\mathrm{Sigmoid}(\mathbf X) + \mathrm{Sigmoid}(\mathbf X)\odot \mathbf X \odot (1- \mathrm{Sigmoid}(\mathbf X))] \\
-&=\mathbf {dO}\odot \mathrm{Sigmoid}(\mathbf X)
-\odot [1+ \mathbf X \odot (1- \mathrm{Sigmoid}(\mathbf X))]
+\mathbf {dx}
+&=\mathbf {do} \odot
+[\mathrm{Sigmoid}(\mathbf x) + \mathrm{Sigmoid}(\mathbf x)\odot \mathbf x \odot (1- \mathrm{Sigmoid}(\mathbf x))] \\
+&=\mathbf {do}\odot \mathrm{Sigmoid}(\mathbf x)
+\odot [1+ \mathbf x \odot (1- \mathrm{Sigmoid}(\mathbf x))].
 
+\end{aligned}
+$$
+
+
+
+## Softmax
+
+### Fwd
+
+$$
+\mathbf o_s =\frac{\exp(x_s)}{\sum_{t=1}^d \exp(x_t)}.
+$$
+
+
+
+### Bwd
+
+$$
+\begin{aligned}
+\frac{\partial o_t}{\partial x_s}
+&= \frac{\partial \frac{\exp(x_t)}{\sum_{k=1}^d \exp(x_k)}}{\partial x_s} \\
+&= \frac{\exp(x_t)}{\sum_{k=1}^d \exp(x_k)} \mathbf 1_{s=t}- \frac{\exp(x_t)\exp(x_s)}{\left(\sum_{k=1}^d \exp(x_k)\right)^2}  \\
+
+\mathbf {dx}_s
+& = \frac{\partial l}{\partial x_s} \\
+&= \sum_{t=1}^ d
+\frac{\partial l}{\partial o_t}
+\frac{\partial o_t}{\partial x_s}
+\\
+&= \sum_{t=1}^ d
+\frac{\partial l}{\partial o_t}
+
+\left(
+ \frac{\exp(x_t)}{\sum_{k=1}^d \exp(x_k)} \mathbf 1_{s=t}- \frac{\exp(x_t)\exp(x_s)}{\left(\sum_{k=1}^d \exp(x_k)\right)^2}
+\right) \\
+&=
+o_s\frac{\partial l}{\partial o_s}  -o_s\sum_{t=1}^ d \frac{\partial l}{\partial o_t} o_t  \\
+\mathbf {dx}&=  \mathbf o \odot \mathbf {do} - \mathbf o  (\mathbf {do}^{\top} \mathbf o).
 \end{aligned}
 $$
