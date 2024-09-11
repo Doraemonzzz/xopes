@@ -10,6 +10,10 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [x] add lrpe document;
 - 240911
   - [ ] add md_lrpe document;
+  - [x] add act;
+    - [ ] add jit act
+      - [ ] https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/ops/activations.py
+      - [ ] https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/ops/activations.py
   - [x] add flao_fal document;
   - [x] clear flao code, add interface;
   - [ ] fuse act + lrpe;
