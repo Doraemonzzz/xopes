@@ -87,11 +87,11 @@ def _act_bwd_triton(
 class ActTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
-    def forward(ctx, x, ACT=""):
-        o = act_fwd_triton(x, ACT)
+    def forward(ctx, x, act="none"):
+        o = act_fwd_triton(x, act)
 
         ctx.save_for_backward(x)
-        ctx.ACT = ACT
+        ctx.act = act
 
         return o
 
@@ -99,14 +99,14 @@ class ActTriton(torch.autograd.Function):
     @contiguous
     def backward(ctx, do):
         x = ctx.saved_tensors[0]
-        ACT = ctx.ACT
+        act = ctx.act
 
-        dx = act_bwd_triton(x, do, ACT)
+        dx = act_bwd_triton(x, do, act)
 
         return dx, None
 
 
-def act_fwd_triton(x, act="", dim=None):
+def act_fwd_triton(x, act="none", dim=None):
     if act == "none":
         return x
 
@@ -129,7 +129,7 @@ def act_fwd_triton(x, act="", dim=None):
     return o
 
 
-def act_bwd_triton(x, do, act="", dim=None):
+def act_bwd_triton(x, do, act="none", dim=None):
     if act == "none":
         return do
 
@@ -154,7 +154,7 @@ def act_bwd_triton(x, do, act="", dim=None):
     return dx
 
 
-def act_triton(x, act="", dim=None):
+def act_triton(x, act="none", dim=None):
     return ActTriton.apply(x, act)
 
 
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     b, n, d = 8, 128, 64
     x = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
     do = torch.randn((b, n, d), dtype=dtype, device=device)
+    act = "silu"
 
-    ACT = "silu"
-    o = act_triton(x, ACT)
+    o = act_triton(x, act)
     o.backward(do)

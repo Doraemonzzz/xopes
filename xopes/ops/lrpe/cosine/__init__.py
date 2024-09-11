@@ -1,3 +1,5 @@
+from .fa_lrpe_cosine_torch import fa_lrpe_cosine_torch
+from .fa_lrpe_cosine_triton import fa_lrpe_cosine_triton
 from .lrpe_cosine_torch import lrpe_cosine_torch
 from .lrpe_cosine_triton import (
     lrpe_cosine_bwd_triton,
