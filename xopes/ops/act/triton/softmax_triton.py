@@ -65,17 +65,11 @@ class SoftmaxTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, dim=-1):
-        if dim != -1:
-            x = x.transpose(dim, -1).contiguous()
-
         o = softmax_fwd_triton(x)
 
         # save first
-        ctx.save_for_backward(o)
+        ctx.save_for_backward(o, dim)
         ctx.dim = dim
-
-        if dim != -1:
-            o = o.transpose(dim, -1).contiguous()
 
         return o
 
@@ -84,17 +78,16 @@ class SoftmaxTriton(torch.autograd.Function):
     def backward(ctx, do):
         o = ctx.saved_tensors[0]
         dim = ctx.dim
-        if dim != -1:
-            do = do.transpose(dim, -1).contiguous()
 
-        dx = softmax_bwd_triton(o, do)
-        if dim != -1:
-            dx = dx.transpose(dim, -1).contiguous()
+        dx = softmax_bwd_triton(o, do, dim)
 
         return dx, None
 
 
-def softmax_fwd_triton(x):
+def softmax_fwd_triton(x, dim=-1):
+    if dim != -1:
+        x = x.transpose(dim, -1)
+
     shape = x.shape
     n = torch.prod(torch.tensor(shape[:-1])).item()
     d = x.shape[-1]
@@ -110,10 +103,16 @@ def softmax_fwd_triton(x):
         BLOCK,
     )
 
+    if dim != -1:
+        o = o.transpose(dim, -1)
+
     return o
 
 
-def softmax_bwd_triton(o, do):
+def softmax_bwd_triton(o, do, dim=-1):
+    if dim != -1:
+        do = do.transpose(dim, -1)
+
     shape = o.shape
     n = torch.prod(torch.tensor(shape[:-1])).item()
     d = o.shape[-1]
@@ -122,6 +121,9 @@ def softmax_bwd_triton(o, do):
 
     grid = (n,)
     _softmax_bwd_triton[grid](o, do, dx, n, d, BLOCK)
+
+    if dim != -1:
+        dx = dx.transpose(dim, -1).contiguous()
 
     return dx
 
