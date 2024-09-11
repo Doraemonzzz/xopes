@@ -19,6 +19,7 @@ def _lrpe_cosine_fwd_triton(
     h: tl.constexpr,
     n: tl.constexpr,
     d: tl.constexpr,
+    ACT: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -34,6 +35,13 @@ def _lrpe_cosine_fwd_triton(
     o_sin_block_ptr = O + offset_o + d + tl.arange(0, d)
 
     x = tl.load(x_block_ptr).to(tl.float32)
+    if ACT == "relu":
+        x = tl.where(x >= 0, x, 0)
+    elif ACT == "sigmoid":
+        x = tl.sigmoid(x)
+    elif ACT == "silu":
+        x = x * tl.sigmoid(x)
+
     theta = tl.load(theta_block_ptr).to(tl.float32) * (off_n + offset)
     o_cos = x * tl.cos(theta)
     o_sin = x * tl.sin(theta)
@@ -57,6 +65,7 @@ def _lrpe_cosine_bwd_triton(
     h: tl.constexpr,
     n: tl.constexpr,
     d: tl.constexpr,
+    ACT: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -77,16 +86,29 @@ def _lrpe_cosine_bwd_triton(
     theta = tl.load(theta_block_ptr).to(tl.float32) * (off_n + offset)
     dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
 
+    if ACT != "none":
+        x_block_ptr = X + offset_x + tl.arange(0, d)
+        x = tl.load(x_block_ptr).to(tl.float32)
+        if ACT == "relu":
+            dx = tl.where(x >= 0, dx, 0)
+        elif ACT == "sigmoid":
+            sigmoid = tl.sigmoid(x)
+            dx = dx * sigmoid * (1 - sigmoid)
+        elif ACT == "silu":
+            sigmoid = tl.sigmoid(x)
+            dx = dx * sigmoid * (1 + x * (1 - sigmoid))
+
     tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty))
 
 
-class LrpeCosineTriton(torch.autograd.Function):
+class FusedActLrpeCosineTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
-    def forward(ctx, x, theta, offset=0):
-        o = lrpe_cosine_fwd_triton(x, theta, offset)
+    def forward(ctx, x, theta, offset=0, act="none"):
+        o = lrpe_cosine_fwd_triton(x, theta, offset, act)
         ctx.save_for_backward(x, theta)
         ctx.offset = offset
+        ctx.act = act
 
         return o
 
@@ -95,24 +117,25 @@ class LrpeCosineTriton(torch.autograd.Function):
     def backward(ctx, do):
         x, theta = ctx.saved_tensors
         offset = ctx.offset
-        dx = lrpe_cosine_bwd_triton(x, theta, do, offset)
+        act = ctx.act
+        dx = lrpe_cosine_bwd_triton(x, theta, do, offset, act)
 
-        return dx, None, None
+        return dx, None, None, None
 
 
-def lrpe_cosine_fwd_triton(x, theta, offset=0):
+def lrpe_cosine_fwd_triton(x, theta, offset=0, act="none"):
     b, h, n, d = x.shape
     o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
 
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_fwd_triton[grid](x, theta, o, offset, b, h, n, d)
+    _lrpe_cosine_fwd_triton[grid](x, theta, o, offset, b, h, n, d, act)
 
     return o
 
 
-def lrpe_cosine_bwd_triton(x, theta, do, offset=0):
+def lrpe_cosine_bwd_triton(x, theta, do, offset=0, act="none"):
     b, h, n, d = x.shape
 
     dx = torch.empty_like(x)
@@ -120,15 +143,15 @@ def lrpe_cosine_bwd_triton(x, theta, do, offset=0):
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_bwd_triton[grid](x, theta, do, dx, offset, b, h, n, d)
+    _lrpe_cosine_bwd_triton[grid](x, theta, do, dx, offset, b, h, n, d, act)
 
     return dx
 
 
-def lrpe_cosine_triton(x, theta, offset=0):
+def lrpe_cosine_triton(x, theta, offset=0, act="none"):
     # x: b, h, n, d
     # theta: h, d
-    return LrpeCosineTriton.apply(x, theta, offset)
+    return FusedActLrpeCosineTriton.apply(x, theta, offset, act)
 
 
 if __name__ == "__main__":
@@ -139,6 +162,7 @@ if __name__ == "__main__":
     x = (torch.randn((b, h, n, d), dtype=dtype, device=device)).requires_grad_()
     theta = torch.randn((h, d), dtype=dtype, device=device)
     do = torch.randn((b, h, n, 2 * d), dtype=dtype, device=device)
+    act = "silu"
 
-    o = lrpe_cosine_triton(x, theta)
+    o = lrpe_cosine_triton(x, theta, act=act)
     o.backward(do)

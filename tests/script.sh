@@ -6,7 +6,6 @@ folder=base
 folder=logcumsumexp
 folder=grpe
 folder=lrpe/cosine
-folder=lrpe/fa_cosine
 # folder=md_lrpe_cosine
 # folder=flao/non_causal
 # folder=flao/fal_non_causal

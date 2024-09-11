@@ -8,7 +8,7 @@ from xopes.ops.lrpe.cosine import lrpe_cosine_torch, lrpe_cosine_triton
 from xopes.utils import get_memory
 
 b, h, n, d = 12, 12, 8192, 128
-b, h, n, d = 12, 12, 8192, 64
+# b, h, n, d = 12, 12, 8192, 64
 device = torch.device("cuda")
 
 dtype_map = {
@@ -43,11 +43,12 @@ configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"lrpe_cosine-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
+        plot_name=f"lrpe_cosine-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-{dtype_name}",
         args={
             "b": b,
             "h": h,
             "d": d,
+            "act": act,
             "dtype": dtype_map[dtype_name],
             "device": device,
             "mode": mode,
@@ -57,11 +58,12 @@ configs = [
     for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
+    for act in ["silu", "none"]
 ]
 
 
 @triton.testing.perf_report(configs)
-def benchmark(b, h, n, d, dtype, device, mode, provider, bench_type="speed"):
+def benchmark(b, h, n, d, act, dtype, device, mode, provider, bench_type="speed"):
     torch.manual_seed(2024)
     assert mode in ["fwd", "bwd"]
     warmup = 25
@@ -71,7 +73,7 @@ def benchmark(b, h, n, d, dtype, device, mode, provider, bench_type="speed"):
 
     module = module_map[provider]
 
-    fn = lambda: module(x, theta)
+    fn = lambda: module(x, theta, act=act)
     if mode == "bwd":
         o = fn()
         do = torch.randn((b, h, n, 2 * d), dtype=dtype, device=device)
@@ -96,6 +98,6 @@ def benchmark(b, h, n, d, dtype, device, mode, provider, bench_type="speed"):
         return mb
 
 
-save_path = "stat/lrpe_cosine"
+save_path = "stat/lrpe_fa_cosine"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
