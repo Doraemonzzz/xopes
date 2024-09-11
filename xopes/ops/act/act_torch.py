@@ -11,6 +11,7 @@ ACT_TORCH_DICT = {
 
 ACT_DIM_TORCH_DICT = {
     "softmax": F.softmax,
+    "softmax_no_cache": F.softmax,
 }
 
 

@@ -3,26 +3,41 @@ from .triton import (
     act_no_dim_triton,
     softmax_bwd_triton,
     softmax_fwd_triton,
+    softmax_no_cache_bwd_triton,
+    softmax_no_cache_fwd_triton,
+    softmax_no_cache_triton,
     softmax_triton,
 )
 
 
 def act_triton(x, act="none", dim=None):
     if dim != None:
-        return softmax_triton(x, dim)
+        if act == "softmax":
+            fn = softmax_triton
+        else:
+            fn = softmax_no_cache_triton
+        return fn(x, dim)
     else:
         return act_no_dim_triton(x, act)
 
 
 def act_fwd_triton(x, act="none", dim=None):
     if dim != None:
-        return softmax_fwd_triton(x, dim)
+        if act == "softmax":
+            fn = softmax_fwd_triton
+        else:
+            fn = softmax_no_cache_fwd_triton
+        return fn(x, dim)
     else:
         return act_no_dim_fwd_triton(x, act)
 
 
 def act_bwd_triton(x, do, act="none", dim=None):
     if dim != None:
-        return softmax_bwd_triton(x, do, dim)
+        if act == "softmax":
+            fn = softmax_bwd_triton
+        else:
+            fn = softmax_no_cache_bwd_triton
+        return fn(x, do, dim)
     else:
         return act_no_dim_fwd_triton(x, act)

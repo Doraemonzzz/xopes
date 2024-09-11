@@ -10,7 +10,7 @@ from xopes.utils import contiguous, generate_configs
     key=["n", "d"],
 )
 @triton.jit
-def _softmax_fwd_triton(
+def _softmax_no_cache_fwd_triton(
     X,
     O,
     n: tl.constexpr,
@@ -42,8 +42,8 @@ def _softmax_fwd_triton(
     key=["n", "d"],
 )
 @triton.jit
-def _softmax_bwd_triton(
-    O,
+def _softmax_no_cache_bwd_triton(
+    X,
     DO,
     DX,
     n: tl.constexpr,
@@ -57,10 +57,18 @@ def _softmax_bwd_triton(
     d_mask = tl.arange(0, BLOCK) < d
 
     # compute
-    o_block_ptr = O + offset_n + tl.arange(0, BLOCK)
+    x_block_ptr = X + offset_n + tl.arange(0, BLOCK)
     do_block_ptr = DO + offset_n + tl.arange(0, BLOCK)
     dx_block_ptr = DX + offset_n + tl.arange(0, BLOCK)
-    o = tl.load(o_block_ptr, mask=d_mask, other=0)
+
+    x = tl.load(x_block_ptr, mask=d_mask, other=-float("inf"))
+    # for stable
+    x_minus_max = x - tl.max(x, axis=0)
+    # softmax
+    numerator = tl.exp(x_minus_max)
+    denominator = tl.sum(numerator)
+    o = numerator / denominator
+
     do = tl.load(do_block_ptr, mask=d_mask, other=0)
     # scalar
     c = tl.sum(o * do, axis=0)
@@ -69,13 +77,13 @@ def _softmax_bwd_triton(
     tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=d_mask)
 
 
-class SoftmaxTriton(torch.autograd.Function):
+class SoftmaxNoCacheTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, dim=-1):
-        o = softmax_fwd_triton(x, dim)
+        o = softmax_no_cache_fwd_triton(x, dim)
 
-        ctx.save_for_backward(o)
+        ctx.save_for_backward(x)
         ctx.dim = dim
 
         return o
@@ -83,15 +91,15 @@ class SoftmaxTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def backward(ctx, do):
-        o = ctx.saved_tensors[0]
+        x = ctx.saved_tensors[0]
         dim = ctx.dim
 
-        dx = softmax_bwd_triton(o, do, dim)
+        dx = softmax_no_cache_bwd_triton(x, do, dim)
 
         return dx, None
 
 
-def softmax_fwd_triton(x, dim=-1):
+def softmax_no_cache_fwd_triton(x, dim=-1):
     if dim != -1:
         x = x.transpose(dim, -1).contiguous()
 
@@ -102,7 +110,7 @@ def softmax_fwd_triton(x, dim=-1):
     o = torch.empty_like(x)
 
     grid = (n,)
-    _softmax_fwd_triton[grid](
+    _softmax_no_cache_fwd_triton[grid](
         x,
         o,
         n,
@@ -116,7 +124,7 @@ def softmax_fwd_triton(x, dim=-1):
     return o
 
 
-def softmax_bwd_triton(o, do, dim=-1):
+def softmax_no_cache_bwd_triton(o, do, dim=-1):
     if dim != -1:
         do = do.transpose(dim, -1).contiguous()
         o = o.transpose(dim, -1).contiguous()
@@ -128,7 +136,7 @@ def softmax_bwd_triton(o, do, dim=-1):
     dx = torch.empty_like(o)
 
     grid = (n,)
-    _softmax_bwd_triton[grid](o, do, dx, n, d, BLOCK)
+    _softmax_no_cache_bwd_triton[grid](o, do, dx, n, d, BLOCK)
 
     if dim != -1:
         dx = dx.transpose(dim, -1).contiguous()
@@ -137,8 +145,8 @@ def softmax_bwd_triton(o, do, dim=-1):
     return dx
 
 
-def softmax_triton(x, dim=-1):
-    return SoftmaxTriton.apply(x, dim)
+def softmax_no_cache_triton(x, dim=-1):
+    return SoftmaxNoCacheTriton.apply(x, dim)
 
 
 if __name__ == "__main__":
@@ -151,5 +159,5 @@ if __name__ == "__main__":
     do = torch.randn((b, n, d), dtype=dtype, device=device)
     dim = -1
 
-    o = softmax_triton(x, dim)
+    o = softmax_no_cache_triton(x, dim)
     o.backward(do)
