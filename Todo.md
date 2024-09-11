@@ -56,7 +56,11 @@
     - [ ] Flao Left Product Triton
       - [ ] fwd
       - [ ] bwd
-    - [ ] Interface
+    - [ ] Fused act lrpe non causal version
+      - [ ] Document
+      - [x] Al Torch
+      - [x] Fal Torch
+  - [ ] fal_non_causal
 - [ ] Custom benchmark function
   - [ ] https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
 - [ ]
