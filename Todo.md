@@ -60,7 +60,14 @@
       - [x] Document
       - [x] Al Torch
       - [x] Fal Torch
-  - [ ] fal_non_causal
+- [ ] Act
+  - [x] Document
+  - [ ] Torch
+    - [ ] fwd
+    - [ ] bwd
+  - [x] Triton
+    - [x] fwd
+    - [x] bwd
 - [ ] Custom benchmark function
   - [ ] https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
 - [ ]
