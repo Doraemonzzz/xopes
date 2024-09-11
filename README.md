@@ -10,7 +10,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [x] add lrpe document;
 - 240911
   - [ ] add md_lrpe document;
-  - [ ] clear flao code, add interface;
+  - [x] add flao_fal document;
+  - [x] clear flao code, add interface;
   - [ ] fuse act + lrpe;
 
 

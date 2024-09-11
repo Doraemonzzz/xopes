@@ -57,7 +57,7 @@
       - [ ] fwd
       - [ ] bwd
     - [ ] Fused act lrpe non causal version
-      - [ ] Document
+      - [x] Document
       - [x] Al Torch
       - [x] Fal Torch
   - [ ] fal_non_causal
