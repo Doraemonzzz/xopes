@@ -16,7 +16,7 @@ from xopes.utils import contiguous, generate_configs
     key=["n", "m", "d", "e"],
 )
 @triton.jit
-def _flao_non_causal_kv(
+def _flao_non_causal_kv_triton(
     K,
     V,
     KV,
@@ -102,7 +102,7 @@ def _flao_non_causal_kv(
     key=["n", "m", "d", "e"],
 )
 @triton.jit
-def _flao_non_causal_fwd(
+def _flao_non_causal_fwd_triton(
     Q,
     G,
     KV,
@@ -182,7 +182,7 @@ def _flao_non_causal_fwd(
     )
 
 
-class FusedLinearAttentionOutputGate(torch.autograd.Function):
+class FusedLinearAttentionOutputGateTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, q, k, v, g):
@@ -200,7 +200,7 @@ class FusedLinearAttentionOutputGate(torch.autograd.Function):
             return (b * h, num_block_d, triton.cdiv(e, meta["BLOCK_E"]))
 
         # compute kv first
-        _flao_non_causal_kv[grid](
+        _flao_non_causal_kv_triton[grid](
             k,
             v,
             kv,
@@ -223,7 +223,7 @@ class FusedLinearAttentionOutputGate(torch.autograd.Function):
                 triton.cdiv(e, meta["BLOCK_E"]),
             )
 
-        _flao_non_causal_fwd[grid](
+        _flao_non_causal_fwd_triton[grid](
             q,
             g,
             kv,
@@ -262,7 +262,7 @@ class FusedLinearAttentionOutputGate(torch.autograd.Function):
 
 
 def flao_non_causal_triton(q, k, v, g):
-    return FusedLinearAttentionOutputGate.apply(q, k, v, g)
+    return FusedLinearAttentionOutputGateTriton.apply(q, k, v, g)
 
 
 if __name__ == "__main__":

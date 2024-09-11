@@ -3,7 +3,7 @@ import torch
 from xopes.utils import contiguous
 
 
-class FusedLinearAttentionOutputGate(torch.autograd.Function):
+class FusedLinearAttentionOutputGateTorch(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, q, k, v, g):
@@ -31,4 +31,4 @@ class FusedLinearAttentionOutputGate(torch.autograd.Function):
 
 
 def flao_non_causal_torch(q, k, v, g):
-    return FusedLinearAttentionOutputGate.apply(q, k, v, g)
+    return FusedLinearAttentionOutputGateTorch.apply(q, k, v, g)

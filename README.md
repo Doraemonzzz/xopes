@@ -5,9 +5,14 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 # Plan
 
 - 240910
-  - [ ] add fwd_fn, bwd_fn for lrpe, md_lrpe;
-  - [ ] add test, benchmark for flao_fal;
-  - [ ] add lrpe document;
+  - [x] add fwd_fn, bwd_fn for lrpe, md_lrpe;
+  - [x] add test, benchmark for flao_fal;
+  - [x] add lrpe document;
+- 240911
+  - [ ] add md_lrpe document;
+  - [ ] clear flao code, add interface;
+  - [ ] fuse act + lrpe;
+
 
 # Note
 ```
