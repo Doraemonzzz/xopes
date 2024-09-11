@@ -64,12 +64,18 @@
       - [x] Fal Torch
 - [ ] Act
   - [x] Document
-  - [ ] Torch
-    - [ ] fwd
-    - [ ] bwd
+  - [x] Torch
+    - [x] relu
+    - [x] sigmoid
+    - [x] silu
+    - [x] none
+    - [ ] softmax
   - [x] Triton
-    - [x] fwd
-    - [x] bwd
+    - [x] relu
+    - [x] sigmoid
+    - [x] silu
+    - [x] none
+    - [ ] softmax
 - [ ] Custom benchmark function
   - [ ] https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
 - [ ]
