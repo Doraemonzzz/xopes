@@ -8,7 +8,8 @@ from xopes.ops.act import act_torch, act_triton
 from xopes.utils import get_memory
 
 b, h, n, d = 12, 12, 8192, 128
-dim = None
+# dim = None
+dim = -1
 device = torch.device("cuda")
 
 dtype_map = {
@@ -44,12 +45,15 @@ configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"act-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-{dtype_name}",
+        plot_name=f"act-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-dim_{dim}-{dtype_name}"
+        if dim is not None
+        else f"act-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-{dtype_name}",
         args={
             "b": b,
             "h": h,
             "d": d,
             "act": act,
+            "dim": dim,
             "dtype": dtype_map[dtype_name],
             "device": device,
             "mode": mode,
@@ -59,12 +63,17 @@ configs = [
     for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
-    for act in ["relu", "sigmoid", "silu", "none"]
+    # witout dim
+    # for act in ["relu", "sigmoid", "silu", "none"]
+    # for dim in [None]
+    # with dim
+    for act in ["softmax"]
+    for dim in [-1, -2]
 ]
 
 
 @triton.testing.perf_report(configs)
-def benchmark(b, h, n, d, act, dtype, device, mode, provider, bench_type="speed"):
+def benchmark(b, h, n, d, act, dim, dtype, device, mode, provider, bench_type="speed"):
     torch.manual_seed(2024)
     assert mode in ["fwd", "bwd"]
     warmup = 25

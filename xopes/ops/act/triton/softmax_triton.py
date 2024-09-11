@@ -2,9 +2,13 @@ import torch
 import triton
 import triton.language as tl
 
-from xopes.utils import contiguous
+from xopes.utils import contiguous, generate_configs
 
 
+@triton.autotune(
+    generate_configs({"num_warps": [1, 2, 4, 8, 16, 32], "num_stages": [2, 4]}),
+    key=["n", "d"],
+)
 @triton.jit
 def _softmax_fwd_triton(
     X,
@@ -22,7 +26,7 @@ def _softmax_fwd_triton(
     # compute
     x_block_ptr = X + offset_n + tl.arange(0, BLOCK)
     o_block_ptr = O + offset_n + tl.arange(0, BLOCK)
-    x = tl.load(x_block_ptr, mask=d_mask, other=-float("inf")).to(tl.float32)
+    x = tl.load(x_block_ptr, mask=d_mask, other=-float("inf"))  # .to(tl.float32)
     # for stable
     x_minus_max = x - tl.max(x, axis=0)
     # softmax
@@ -33,6 +37,10 @@ def _softmax_fwd_triton(
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=d_mask)
 
 
+@triton.autotune(
+    generate_configs({"num_warps": [1, 2, 4, 8, 16, 32], "num_stages": [2, 4]}),
+    key=["n", "d"],
+)
 @triton.jit
 def _softmax_bwd_triton(
     O,
@@ -52,8 +60,8 @@ def _softmax_bwd_triton(
     o_block_ptr = O + offset_n + tl.arange(0, BLOCK)
     do_block_ptr = DO + offset_n + tl.arange(0, BLOCK)
     dx_block_ptr = DX + offset_n + tl.arange(0, BLOCK)
-    o = tl.load(o_block_ptr, mask=d_mask, other=0).to(tl.float32)
-    do = tl.load(do_block_ptr, mask=d_mask, other=0).to(tl.float32)
+    o = tl.load(o_block_ptr, mask=d_mask, other=0)  # .to(tl.float32)
+    do = tl.load(do_block_ptr, mask=d_mask, other=0)  # .to(tl.float32)
     # scalar
     c = tl.sum(o * do, axis=0)
     dx = o * do - c * o
@@ -70,7 +78,6 @@ class SoftmaxTriton(torch.autograd.Function):
         # save first
         ctx.save_for_backward(o)
         ctx.dim = dim
-        print(x.shape, o.shape)
 
         return o
 
