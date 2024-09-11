@@ -6,7 +6,7 @@ from xopes.utils import contiguous, generate_configs
 
 
 @triton.autotune(
-    generate_configs({"BLOCK": [16, 32, 64, 128], "num_warps": [2, 4, 8]}),
+    generate_configs({"BLOCK": [16, 32, 64, 128], "num_warps": [1, 2, 4, 8, 16, 32]}),
     key=["d"],
 )
 @triton.jit
