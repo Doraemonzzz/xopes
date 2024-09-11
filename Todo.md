@@ -26,6 +26,7 @@
       - [x] fn
     - [x] Add offset
     - [x] Auto config
+    - [x] Fused act
 - [ ] MdLrpe
   - [ ] Readme
   - [x] Cosine Triton
@@ -35,6 +36,7 @@
       - [x] fn
     - [x] Add extra token support
     - [x] Auto config
+    - [ ] Fused act
   - [x] Cosine Cache Triton
     - [x] fwd
       - [x] fn
