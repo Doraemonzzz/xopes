@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from xopes.ops.flao.fuse_act_lrpe_non_causal import (
+from xopes.ops.flao.fal_non_causal import (
     flao_al_non_causal_torch,
     flao_fal_non_causal_torch,
 )

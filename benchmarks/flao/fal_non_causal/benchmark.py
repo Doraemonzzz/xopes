@@ -5,7 +5,7 @@ import torch
 import torch._dynamo
 import triton
 
-from xopes.ops.flao.fuse_act_lrpe_non_causal import (
+from xopes.ops.flao.fal_non_causal import (
     flao_al_non_causal_torch,
     flao_fal_non_causal_torch,
 )
@@ -58,11 +58,6 @@ configs = [
             "flao_fal_torch_complie",
         ],
         line_names=["Flao Tor", "Flao Tor C", "Flao F Tor", "Flao F Tor C"],
-        # line_names=[
-        #     "Flao Tor",
-        #     "Flao Tor C",
-        #     "Flao F Tor",
-        # ],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -70,7 +65,7 @@ configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"flaofal-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-dim{e}-{dtype_name}",
+        plot_name=f"flao_fal-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-dim{e}-{dtype_name}",
         args={
             "b": b,
             "h": h,

@@ -7,8 +7,8 @@ folder=logcumsumexp
 folder=grpe
 # folder=lrpe_cosine
 folder=md_lrpe_cosine
-folder=flao_non_causal
-# folder=fuse_act_lrpe_non_causal
+folder=flao/flao_non_causal
+folder=flao/non_causal
 
 mkdir -p $folder/log
 
@@ -16,4 +16,4 @@ mkdir -p $folder/log
 export XOPES_DEBUG=True
 # export TRITON_INTERPRET=1
 
-pytest $folder/${file}.py  2>&1 | tee -a $folder/log/${date}-${folder}.log
+pytest $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
