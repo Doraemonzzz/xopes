@@ -7,6 +7,8 @@ from xopes.utils import get_threshold
 
 def get_params():
     shape = [
+        (64, 1),
+        (16, 2),
         (6, 128, 64),
         (6, 256, 127),
         (6, 8, 256, 127),
@@ -16,8 +18,12 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("act", ["relu", "sigmoid", "silu", "none"])
-@pytest.mark.parametrize("dim", [None])
+# without dim
+# @pytest.mark.parametrize("act", ["relu", "sigmoid", "silu", "none"])
+# @pytest.mark.parametrize("dim", [None])
+# with dim
+@pytest.mark.parametrize("act", ["softmax"])
+@pytest.mark.parametrize("dim", [-1, -2])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test(shape, act, dim, dtype):
     torch.manual_seed(2024)
@@ -38,6 +44,8 @@ def test(shape, act, dim, dtype):
 
     atol, rtol = get_threshold(dtype)
 
+    print(o_act_torch)
+    print(o_act_triton)
     # forward
     assert torch.allclose(
         o_act_torch, o_act_triton, atol=atol, rtol=rtol
