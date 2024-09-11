@@ -7,7 +7,7 @@ import triton
 from einops import pack as pack_
 from einops import unpack as unpack_
 
-from .constant import THRESHOLD_DICT, XOPES_DEBUG
+from .constant import ACT_SET, THRESHOLD_DICT, XOPES_DEBUG
 
 
 def contiguous(fn):
@@ -118,3 +118,7 @@ def identity_fwd(x, **kwargs):
 
 def identity_bwd(x, do, **kwargs):
     return do
+
+
+def is_act_valid(act):
+    assert act in ACT_SET, f"act {act} not supported"

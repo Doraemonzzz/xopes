@@ -7,6 +7,7 @@ from .utils import (
     identity,
     identity_bwd,
     identity_fwd,
+    is_act_valid,
     max_power_of_2_divisor,
     next_power_of_two,
     pack,

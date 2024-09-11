@@ -1,6 +1,6 @@
 import torch.nn.functional as F
 
-from xopes.utils import identity
+from xopes.utils import identity, is_act_valid
 
 ACT_TORCH_DICT = {
     "relu": F.relu,
@@ -16,6 +16,7 @@ ACT_DIM_TORCH_DICT = {
 
 
 def act_torch(x, act, dim=None):
+    is_act_valid(act)
     if dim is None:
         fn = ACT_TORCH_DICT[act]
 
