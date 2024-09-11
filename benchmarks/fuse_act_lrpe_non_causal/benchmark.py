@@ -53,15 +53,16 @@ configs = [
         line_arg="provider",
         line_vals=[
             "flao_al_torch",
-            # "flao_al_torch_complie",
+            "flao_al_torch_complie",
             "flao_fal_torch",
-            # "flao_fal_torch_complie",
+            "flao_fal_torch_complie",
         ],
-        # line_names=["Flao Tor", "Flao Tor C", "Flao F Tor", "Flao F Tor C"],
-        line_names=[
-            "Flao Tor",
-            "Flao F Tor",
-        ],
+        line_names=["Flao Tor", "Flao Tor C", "Flao F Tor", "Flao F Tor C"],
+        # line_names=[
+        #     "Flao Tor",
+        #     "Flao Tor C",
+        #     "Flao F Tor",
+        # ],
         styles=[
             ("red", "-"),
             ("orange", "-"),
