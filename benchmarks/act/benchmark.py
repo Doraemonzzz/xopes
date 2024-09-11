@@ -67,7 +67,7 @@ configs = [
     # for act in ["relu", "sigmoid", "silu", "none"]
     # for dim in [None]
     # with dim
-    for act in ["softmax"]
+    for act in ["softmax", "softmax_no_cache"]
     for dim in [-1, -2]
 ]
 
