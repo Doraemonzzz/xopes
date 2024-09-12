@@ -3,7 +3,7 @@ import torch
 from xopes.ops.act.act_torch import act_torch
 
 
-def lrpe_cosine_torch(x, theta, offset=0, act="none"):
+def lrpe_cosine_torch(x, theta, offset=0, act="none", dim=-1):
     # x: b, h, n, d
     # theta: h, d
     n = x.shape[-2]
@@ -14,7 +14,7 @@ def lrpe_cosine_torch(x, theta, offset=0, act="none"):
     cos = theta.cos()
     sin = theta.sin()
 
-    x = act_torch(x, act)
+    x = act_torch(x, act, dim)
 
     output = torch.cat([x * cos, x * sin], dim=-1)
 
