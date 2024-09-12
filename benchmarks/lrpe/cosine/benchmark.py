@@ -43,12 +43,15 @@ configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"lrpe_cosine-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-{dtype_name}",
+        plot_name=f"lrpe_cosine-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-dim_{dim}-{dtype_name}"
+        if dim is not None
+        else f"lrpe_cosine-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-{dtype_name}",
         args={
             "b": b,
             "h": h,
             "d": d,
             "act": act,
+            "dim": dim,
             "dtype": dtype_map[dtype_name],
             "device": device,
             "mode": mode,
@@ -58,12 +61,17 @@ configs = [
     for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
-    for act in ["silu", "none"]
+    # # witout dim
+    # for act in ["silu", "none"]
+    # for dim in [None]
+    # with dim
+    for act in ["softmax"]
+    for dim in [-1, -2]
 ]
 
 
 @triton.testing.perf_report(configs)
-def benchmark(b, h, n, d, act, dtype, device, mode, provider, bench_type="speed"):
+def benchmark(b, h, n, d, act, dim, dtype, device, mode, provider, bench_type="speed"):
     torch.manual_seed(2024)
     assert mode in ["fwd", "bwd"]
     warmup = 25
@@ -73,7 +81,7 @@ def benchmark(b, h, n, d, act, dtype, device, mode, provider, bench_type="speed"
 
     module = module_map[provider]
 
-    fn = lambda: module(x, theta, act=act)
+    fn = lambda: module(x, theta, act=act, dim=dim)
     if mode == "bwd":
         o = fn()
         do = torch.randn((b, h, n, 2 * d), dtype=dtype, device=device)
