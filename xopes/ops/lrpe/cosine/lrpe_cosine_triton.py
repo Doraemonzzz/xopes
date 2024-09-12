@@ -21,6 +21,7 @@ def _lrpe_cosine_fwd_triton(
     n: tl.constexpr,
     d: tl.constexpr,
     ACT: tl.constexpr,
+    DIM: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -36,7 +37,7 @@ def _lrpe_cosine_fwd_triton(
     o_sin_block_ptr = O + offset_o + d + tl.arange(0, d)
 
     x = tl.load(x_block_ptr).to(tl.float32)
-    if ACT != "none":
+    if ACT != "none" and DIM != -2:
         if ACT == "relu":
             x = tl.where(x >= 0, x, 0)
         elif ACT == "sigmoid":
@@ -75,6 +76,7 @@ def _lrpe_cosine_bwd_triton(
     n: tl.constexpr,
     d: tl.constexpr,
     ACT: tl.constexpr,
+    DIM: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -95,7 +97,7 @@ def _lrpe_cosine_bwd_triton(
     theta = tl.load(theta_block_ptr).to(tl.float32) * (off_n + offset)
     dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
 
-    if ACT != "none":
+    if ACT != "none" and DIM != -2:
         x_block_ptr = X + offset_x + tl.arange(0, d)
         x = tl.load(x_block_ptr).to(tl.float32)
         if ACT == "relu":
@@ -124,8 +126,8 @@ def _lrpe_cosine_bwd_triton(
 class FusedActLrpeCosineTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
-    def forward(ctx, x, theta, offset=0, act="none", dim=-1):
-        o = lrpe_cosine_fwd_triton(x, theta, offset, act)
+    def forward(ctx, x, theta, offset=0, act="none", dim=None):
+        o = lrpe_cosine_fwd_triton(x, theta, offset, act, dim)
         ctx.save_for_backward(x, theta)
         ctx.offset = offset
         ctx.act = act
@@ -145,39 +147,39 @@ class FusedActLrpeCosineTriton(torch.autograd.Function):
         return dx, None, None, None, None
 
 
-def lrpe_cosine_fwd_triton(x, theta, offset=0, act="none", dim=-1):
-    assert dim in [-1, -2], "dim must be -1 or -2"
+def lrpe_cosine_fwd_triton(x, theta, offset=0, act="none", dim=None):
+    assert dim in [-1, -2, None], "dim must be -1, -2, None"
     if dim == -2:
         x = act_fwd(x, act, dim)
+
     b, h, n, d = x.shape
     o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
 
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_fwd_triton[grid](x, theta, o, offset, b, h, n, d, act)
+    _lrpe_cosine_fwd_triton[grid](x, theta, o, offset, b, h, n, d, act, dim)
 
     return o
 
 
-def lrpe_cosine_bwd_triton(x, theta, do, offset=0, act="none", dim=-1):
-    assert dim in [-1, -2], "dim must be -1 or -2"
+def lrpe_cosine_bwd_triton(x, theta, do, offset=0, act="none", dim=None):
+    assert dim in [-1, -2, None], "dim must be -1, -2, None"
     b, h, n, d = x.shape
-
     dx = torch.empty_like(x)
 
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_bwd_triton[grid](x, theta, do, dx, offset, b, h, n, d, act)
+    _lrpe_cosine_bwd_triton[grid](x, theta, do, dx, offset, b, h, n, d, act, dim)
 
     if dim == -2:
-        dx = act_bwd(dx, act, dim)
+        dx = act_bwd(x, dx, act, dim)
 
     return dx
 
 
-def lrpe_cosine_triton(x, theta, offset=0, act="none", dim=-1):
+def lrpe_cosine_triton(x, theta, offset=0, act="none", dim=None):
     # x: b, h, n, d
     # theta: h, d
     return FusedActLrpeCosineTriton.apply(x, theta, offset, act, dim)
