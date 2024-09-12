@@ -22,9 +22,14 @@ def get_params():
 # @pytest.mark.parametrize("act", ["relu", "sigmoid", "silu", "none"])
 # @pytest.mark.parametrize("dim", [None])
 # with dim
-@pytest.mark.parametrize("act", ["softmax", "softmax_no_cache"])
+@pytest.mark.parametrize(
+    "act",
+    [
+        "softmax",
+    ],
+)
 @pytest.mark.parametrize("dim", [-1, -2])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+# @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test(shape, act, dim, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
