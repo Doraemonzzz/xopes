@@ -75,7 +75,7 @@
     - [x] sigmoid
     - [x] silu
     - [x] none
-    - [ ] softmax
+    - [x] softmax
 - [ ] Custom benchmark function
   - [ ] https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
 - [ ]
