@@ -58,7 +58,10 @@ configs = [
             "bench_type": bench_type,
         },
     )
-    for mode in ["fwd", "bwd"]
+    # for mode in ["fwd", "bwd"]
+    for mode in [
+        "fwd",
+    ]
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
     # # witout dim
@@ -66,7 +69,8 @@ configs = [
     # for dim in [None]
     # with dim
     for act in ["softmax"]
-    for dim in [-1, -2]
+    # for dim in [-1, -2]
+    for dim in [-2]
 ]
 
 
