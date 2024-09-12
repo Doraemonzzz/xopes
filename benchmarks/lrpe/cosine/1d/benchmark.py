@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops.lrpe.cosine import lrpe_cosine_torch, lrpe_cosine_triton
+from xopes.ops.lrpe.cosine._1d import lrpe_cosine_1d_bp_triton, lrpe_cosine_1d_sp_triton, lrpe_cosine_1d_torch
 from xopes.utils import get_memory
 
 b, h, n, d = 12, 12, 8192, 128
@@ -18,9 +18,10 @@ dtype_map = {
 }
 
 module_map = {
-    "triton": lrpe_cosine_triton,
-    "torch": lrpe_cosine_torch,
-    "torch_compile": torch.compile(lrpe_cosine_torch),
+    "triton_sp": lrpe_cosine_1d_sp_triton,
+    "triton_bp": lrpe_cosine_1d_bp_triton,
+    "torch": lrpe_cosine_1d_torch,
+    "torch_compile": torch.compile(lrpe_cosine_1d_torch),
 }
 
 configs = [
@@ -31,11 +32,12 @@ configs = [
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            "triton",
+            "triton_sp",
+            "triton_bp",
             "torch",
             "torch_compile",
         ],
-        line_names=["Triton", "Torch", "Torch C"],
+        line_names=["Triton Sp", "Triton Bp", "Torch", "Torch C"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -58,19 +60,15 @@ configs = [
             "bench_type": bench_type,
         },
     )
-    # for mode in ["fwd", "bwd"]
-    for mode in [
-        "fwd",
-    ]
+    for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
-    # # witout dim
-    # for act in ["silu", "none"]
-    # for dim in [None]
+    # witout dim
+    for act in ["silu", "none"]
+    for dim in [None]
     # with dim
-    for act in ["softmax"]
+    # for act in ["softmax"]
     # for dim in [-1, -2]
-    for dim in [-2]
 ]
 
 
