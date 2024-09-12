@@ -145,7 +145,7 @@ class LrpeCosine1dSpTriton(torch.autograd.Function):
 
 
 def lrpe_cosine_1d_sp_fwd_triton(x, theta, offset=0, act="none", dim=None):
-    assert dim in [-1, None], "dim must be -1, None"
+    assert dim in [-1, None], "dim must in [-1, None]"
 
     b, h, n, d = x.shape
     o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
@@ -159,7 +159,8 @@ def lrpe_cosine_1d_sp_fwd_triton(x, theta, offset=0, act="none", dim=None):
 
 
 def lrpe_cosine_1d_sp_bwd_triton(x, theta, do, offset=0, act="none", dim=None):
-    assert dim in [-1, None], "dim must be -1, None"
+    assert dim in [-1, None], "dim must in [-1, None]"
+
     b, h, n, d = x.shape
     dx = torch.empty_like(x)
 
@@ -174,7 +175,7 @@ def lrpe_cosine_1d_sp_bwd_triton(x, theta, do, offset=0, act="none", dim=None):
 def lrpe_cosine_1d_sp_triton(x, theta, offset=0, act="none", dim=None):
     # x: b, h, n, d
     # theta: h, d
-    assert dim in [-1, None], "dim must be -1, None"
+    assert dim in [-1, None], "dim must in [-1, None]"
     return LrpeCosine1dSpTriton.apply(x, theta, offset, act, dim)
 
 
@@ -189,5 +190,5 @@ if __name__ == "__main__":
     act = "silu"
     dim = -1
 
-    o = lrpe_cosine_triton(x, theta, act=act, dim=dim)
+    o = lrpe_cosine_1d_sp_triton(x, theta, act=act, dim=dim)
     o.backward(do)
