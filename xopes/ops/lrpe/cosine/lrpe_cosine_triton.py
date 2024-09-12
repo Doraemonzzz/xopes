@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
-from xopes.ops.act import act_bwd, act_fwd
+from xopes.ops.act import act_bwd
 from xopes.utils import contiguous, generate_configs
 
 
@@ -15,6 +15,7 @@ def _lrpe_cosine_fwd_triton(
     X,
     Theta,
     O,
+    X_PARTIAL,  # b h d
     offset: tl.constexpr,
     b: tl.constexpr,
     h: tl.constexpr,
@@ -37,7 +38,7 @@ def _lrpe_cosine_fwd_triton(
     o_sin_block_ptr = O + offset_o + d + tl.arange(0, d)
 
     x = tl.load(x_block_ptr).to(tl.float32)
-    if ACT != "none" and DIM != -2:
+    if ACT != "none":
         if ACT == "relu":
             x = tl.where(x >= 0, x, 0)
         elif ACT == "sigmoid":
@@ -46,7 +47,14 @@ def _lrpe_cosine_fwd_triton(
             x = x * tl.sigmoid(x)
         elif ACT == "softmax":
             # for stable
-            x_minus_max = x - tl.max(x, axis=0)
+            if DIM == -2:
+                x_partial_block_ptr = (
+                    X_PARTIAL + off_b * h * d + off_h * d + tl.arange(0, d)
+                )
+                x_partial = tl.load(x_partial_block_ptr)
+                x_minus_max = x - x_partial
+            else:
+                x_minus_max = x - tl.max(x, axis=0)
             # softmax
             numerator = tl.exp(x_minus_max)
             denominator = tl.sum(numerator)
@@ -70,6 +78,7 @@ def _lrpe_cosine_bwd_triton(
     Theta,
     DO,
     DX,
+    X_PARTIAL,  # b h d
     offset: tl.constexpr,
     b: tl.constexpr,
     h: tl.constexpr,
@@ -110,7 +119,14 @@ def _lrpe_cosine_bwd_triton(
             dx = dx * sigmoid * (1 + x * (1 - sigmoid))
         elif ACT == "softmax":
             # for stable
-            x_minus_max = x - tl.max(x, axis=0)
+            if DIM == -2:
+                x_partial_block_ptr = (
+                    X_PARTIAL + off_b * h * d + off_h * d + tl.arange(0, d)
+                )
+                x_partial = tl.load(x_partial_block_ptr)
+                x_minus_max = x - x_partial
+            else:
+                x_minus_max = x - tl.max(x, axis=0)
             # softmax
             numerator = tl.exp(x_minus_max)
             denominator = tl.sum(numerator)
@@ -150,7 +166,10 @@ class FusedActLrpeCosineTriton(torch.autograd.Function):
 def lrpe_cosine_fwd_triton(x, theta, offset=0, act="none", dim=None):
     assert dim in [-1, -2, None], "dim must be -1, -2, None"
     if dim == -2:
-        x = act_fwd(x, act, dim)
+        assert dim in ["softmax"]
+        x_partial = torch.max(x, dim=dim)
+    else:
+        x_partial = None
 
     b, h, n, d = x.shape
     o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
@@ -158,20 +177,28 @@ def lrpe_cosine_fwd_triton(x, theta, offset=0, act="none", dim=None):
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_fwd_triton[grid](x, theta, o, offset, b, h, n, d, act, dim)
+    _lrpe_cosine_fwd_triton[grid](x, theta, o, x_partial, offset, b, h, n, d, act, dim)
 
     return o
 
 
 def lrpe_cosine_bwd_triton(x, theta, do, offset=0, act="none", dim=None):
     assert dim in [-1, -2, None], "dim must be -1, -2, None"
+    if dim == -2:
+        assert dim in ["softmax"]
+        x_partial = torch.max(x, dim=dim)
+    else:
+        x_partial = None
+
     b, h, n, d = x.shape
     dx = torch.empty_like(x)
 
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_bwd_triton[grid](x, theta, do, dx, offset, b, h, n, d, act, dim)
+    _lrpe_cosine_bwd_triton[grid](
+        x, theta, do, dx, x_partial, offset, b, h, n, d, act, dim
+    )
 
     if dim == -2:
         dx = act_bwd(x, dx, act, dim)
