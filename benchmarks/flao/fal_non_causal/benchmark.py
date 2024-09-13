@@ -15,8 +15,10 @@ torch._dynamo.config.suppress_errors = True
 
 b, h, n, m, d, e = 12, 12, 1024, 1024, 128, 128
 # act
-q_act = "silu"
-q_act_dim = None
+# q_act = "silu"
+# q_act_dim = None
+q_act = "softmax"
+q_act_dim = -1
 k_act = "silu"
 k_act_dim = None
 v_act = "none"
@@ -24,6 +26,7 @@ v_act_dim = None
 g_act = "silu"
 g_act_dim = None
 # lrpe
+use_lrpe = True
 shape = None
 lrpe_type = "cosine"
 offset = 0
@@ -65,7 +68,9 @@ configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"flao_fal-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-dim{e}-{dtype_name}",
+        plot_name=f"flao_fal-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-dim{e}-qact_{q_act}_{q_act_dim}-kact_{k_act}_{k_act_dim}-vact_{v_act}_{v_act_dim}-gact_{g_act}_{g_act_dim}-{dtype_name}"
+        if use_lrpe
+        else f"flao_al-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-dim{e}-qact_{q_act}_{q_act_dim}-kact_{k_act}_{k_act_dim}-vact_{v_act}_{v_act_dim}-gact_{g_act}_{g_act_dim}-{lrpe_type}-{dtype_name}",
         args={
             "b": b,
             "h": h,
@@ -97,7 +102,10 @@ def benchmark(b, h, n, m, d, e, dtype, device, mode, provider, bench_type="speed
     v = torch.randn((b, h, m, e), dtype=dtype, device=device).requires_grad_()
     g = torch.randn((b, h, n, e), dtype=dtype, device=device).requires_grad_()
     do = torch.randn((b, h, n, e), dtype=dtype, device=device)
-    theta = torch.randn((h, d), dtype=dtype, device=device)
+    if use_lrpe:
+        theta = torch.randn((h, d), dtype=dtype, device=device)
+    else:
+        theta = None
 
     module = module_map[provider]
 
