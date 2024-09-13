@@ -15,10 +15,10 @@ torch._dynamo.config.suppress_errors = True
 
 b, h, n, m, d, e = 12, 12, 1024, 1024, 128, 128
 # act
-# q_act = "silu"
-# q_act_dim = None
-q_act = "softmax"
-q_act_dim = -1
+q_act = "silu"
+q_act_dim = None
+# q_act = "softmax"
+# q_act_dim = -1
 k_act = "silu"
 k_act_dim = None
 v_act = "none"
