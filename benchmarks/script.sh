@@ -6,7 +6,7 @@ folder=grpe
 folder=lrpe/cosine/1d
 # folder=md_lrpe_cosine
 # folder=flao/non_causal
-# folder=flao/fal_non_causal
+folder=flao/fal_non_causal
 # folder=act
 
 mkdir -p $folder/log
