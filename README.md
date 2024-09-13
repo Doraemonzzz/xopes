@@ -45,6 +45,16 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [ ] add mask for lrpe sp 1d
   - [x] test fused act + lrpe + linear attention with output gate
     - [ ] left softmax + dim = -2
+- 240914
+  - [ ] add md_lrpe document;
+  - [ ] add act;
+    - [ ] add jit act
+      - [ ] https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/ops/activations.py
+      - [ ] https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/ops/activations.py
+  - [ ] add mask for lrpe sp 1d
+  - [x] test fused act + lrpe + linear attention with output gate
+    - [ ] left softmax + dim = -2
+  - [ ] custom benchmark function
 
 # Note
 ```
