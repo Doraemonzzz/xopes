@@ -3,8 +3,10 @@
 ## Notation and Input
 
 - `lrpe_cosine_torch`: Lrpe Cosine Pytorch version.
-- `lrpe_cosine_triton`: Lrpe Cosine Triton Version.
-  - `lrpe_cosine_triton_fwd`, `lrpe_cosine_triton_bwd`.
+- `lrpe_cosine_1d_sp_triton`, `lrpe_cosine_1d_sp_fwd_triton`, `lrpe_cosine_1d_sp_bwd_triton`:
+  - Parallel over sequence, use for scenarios where dim != -2.
+- `lrpe_cosine_1d_bp_triton`, `lrpe_cosine_1d_bp_fwd_triton`, `lrpe_cosine_1d_bp_bwd_triton`:
+  - Perform parallel in block units, use for scenarios where dim = -2.
 
 
 

@@ -10,7 +10,7 @@ from ._1d import (
 
 
 def lrpe_cosine_fn(x, theta, offset=0, act="none", dim=None):
-    if dim == -2:
+    if dim in [-2, None]:
         fn = lrpe_cosine_1d_bp_triton
     else:
         fn = lrpe_cosine_1d_sp_triton
@@ -18,7 +18,7 @@ def lrpe_cosine_fn(x, theta, offset=0, act="none", dim=None):
 
 
 def lrpe_cosine_fwd(x, theta, offset=0, act="none", dim=None):
-    if dim == -2:
+    if dim in [-2, None]:
         fn = lrpe_cosine_1d_bp_fwd_triton
     else:
         fn = lrpe_cosine_1d_sp_fwd_triton
@@ -26,7 +26,7 @@ def lrpe_cosine_fwd(x, theta, offset=0, act="none", dim=None):
 
 
 def lrpe_cosine_bwd(x, theta, do, offset=0, act="none", dim=None):
-    if dim == -2:
+    if dim in [-2, None]:
         fn = lrpe_cosine_1d_bp_bwd_triton
     else:
         fn = lrpe_cosine_1d_sp_bwd_triton
