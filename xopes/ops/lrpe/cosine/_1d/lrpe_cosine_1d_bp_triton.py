@@ -154,7 +154,6 @@ def _lrpe_cosine_1d_bp_fwd_triton(
     generate_configs(
         {
             "BLOCK_N": [16, 32, 64, 128],
-            # "BLOCK_N": [16],
             "BLOCK_D": [16, 32, 64, 128],
             "num_warps": [2, 4, 8],
         }
