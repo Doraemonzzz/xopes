@@ -4,6 +4,7 @@ import torch
 from xopes.ops.flao.fal_non_causal import (
     flao_al_non_causal_torch,
     flao_fal_non_causal_torch,
+    lao_al_non_causal_torch,
 )
 
 
@@ -81,6 +82,25 @@ def test(
         shape = None
 
     # forward
+    o_lao_al_torch = lao_al_non_causal_torch(
+        q,
+        k,
+        v,
+        g,
+        q_act,
+        q_act_dim,
+        k_act,
+        k_act_dim,
+        v_act,
+        v_act_dim,
+        g_act,
+        g_act_dim,
+        theta,
+        shape,
+        lrpe_type,
+        offset,
+        l,
+    )
     o_flao_al_torch = flao_al_non_causal_torch(
         q,
         k,
@@ -121,6 +141,12 @@ def test(
     )
 
     # backward
+    o_lao_al_torch.backward(do, retain_graph=True)
+    dq_lao_al_torch, q.grad = q.grad.clone(), None
+    dk_lao_al_torch, k.grad = k.grad.clone(), None
+    dv_lao_al_torch, v.grad = v.grad.clone(), None
+    dg_lao_al_torch, g.grad = g.grad.clone(), None
+
     o_flao_al_torch.backward(do, retain_graph=True)
     dq_flao_al_torch, q.grad = q.grad.clone(), None
     dk_flao_al_torch, k.grad = k.grad.clone(), None
@@ -141,19 +167,35 @@ def test(
 
     # forward
     assert torch.allclose(
-        o_flao_al_torch, o_flao_fal_torch, atol=atol, rtol=rtol
+        o_lao_al_torch, o_flao_al_torch, atol=atol, rtol=rtol
+    ), f"o diff: {torch.abs(o_flao_al_torch - o_flao_fal_torch).max().item()}, diff norm: {torch.norm(o_flao_al_torch - o_flao_fal_torch).item()}"
+    assert torch.allclose(
+        o_lao_al_torch, o_flao_fal_torch, atol=atol, rtol=rtol
     ), f"o diff: {torch.abs(o_flao_al_torch - o_flao_fal_torch).max().item()}, diff norm: {torch.norm(o_flao_al_torch - o_flao_fal_torch).item()}"
 
     # backward
     assert torch.allclose(
-        dq_flao_al_torch, dq_flao_fal_torch, atol=atol, rtol=rtol
-    ), f"dq diff: {torch.abs(dq_flao_al_torch - dq_flao_fal_torch).max().item()}, diff norm: {torch.norm(dq_flao_al_torch - dq_flao_fal_torch).item()}"
+        dq_lao_al_torch, dq_flao_al_torch, atol=atol, rtol=rtol
+    ), f"dq diff: {torch.abs(dq_lao_al_torch - dq_flao_al_torch).max().item()}, diff norm: {torch.norm(dq_lao_al_torch - dq_flao_al_torch).item()}"
     assert torch.allclose(
-        dk_flao_al_torch, dk_flao_fal_torch, atol=atol, rtol=rtol
-    ), f"dk diff: {torch.abs(dk_flao_al_torch - dk_flao_fal_torch).max().item()}, diff norm: {torch.norm(dk_flao_al_torch - dk_flao_fal_torch).item()}"
+        dk_lao_al_torch, dk_flao_al_torch, atol=atol, rtol=rtol
+    ), f"dk diff: {torch.abs(dk_lao_al_torch - dk_flao_al_torch).max().item()}, diff norm: {torch.norm(dk_lao_al_torch - dk_flao_al_torch).item()}"
     assert torch.allclose(
-        dv_flao_al_torch, dv_flao_fal_torch, atol=atol, rtol=rtol
-    ), f"dv diff: {torch.abs(dv_flao_al_torch - dv_flao_fal_torch).max().item()}, diff norm: {torch.norm(dv_flao_al_torch - dv_flao_fal_torch).item()}"
+        dv_lao_al_torch, dv_flao_al_torch, atol=atol, rtol=rtol
+    ), f"dv diff: {torch.abs(dv_lao_al_torch - dv_flao_al_torch).max().item()}, diff norm: {torch.norm(dv_lao_al_torch - dv_flao_al_torch).item()}"
     assert torch.allclose(
-        dg_flao_al_torch, dg_flao_fal_torch, atol=atol, rtol=rtol
-    ), f"dg diff: {torch.abs(dg_flao_al_torch - dg_flao_fal_torch).max().item()}, diff norm: {torch.norm(dg_flao_al_torch - dg_flao_fal_torch).item()}"
+        dg_lao_al_torch, dg_flao_al_torch, atol=atol, rtol=rtol
+    ), f"dg diff: {torch.abs(dg_lao_al_torch - dg_flao_al_torch).max().item()}, diff norm: {torch.norm(dg_lao_al_torch - dg_flao_al_torch).item()}"
+
+    assert torch.allclose(
+        dq_lao_al_torch, dq_flao_fal_torch, atol=atol, rtol=rtol
+    ), f"dq diff: {torch.abs(dq_lao_al_torch - dq_flao_fal_torch).max().item()}, diff norm: {torch.norm(dq_lao_al_torch - dq_flao_fal_torch).item()}"
+    assert torch.allclose(
+        dk_lao_al_torch, dk_flao_fal_torch, atol=atol, rtol=rtol
+    ), f"dk diff: {torch.abs(dk_lao_al_torch - dk_flao_fal_torch).max().item()}, diff norm: {torch.norm(dk_lao_al_torch - dk_flao_fal_torch).item()}"
+    assert torch.allclose(
+        dv_lao_al_torch, dv_flao_fal_torch, atol=atol, rtol=rtol
+    ), f"dv diff: {torch.abs(dv_lao_al_torch - dv_flao_fal_torch).max().item()}, diff norm: {torch.norm(dv_lao_al_torch - dv_flao_fal_torch).item()}"
+    assert torch.allclose(
+        dg_lao_al_torch, dg_flao_fal_torch, atol=atol, rtol=rtol
+    ), f"dg diff: {torch.abs(dg_lao_al_torch - dg_flao_fal_torch).max().item()}, diff norm: {torch.norm(dg_lao_al_torch - dg_flao_fal_torch).item()}"
