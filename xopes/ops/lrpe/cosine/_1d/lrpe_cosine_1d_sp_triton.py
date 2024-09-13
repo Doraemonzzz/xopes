@@ -144,7 +144,7 @@ class LrpeCosine1dSpTriton(torch.autograd.Function):
         return dx, None, None, None, None
 
 
-def lrpe_cosine_1d_sp_fwd_triton(x, theta, offset=0, act="none", dim=None):
+def lrpe_cosine_1d_sp_fwd_triton(x, theta, offset=0, act="none", dim=None, **kwargs):
     assert dim in [-1, None], "dim must in [-1, None]"
 
     b, h, n, d = x.shape
@@ -158,7 +158,9 @@ def lrpe_cosine_1d_sp_fwd_triton(x, theta, offset=0, act="none", dim=None):
     return o
 
 
-def lrpe_cosine_1d_sp_bwd_triton(x, theta, do, offset=0, act="none", dim=None):
+def lrpe_cosine_1d_sp_bwd_triton(
+    x, theta, do, offset=0, act="none", dim=None, **kwargs
+):
     assert dim in [-1, None], "dim must in [-1, None]"
 
     b, h, n, d = x.shape
@@ -172,7 +174,7 @@ def lrpe_cosine_1d_sp_bwd_triton(x, theta, do, offset=0, act="none", dim=None):
     return dx
 
 
-def lrpe_cosine_1d_sp_triton(x, theta, offset=0, act="none", dim=None):
+def lrpe_cosine_1d_sp_triton(x, theta, offset=0, act="none", dim=None, **kwargs):
     # x: b, h, n, d
     # theta: h, d
     assert dim in [-1, None], "dim must in [-1, None]"
