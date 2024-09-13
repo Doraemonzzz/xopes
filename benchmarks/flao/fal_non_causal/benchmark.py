@@ -8,8 +8,12 @@ import triton
 from xopes.ops.flao.fal_non_causal import (
     flao_al_non_causal_torch,
     flao_fal_non_causal_torch,
+    lao_al_non_causal_torch,
 )
 from xopes.utils import get_memory
+
+# Hack for a triton bug - https://github.com/pytorch/pytorch/issues/124565
+torch.empty(1, device="cuda", requires_grad=True).backward()
 
 torch._dynamo.config.suppress_errors = True
 
@@ -41,6 +45,8 @@ dtype_map = {
 }
 
 module_map = {
+    "lao_al_torch": lao_al_non_causal_torch,
+    "lao_al_torch_complie": torch.compile(lao_al_non_causal_torch),
     "flao_al_torch": flao_al_non_causal_torch,
     "flao_al_torch_complie": torch.compile(flao_al_non_causal_torch),
     "flao_fal_torch": flao_fal_non_causal_torch,
@@ -54,19 +60,25 @@ configs = [
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
+        # line_vals=[
+        #     "lao_al_torch",
+        #     "lao_al_torch_complie",
+        #     "flao_al_torch",
+        #     "flao_al_torch_complie",
+        # ],
+        # line_names=["Lao", "Lao_C", "Flao", "Flao_C"],
         line_vals=[
-            "flao_al_torch",
-            "flao_al_torch_complie",
             "flao_fal_torch",
             "flao_fal_torch_complie",
         ],
-        line_names=["Flao Tor", "Flao Tor C", "Flao F Tor", "Flao F Tor C"],
+        line_names=["Flao_F", "Flao_F_C"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
             ("green", "-"),
             ("blue", "-"),
             ("black", "-"),
+            ("yellow", "-"),
         ],
         plot_name=f"flao_fal-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-dim{e}-qact_{q_act}_{q_act_dim}-kact_{k_act}_{k_act_dim}-vact_{v_act}_{v_act_dim}-gact_{g_act}_{g_act_dim}-{dtype_name}"
         if use_lrpe
