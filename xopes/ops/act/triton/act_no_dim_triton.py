@@ -30,7 +30,7 @@ def _act_no_dim_fwd_triton(
     x_block_ptr = X + offset_n + offset_d + tl.arange(0, BLOCK)
     o_block_ptr = O + offset_n + offset_d + tl.arange(0, BLOCK)
     x = tl.load(x_block_ptr, mask=d_mask, other=0).to(tl.float32)
-    o = tl.zeros_like(x)
+    o = x
 
     if ACT == "relu":
         o = tl.where(x >= 0, x, 0)
@@ -70,7 +70,8 @@ def _act_no_dim_bwd_triton(
     dx_block_ptr = DX + offset_n + offset_d + tl.arange(0, BLOCK)
     x = tl.load(x_block_ptr, mask=d_mask, other=0).to(tl.float32)
     do = tl.load(do_block_ptr, mask=d_mask, other=0).to(tl.float32)
-    dx = tl.zeros_like(x)
+    # dx = tl.zeros_like(x)
+    dx = do
 
     if ACT == "relu":
         dx = tl.where(x >= 0, do, 0)

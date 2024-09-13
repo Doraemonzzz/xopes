@@ -32,19 +32,15 @@ def flao_al_non_causal_torch(
         shape = torch.tensor(shape, dtype=torch.int32, device=q.device)
 
     # use act fn here
-    q = act_torch(q, q_act, q_act_dim)
-    k = act_torch(k, k_act, k_act_dim)
-    v = act_torch(v, v_act, v_act_dim)
-    g = act_torch(g, g_act, g_act_dim)
+    q = act_torch(q, act=q_act, dim=q_act_dim)
+    k = act_torch(k, act=k_act, dim=k_act_dim)
+    v = act_torch(v, act=v_act, dim=v_act_dim)
+    g = act_torch(g, act=g_act, dim=g_act_dim)
 
     # lrpe
     if theta is not None:
-        if len(shape.shape) == 1:  # 1d case
-            q = lrpe_fn(q, theta, offset, lrpe_type)
-            k = lrpe_fn(k, theta, offset, lrpe_type)
-        else:
-            q = md_lrpe_fn(q, theta, shape, l, lrpe_type)
-            k = md_lrpe_fn(k, theta, shape, l, lrpe_type)
+        q = lrpe_fn(q, theta, offset=offset, lrpe_type=lrpe_type)
+        k = lrpe_fn(k, theta, lrpe_type=lrpe_type)
 
     return flao_non_causal_fn(q, k, v, g)
 
