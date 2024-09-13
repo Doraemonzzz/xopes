@@ -22,6 +22,7 @@ def get_params():
     [
         "none",
         "silu",
+        "relu",
     ],
 )
 @pytest.mark.parametrize("q_act_dim", [None])
