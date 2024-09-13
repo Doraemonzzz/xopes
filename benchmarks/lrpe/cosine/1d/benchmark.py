@@ -68,11 +68,11 @@ configs = [
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
     # witout dim
-    for act in ["silu", "none"]
-    for dim in [None]
+    # for act in ["silu", "none"]
+    # for dim in [None]
     # with dim
-    # for act in ["softmax"]
-    # for dim in [-1, -2]
+    for act in ["softmax"]
+    for dim in [-1, -2]
 ]
 
 
@@ -87,14 +87,24 @@ def benchmark(b, h, n, d, act, dim, dtype, device, mode, provider, bench_type="s
 
     module = module_map[provider]
 
-    fn = lambda: module(x, theta, act=act, dim=dim)
+    try:
+        fn = lambda: module(x, theta, act=act, dim=dim)
+    except:
+        fn = None
+
     if mode == "bwd":
-        o = fn()
-        do = torch.randn((b, h, n, 2 * d), dtype=dtype, device=device)
-        fn = lambda: o.backward(do, retain_graph=True)
+        try:
+            o = fn()
+            do = torch.randn((b, h, n, 2 * d), dtype=dtype, device=device)
+            fn = lambda: o.backward(do, retain_graph=True)
+        except:
+            fn = None
 
     if bench_type == "speed":
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        try:
+            ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        except:
+            ms = -1
 
         return ms
     else:

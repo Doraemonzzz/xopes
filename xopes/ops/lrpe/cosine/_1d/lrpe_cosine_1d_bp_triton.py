@@ -154,7 +154,6 @@ def _lrpe_cosine_1d_bp_fwd_triton(
     generate_configs(
         {
             "BLOCK_N": [16, 32, 64, 128],
-            # "BLOCK_N": [16],
             "BLOCK_D": [16, 32, 64, 128],
             "num_warps": [2, 4, 8],
         }
@@ -360,7 +359,17 @@ def lrpe_cosine_1d_bp_fwd_triton(x, theta, offset=0, act="none", dim=None):
     x_stat2 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
 
     _lrpe_cosine_1d_bp_fwd_triton[grid](
-        x, theta, o, x_stat1, x_stat2, offset, b, h, n, d, act
+        x,
+        theta,
+        o,
+        x_stat1,
+        x_stat2,
+        offset,
+        b,
+        h,
+        n,
+        d,
+        act,
     )
 
     return o, x_stat1, x_stat2
