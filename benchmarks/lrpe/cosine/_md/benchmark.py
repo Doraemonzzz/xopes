@@ -40,7 +40,8 @@ x_vals_map = {
     3: [2**i for i in range(2, 6)],
 }
 
-act_dim_list = [["silu", None], ["none", None], ["softmax", None]]
+act_dim_list = [["silu", None], ["none", None], ["softmax", -1]]
+act_dim_list = [["softmax", -1]]
 
 configs = [
     triton.testing.Benchmark(
