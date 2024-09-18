@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from einops import pack
 
 
-def md_lrpe_cosine_torch(x, theta, shape, l=0):
+def lrpe_cosine_md_torch(x, theta, shape, l=0):
     # x: b, h, n, d; n = l + prod(shape)
     # theta: h, e; e >= round(d + len(shape) - 1) // len(shape))
     # shape: n1, ... , nm
@@ -77,6 +77,6 @@ if __name__ == "__main__":
         do_token = torch.randn((b, h, l, 2 * d), dtype=dtype, device=device)
         do = torch.cat([do_token, do], dim=-2)
 
-    o = md_lrpe_cosine_torch(x, theta, shape=shape[2:-1], l=l)
+    o = lrpe_cosine_md_torch(x, theta, shape=shape[2:-1], l=l)
 
     o.backward(do)

@@ -1,11 +1,11 @@
-from .md_lrpe_cosine_cache_triton import (
-    md_lrpe_cosine_cache_bwd_triton,
-    md_lrpe_cosine_cache_fwd_triton,
-    md_lrpe_cosine_cache_triton,
+from .lrpe_cosine_md_cache_triton import (
+    lrpe_cosine_md_cache_bwd_triton,
+    lrpe_cosine_md_cache_fwd_triton,
+    lrpe_cosine_md_cache_triton,
 )
-from .md_lrpe_cosine_torch import md_lrpe_cosine_torch
-from .md_lrpe_cosine_triton import (
-    md_lrpe_cosine_bwd_triton,
-    md_lrpe_cosine_fwd_triton,
-    md_lrpe_cosine_triton,
+from .lrpe_cosine_md_torch import lrpe_cosine_md_torch
+from .lrpe_cosine_md_triton import (
+    lrpe_cosine_md_bwd_triton,
+    lrpe_cosine_md_fwd_triton,
+    lrpe_cosine_md_triton,
 )

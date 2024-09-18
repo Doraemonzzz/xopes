@@ -2,11 +2,11 @@
 
 ## Notation and Input
 
-- `lrpe_cosine_torch`: Lrpe Cosine Pytorch version.
-- `lrpe_cosine_1d_sp_triton`, `lrpe_cosine_1d_sp_fwd_triton`, `lrpe_cosine_1d_sp_bwd_triton`:
-  - Parallel over sequence, use for scenarios where dim != -2.
-- `lrpe_cosine_1d_bp_triton`, `lrpe_cosine_1d_bp_fwd_triton`, `lrpe_cosine_1d_bp_bwd_triton`:
-  - Perform parallel in block units, use for scenarios where dim = -2.
+- `lrpe_cosine_md_torch`: Lrpe Cosine Pytorch version.
+- `lrpe_cosine_md_triton`, `lrpe_cosine_md_fwd_triton`, `lrpe_cosine_md_bwd_triton`:
+  - Parallel over sequence.
+- `lrpe_cosine_md_cache_triton`, `lrpe_cosine_md_cache_fwd_triton`, `lrpe_cosine_md_cache_bwd_triton`:
+  - Parallel over sequence, with cache theta.
 
 
 

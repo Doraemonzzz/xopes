@@ -10,7 +10,7 @@ from xopes.utils import contiguous, generate_configs, next_power_of_two
     key=["h", "n", "d", "m"],
 )
 @triton.jit
-def _md_lrpe_cosine_fwd_triton(
+def _lrpe_cosine_md_fwd_triton(
     X,
     Theta,
     O,
@@ -88,7 +88,7 @@ def _md_lrpe_cosine_fwd_triton(
     key=["h", "n", "d", "m"],
 )
 @triton.jit
-def _md_lrpe_cosine_bwd_triton(
+def _lrpe_cosine_md_bwd_triton(
     X,
     Theta,
     DO,
@@ -160,11 +160,11 @@ def _md_lrpe_cosine_bwd_triton(
         tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
 
 
-class MdLrpeCosineTriton(torch.autograd.Function):
+class LrpeCosineMdTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, theta, shape, l=0):
-        o = md_lrpe_cosine_fwd_triton(x, theta, shape, l)
+        o = lrpe_cosine_md_fwd_triton(x, theta, shape, l)
 
         ctx.save_for_backward(x, theta, shape)
         ctx.l = l
@@ -177,12 +177,12 @@ class MdLrpeCosineTriton(torch.autograd.Function):
         x, theta, shape = ctx.saved_tensors
         l = ctx.l
 
-        dx = md_lrpe_cosine_bwd_triton(x, theta, do, shape, l)
+        dx = lrpe_cosine_md_bwd_triton(x, theta, do, shape, l)
 
         return dx, None, None, None
 
 
-def md_lrpe_cosine_fwd_triton(x, theta, shape, l=0):
+def lrpe_cosine_md_fwd_triton(x, theta, shape, l=0):
     b, h, n, d = x.shape
     e = theta.shape[-1]
     m = len(shape)
@@ -196,12 +196,12 @@ def md_lrpe_cosine_fwd_triton(x, theta, shape, l=0):
     def grid(meta):
         return (b, h, n)
 
-    _md_lrpe_cosine_fwd_triton[grid](x, theta, o, shape, b, h, n, l, d, e, m, BLOCK)
+    _lrpe_cosine_md_fwd_triton[grid](x, theta, o, shape, b, h, n, l, d, e, m, BLOCK)
 
     return o
 
 
-def md_lrpe_cosine_bwd_triton(x, theta, do, shape, l=0):
+def lrpe_cosine_md_bwd_triton(x, theta, do, shape, l=0):
     b, h, n, d = x.shape
     e = theta.shape[-1]
     m = len(shape)
@@ -212,14 +212,14 @@ def md_lrpe_cosine_bwd_triton(x, theta, do, shape, l=0):
     def grid(meta):
         return (b, h, n)
 
-    _md_lrpe_cosine_bwd_triton[grid](
+    _lrpe_cosine_md_bwd_triton[grid](
         x, theta, do, dx, shape, b, h, n, l, d, e, m, BLOCK
     )
 
     return dx
 
 
-def md_lrpe_cosine_triton(x, theta, shape, l=0):
+def lrpe_cosine_md_triton(x, theta, shape, l=0):
     # x: b, h, n, d; n = l + prod(shape)
     # theta: h, e; e >= round(d + len(shape) - 1) // len(shape))
     # shape: n1, ... , nm
@@ -229,7 +229,7 @@ def md_lrpe_cosine_triton(x, theta, shape, l=0):
         theta.shape[-1] * len(shape) >= x.shape[-1]
     ), "dim of theta should be larger than round(d + len(shape) - 1) // len(shape))"
 
-    return MdLrpeCosineTriton.apply(x, theta, shape, l)
+    return LrpeCosineMdTriton.apply(x, theta, shape, l)
 
 
 if __name__ == "__main__":
@@ -262,5 +262,5 @@ if __name__ == "__main__":
         do_token = torch.randn((b, h, l, 2 * d), dtype=dtype, device=device)
         do = torch.cat([do_token, do], dim=-2)
 
-    o = md_lrpe_cosine_triton(x, theta, shape=shape[2:-1])
+    o = lrpe_cosine_md_triton(x, theta, shape=shape[2:-1])
     o.backward(do)
