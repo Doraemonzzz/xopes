@@ -60,7 +60,9 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [ ] add lrpe cosine 2d;
   - [ ] add lrpe cosine 3d;
   - [x] add feature mask for lrpe cosine 1d;
-  - [ ] add feature mask for lrpe cosine md;
+  - [x] add feature mask for lrpe cosine md;
+    - [x] triton
+    - [x] triton cache
   - [ ] add act for lrpe md;
   - [ ] add act;
     - [ ] add jit act
