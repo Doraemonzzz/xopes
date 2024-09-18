@@ -1,5 +1,17 @@
 # A800
 
+## Summary
+
+In summary, use `Triton Bp` when `dim=-2` and `act=softmax`; otherwise, use `Triton Sp`.
+
+## Notation
+
+- Triton Sp: Triton sequence parallel
+- Triton Bp: Triton Block parallel
+- Torch: Torch
+- Torch C: Torch Compile
+
+
 ## No Act
 
 ```
