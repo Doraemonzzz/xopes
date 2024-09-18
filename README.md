@@ -57,13 +57,15 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [ ] custom benchmark function
 - 240918
   - [x] add md_lrpe cosine document;
-  - [ ] add lrpe cosine 2d;
-  - [ ] add lrpe cosine 3d;
   - [x] add feature mask for lrpe cosine 1d;
   - [x] add feature mask for lrpe cosine md;
     - [x] triton
     - [x] triton cache
-  - [ ] add act for lrpe md;
+  - [x] add act for lrpe cosine md;
+    - [x] triton
+    - [x] triton cache
+    - [ ] left softmax + dim = -2
+  - [ ] benchmark lrpe cosine md with act;
   - [ ] add act;
     - [ ] add jit act
       - [ ] https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/ops/activations.py
