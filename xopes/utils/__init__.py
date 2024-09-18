@@ -1,4 +1,4 @@
-from .constant import HEAD_DIM
+from .constant import ACT_SET, HEAD_DIM
 from .utils import (
     contiguous,
     generate_configs,
