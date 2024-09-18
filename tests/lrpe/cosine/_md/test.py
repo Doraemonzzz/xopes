@@ -2,7 +2,7 @@ import pytest
 import torch
 from einops import pack
 
-from xopes.ops.md_lrpe.cosine._md import (
+from xopes.ops.lrpe.cosine._md import (
     md_lrpe_cosine_cache_triton,
     md_lrpe_cosine_torch,
     md_lrpe_cosine_triton,
