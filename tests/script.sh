@@ -5,10 +5,10 @@ folder=additive
 folder=base
 folder=logcumsumexp
 folder=grpe
-folder=lrpe/cosine/1d
-# folder=md_lrpe_cosine
+folder=lrpe/cosine/_1d
+folder=lrpe/cosine/_md
 # folder=flao/non_causal
-folder=flao/fal_non_causal
+# folder=flao/fal_non_causal
 # folder=act
 
 mkdir -p $folder/log

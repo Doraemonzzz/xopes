@@ -2,7 +2,7 @@ import pytest
 import torch
 from einops import pack
 
-from xopes.ops.md_lrpe.cosine import (
+from xopes.ops.md_lrpe.cosine._md import (
     md_lrpe_cosine_cache_triton,
     md_lrpe_cosine_torch,
     md_lrpe_cosine_triton,
@@ -20,6 +20,8 @@ def get_params():
         (6, 8, 2, 3, 64),
         # 3d
         (6, 8, 8, 32, 32, 64),
+        # 4d
+        (6, 8, 8, 8, 8, 8, 64),
     ]
 
     return shape

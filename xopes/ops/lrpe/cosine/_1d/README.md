@@ -1,8 +1,8 @@
-# Lrpe Cosine
+# Lrpe Cosine 1d
 
 ## Notation and Input
 
-- `lrpe_cosine_torch`: Lrpe Cosine Pytorch version.
+- `lrpe_cosine_torch`: Lrpe Cosine 1d Pytorch version.
 - `lrpe_cosine_1d_sp_triton`, `lrpe_cosine_1d_sp_fwd_triton`, `lrpe_cosine_1d_sp_bwd_triton`:
   - Parallel over sequence, use for scenarios where dim != -2.
 - `lrpe_cosine_1d_bp_triton`, `lrpe_cosine_1d_bp_fwd_triton`, `lrpe_cosine_1d_bp_bwd_triton`:
@@ -39,9 +39,9 @@ Where $n$ denotes the sequence length, and $d$ denotes the head dimension, $\mat
 
 $$
 \begin{aligned}
-\Theta_{st} &= (\mathrm{offset}+s) \theta_{t} , \Theta\in \mathbb R^{n\times d}, \\
-{\mathbf {\bar X}}&=f_{\text{act}}(\mathbf X),\\
-\mathbf O &=\mathrm{concat}([\mathbf X  \odot \cos(\Theta),\mathbf X  \odot  \sin(\Theta)])
+\Theta_{st} &= (\mathrm{offset}+s) \theta_{t} , \Theta\in \mathbb R^{d}, \\
+{\mathbf {\bar X}}&=f_{\text{act}}(\mathbf X, \mathrm{dim}),\\
+\mathbf O &=\mathrm{concat}([\mathbf {\bar X}  \odot \cos(\Theta),\mathbf {\bar X}  \odot  \sin(\Theta)])
 \in \mathbb R^{n\times 2d}.
 \end{aligned}
 $$
@@ -52,10 +52,10 @@ $$
 
 $$
 \begin{aligned}
-&\Theta_{st} = (\mathrm{offset}+s) \theta_{t} , \Theta\in \mathbb R^{n\times d}, \\
+&\Theta_{st} = (\mathrm{offset}+s) \theta_{t} , \Theta\in \mathbb R^{ d}, \\
 &\mathbf{dO} =\mathrm{concat}[\mathbf{dO}_{\cos},\mathbf{dO}_{\sin}],\\
 &\mathbf{dO}_{\cos},\mathbf{dO}_{\sin} \in \mathbb R^{n\times d},  \\
 &\mathbf{d{\bar X}} = \mathbf{dO}_{\cos} \odot \cos(\Theta) + \mathbf{dO}_{\sin}\odot \sin( \Theta), \\
-&\mathbf {d X} = f'_{\text{act}}(\mathbf{d{\bar X}}).
+&\mathbf {d X} = f'_{\text{act}}(\mathbf{d{\bar X}}, \mathrm{dim}).
 \end{aligned}
 $$

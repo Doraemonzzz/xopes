@@ -7,6 +7,15 @@ from ._1d import (
     lrpe_cosine_1d_sp_triton,
     lrpe_cosine_1d_torch,
 )
+from ._md import (
+    md_lrpe_cosine_bwd_triton,
+    md_lrpe_cosine_cache_bwd_triton,
+    md_lrpe_cosine_cache_fwd_triton,
+    md_lrpe_cosine_cache_triton,
+    md_lrpe_cosine_fwd_triton,
+    md_lrpe_cosine_torch,
+    md_lrpe_cosine_triton,
+)
 
 
 def lrpe_cosine_fn(x, theta, offset=0, act="none", dim=None, **kwargs):
