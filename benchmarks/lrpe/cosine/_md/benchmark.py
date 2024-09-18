@@ -10,7 +10,7 @@ from xopes.ops.lrpe.cosine._md import (
     lrpe_cosine_md_torch,
     lrpe_cosine_md_triton,
 )
-from xopes.utils import get_memory, next_power_of_two
+from xopes.utils import get_memory
 
 b, h, n, d = 12, 12, 8192, 128
 # b, h, n, d = 1, 12, 8192, 128
@@ -40,14 +40,14 @@ x_vals_map = {
     3: [2**i for i in range(2, 6)],
 }
 
-act_dim_list = [
-    ["silu", None], ["none", None], ["softmax", None]
-]
+act_dim_list = [["silu", None], ["none", None], ["softmax", None]]
 
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        x_vals=[2**i for i in range(4, 8)] if m == 2 else [2**i for i in range(2, 6)],
+        x_vals=[2**i for i in range(4, 8)]
+        if m == 2
+        else [2**i for i in range(2, 6)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -66,7 +66,8 @@ configs = [
             ("black", "-"),
         ],
         plot_name=f"lrpe_cosine_md-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act_dim[0]}-dim_{act_dim[1]}-{dtype_name}-{m}d-l{l}"
-        if act_dim[0] is not None else f"lrpe_cosine_md-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act_dim[0]}-{dtype_name}-{m}d-l{l}",
+        if act_dim[0] is not None
+        else f"lrpe_cosine_md-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act_dim[0]}-{dtype_name}-{m}d-l{l}",
         args={
             "b": b,
             "h": h,
@@ -96,7 +97,9 @@ configs = [
 
 
 @triton.testing.perf_report(configs)
-def benchmark(b, h, n, l, d, act_dim, m, dtype, device, mode, provider, bench_type="speed"):
+def benchmark(
+    b, h, n, l, d, act_dim, m, dtype, device, mode, provider, bench_type="speed"
+):
     torch.manual_seed(2024)
     assert mode in ["fwd", "bwd"]
     warmup = 25
