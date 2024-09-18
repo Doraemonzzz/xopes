@@ -146,6 +146,7 @@ class LrpeCosine1dSpTriton(torch.autograd.Function):
     @contiguous
     def forward(ctx, x, theta, offset=0, act="none", dim=None):
         o = lrpe_cosine_1d_sp_fwd_triton(x, theta, offset, act, dim)
+
         ctx.save_for_backward(x, theta)
         ctx.offset = offset
         ctx.act = act
@@ -160,6 +161,7 @@ class LrpeCosine1dSpTriton(torch.autograd.Function):
         offset = ctx.offset
         act = ctx.act
         dim = ctx.dim
+
         dx = lrpe_cosine_1d_sp_bwd_triton(x, theta, do, offset, act, dim)
 
         return dx, None, None, None, None

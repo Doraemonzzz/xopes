@@ -22,6 +22,7 @@ def _lrpe_cosine_md_fwd_triton(
     d: tl.constexpr,
     e: tl.constexpr,
     m: tl.constexpr,
+    ACT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     off_b = tl.program_id(0)
@@ -73,7 +74,28 @@ def _lrpe_cosine_md_fwd_triton(
         c = c // dim
 
         # compute
-        x = tl.load(x_block_ptr, mask=mask, other=0).to(tl.float32)
+        if ACT != "none":
+            if ACT == "softmax":
+                value = -float("inf")
+            else:
+                value = 0
+
+        x = tl.load(x_block_ptr, mask=mask, other=value).to(tl.float32)
+        if ACT != "none":
+            if ACT == "relu":
+                x = tl.where(x >= 0, x, 0)
+            elif ACT == "sigmoid":
+                x = tl.sigmoid(x)
+            elif ACT == "silu":
+                x = x * tl.sigmoid(x)
+            elif ACT == "softmax":
+                # for stable
+                x_minus_max = x - tl.max(x, axis=0)
+                # softmax
+                numerator = tl.exp(x_minus_max)
+                denominator = tl.sum(numerator)
+                x = numerator / denominator
+
         theta = theta_ * offset
         o_cos = x * tl.cos(theta)
         o_sin = x * tl.sin(theta)
@@ -101,6 +123,7 @@ def _lrpe_cosine_md_bwd_triton(
     d: tl.constexpr,
     e: tl.constexpr,
     m: tl.constexpr,
+    ACT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     off_b = tl.program_id(0)
@@ -115,6 +138,7 @@ def _lrpe_cosine_md_bwd_triton(
     # compute from the last theta block
     theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK)
     dx_block_ptr = DX + offset_x + offset_d + tl.arange(0, BLOCK)
+    x_block_ptr = X + offset_x + offset_d + tl.arange(0, BLOCK)
     do_cos_block_ptr = DO + offset_o + offset_d + tl.arange(0, BLOCK)
     do_sin_block_ptr = DO + offset_o + offset_d + d + tl.arange(0, BLOCK)
     # triton only support load block at least 16 elements, use this to get shape
@@ -141,6 +165,7 @@ def _lrpe_cosine_md_bwd_triton(
         # update block ptr
         shape_block_ptr -= 1
         dx_block_ptr -= e
+        x_block_ptr -= e
         do_cos_block_ptr -= e
         do_sin_block_ptr -= e
         offset_d -= e
@@ -157,17 +182,47 @@ def _lrpe_cosine_md_bwd_triton(
         theta = theta_ * offset
         dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
 
+        if ACT != "none":
+            if ACT == "softmax":
+                value = -float("inf")
+            else:
+                value = 0
+
+            x = tl.load(x_block_ptr, mask=mask, other=value).to(tl.float32)
+
+            if ACT == "relu":
+                dx = tl.where(x >= 0, dx, 0)
+            elif ACT == "sigmoid":
+                sigmoid = tl.sigmoid(x)
+                dx = dx * sigmoid * (1 - sigmoid)
+            elif ACT == "silu":
+                sigmoid = tl.sigmoid(x)
+                dx = dx * sigmoid * (1 + x * (1 - sigmoid))
+            elif ACT == "softmax":
+                # for stable
+                x_minus_max = x - tl.max(x, axis=0)
+                # softmax
+                numerator = tl.exp(x_minus_max)
+                denominator = tl.sum(numerator)
+                o = numerator / denominator
+
+                # scalar
+                s = tl.sum(o * dx, axis=0)
+                dx = o * dx - s * o
+
         tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
 
 
 class LrpeCosineMdTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
-    def forward(ctx, x, theta, shape, l=0):
-        o = lrpe_cosine_md_fwd_triton(x, theta, shape, l)
+    def forward(ctx, x, theta, shape, l=0, act="none", dim=None):
+        o = lrpe_cosine_md_fwd_triton(x, theta, shape, l, act, dim)
 
         ctx.save_for_backward(x, theta, shape)
         ctx.l = l
+        ctx.act = act
+        ctx.dim = dim
 
         return o
 
@@ -176,13 +231,17 @@ class LrpeCosineMdTriton(torch.autograd.Function):
     def backward(ctx, do):
         x, theta, shape = ctx.saved_tensors
         l = ctx.l
+        act = ctx.act
+        dim = ctx.dim
 
-        dx = lrpe_cosine_md_bwd_triton(x, theta, do, shape, l)
+        dx = lrpe_cosine_md_bwd_triton(x, theta, do, shape, l, act, dim)
 
-        return dx, None, None, None
+        return dx, None, None, None, None, None
 
 
-def lrpe_cosine_md_fwd_triton(x, theta, shape, l=0):
+def lrpe_cosine_md_fwd_triton(x, theta, shape, l=0, act="none", dim=None):
+    assert dim in [-1, None], "dim must in [-1, None]"
+
     b, h, n, d = x.shape
     e = theta.shape[-1]
     m = len(shape)
@@ -196,12 +255,16 @@ def lrpe_cosine_md_fwd_triton(x, theta, shape, l=0):
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_md_fwd_triton[grid](x, theta, o, shape, b, h, n, l, d, e, m, BLOCK)
+    _lrpe_cosine_md_fwd_triton[grid](
+        x, theta, o, shape, b, h, n, l, d, e, m, act, BLOCK
+    )
 
     return o
 
 
-def lrpe_cosine_md_bwd_triton(x, theta, do, shape, l=0):
+def lrpe_cosine_md_bwd_triton(x, theta, do, shape, l=0, act="none", dim=None, **kwargs):
+    assert dim in [-1, None], "dim must in [-1, None]"
+
     b, h, n, d = x.shape
     e = theta.shape[-1]
     m = len(shape)
@@ -213,13 +276,13 @@ def lrpe_cosine_md_bwd_triton(x, theta, do, shape, l=0):
         return (b, h, n)
 
     _lrpe_cosine_md_bwd_triton[grid](
-        x, theta, do, dx, shape, b, h, n, l, d, e, m, BLOCK
+        x, theta, do, dx, shape, b, h, n, l, d, e, m, act, BLOCK
     )
 
     return dx
 
 
-def lrpe_cosine_md_triton(x, theta, shape, l=0):
+def lrpe_cosine_md_triton(x, theta, shape, l=0, act="none", dim=None, **kwargs):
     # x: b, h, n, d; n = l + prod(shape)
     # theta: h, e; e >= round(d + len(shape) - 1) // len(shape))
     # shape: n1, ... , nm
@@ -229,7 +292,7 @@ def lrpe_cosine_md_triton(x, theta, shape, l=0):
         theta.shape[-1] * len(shape) >= x.shape[-1]
     ), "dim of theta should be larger than round(d + len(shape) - 1) // len(shape))"
 
-    return LrpeCosineMdTriton.apply(x, theta, shape, l)
+    return LrpeCosineMdTriton.apply(x, theta, shape, l, act, dim)
 
 
 if __name__ == "__main__":
@@ -261,6 +324,8 @@ if __name__ == "__main__":
     if l > 0:
         do_token = torch.randn((b, h, l, 2 * d), dtype=dtype, device=device)
         do = torch.cat([do_token, do], dim=-2)
+    act = "silu"
+    dim = -1
 
-    o = lrpe_cosine_md_triton(x, theta, shape=shape[2:-1])
+    o = lrpe_cosine_md_triton(x, theta, shape=shape[2:-1], act=act, dim=dim)
     o.backward(do)

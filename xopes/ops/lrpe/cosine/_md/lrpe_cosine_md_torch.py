@@ -2,8 +2,10 @@ import torch
 import torch.nn.functional as F
 from einops import pack
 
+from xopes.ops.act.act_torch import act_torch
 
-def lrpe_cosine_md_torch(x, theta, shape, l=0):
+
+def lrpe_cosine_md_torch(x, theta, shape, l=0, act="none", dim=None):
     # x: b, h, n, d; n = l + prod(shape)
     # theta: h, e; e >= round(d + len(shape) - 1) // len(shape))
     # shape: n1, ... , nm
@@ -33,6 +35,8 @@ def lrpe_cosine_md_torch(x, theta, shape, l=0):
 
     theta = torch.cat(theta_list, dim=-1)[..., :d]
     theta, ps = pack([theta], "h * d")
+
+    x = act_torch(x, act, dim)
 
     x_no_lrpe = x[:, :, :l]
     x = x[:, :, l:]
