@@ -3,10 +3,11 @@ date=$(date '+%Y-%m-%d-%H:%M:%S')
 file=benchmark
 folder=logcumsumexp
 folder=grpe
-folder=lrpe/cosine/1d
+folder=lrpe/cosine/_1d
+folder=lrpe/cosine/_md
 # folder=md_lrpe_cosine
 # folder=flao/non_causal
-folder=flao/fal_non_causal
+# folder=flao/fal_non_causal
 # folder=act
 
 mkdir -p $folder/log
