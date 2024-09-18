@@ -5,12 +5,16 @@ from einops import pack
 
 def md_lrpe_cosine_torch(x, theta, shape, l=0):
     # x: b, h, n, d; n = l + prod(shape)
-    # theta: h, next_power_of_two((d + len(shape) - 1) // len(shape))
+    # theta: h, e; e >= round(d + len(shape) - 1) // len(shape))
     # shape: n1, ... , nm
     # l: we do not do lrpe cosine on the first l tokens
     shape = torch.tensor(shape, dtype=torch.int32, device=x.device)
     d = x.shape[-1]
     m = len(shape)
+
+    assert (
+        theta.shape[-1] * m >= d
+    ), "dim of theta should be larger than round(d + len(shape) - 1) // len(shape))"
 
     array = [
         torch.arange(n, dtype=torch.int64, device=torch.cuda.current_device())
@@ -45,7 +49,7 @@ def md_lrpe_cosine_torch(x, theta, shape, l=0):
 
 if __name__ == "__main__":
     # unit test
-    from xopes.utils import next_power_of_two
+    pass
 
     shape = tuple([2, 8, 32, 32, 64])
     l = 2
@@ -53,7 +57,7 @@ if __name__ == "__main__":
     h = shape[1]
     d = shape[-1]
     m = len(shape) - 3
-    e = next_power_of_two((d + m - 1) // m)
+    e = (d + m - 1) // m
     dtype = torch.float32
     device = torch.cuda.current_device()
 
