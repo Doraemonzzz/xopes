@@ -19,31 +19,43 @@
     - [x] fwd
 - [x] Lrpe
   - [x] Cosine Triton
-    - [x] Document
-    - [x] fwd
-      - [x] fn
-    - [x] bwd
-      - [x] fn
-    - [x] Add offset
-    - [x] Auto config
-    - [x] Fused act
-- [ ] MdLrpe
-  - [ ] Readme
-  - [x] Cosine Triton
-    - [x] fwd
-      - [x] fn
-    - [x] bwd
-      - [x] fn
-    - [x] Add extra token support
-    - [x] Auto config
-    - [ ] Fused act
-  - [x] Cosine Cache Triton
-    - [x] fwd
-      - [x] fn
-    - [x] bwd
-      - [x] fn
-    - [x] Add extra token support
-    - [x] Auto config
+    - [x] 1d
+      - [x] Readme
+      - [x] fwd
+      - [x] bwd
+      - [x] act
+        - [x] none
+        - [x] silu
+        - [x] relu
+        - [x] softmax, dim=-1
+        - [x] softmax, dim=-2
+      - [x] Add offset
+      - [x] Auto config
+      - [x] Fused act
+    - [ ] md
+      - [x] Readme
+      - [x] Cosine Triton
+        - [x] fwd
+        - [x] bwd
+        - [ ] act
+          - [x] none
+          - [x] silu
+          - [x] relu
+          - [x] softmax, dim=-1
+          - [ ] softmax, dim=-2
+        - [x] Add extra token support
+        - [x] Auto config
+      - [x] Cosine Cache Triton
+        - [x] fwd
+        - [x] bwd
+        - [ ] act
+          - [x] none
+          - [x] silu
+          - [x] relu
+          - [x] softmax, dim=-1
+          - [ ] softmax, dim=-2
+        - [x] Add extra token support
+        - [x] Auto config
 - [ ] Tpe
   - [ ] Triton
 - [ ] Fuse Linear Attention Output Gate (flao)
@@ -69,7 +81,7 @@
     - [x] sigmoid
     - [x] silu
     - [x] none
-    - [ ] softmax
+    - [x] softmax
   - [x] Triton
     - [x] relu
     - [x] sigmoid
