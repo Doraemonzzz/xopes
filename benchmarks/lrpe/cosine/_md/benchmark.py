@@ -6,18 +6,18 @@ import triton
 from einops import pack
 
 from xopes.ops.lrpe.cosine._md import (
-    md_lrpe_cosine_cache_triton,
-    md_lrpe_cosine_torch,
-    md_lrpe_cosine_triton,
+    lrpe_cosine_md_cache_triton,
+    lrpe_cosine_md_torch,
+    lrpe_cosine_md_triton,
 )
 from xopes.utils import get_memory, next_power_of_two
 
 b, h, n, d = 12, 12, 8192, 128
 # b, h, n, d = 1, 12, 8192, 128
-dim = 1
-# dim = 2
-# dim = 3
-l = 0
+# m = 1
+# m = 2
+# m = 3
+# l = 0
 # l = 10
 device = torch.device("cuda")
 
@@ -28,10 +28,10 @@ dtype_map = {
 }
 
 module_map = {
-    "triton": md_lrpe_cosine_triton,
-    "triton_cache": md_lrpe_cosine_cache_triton,
-    "torch": md_lrpe_cosine_torch,
-    "torch_compile": torch.compile(md_lrpe_cosine_torch),
+    "triton": lrpe_cosine_md_triton,
+    "triton_cache": lrpe_cosine_md_cache_triton,
+    "torch": lrpe_cosine_md_torch,
+    "torch_compile": torch.compile(lrpe_cosine_md_torch),
 }
 
 x_vals_map = {
@@ -40,10 +40,14 @@ x_vals_map = {
     3: [2**i for i in range(2, 6)],
 }
 
+act_dim_list = [
+    ["silu", None], ["none", None], ["softmax", None]
+]
+
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        x_vals=x_vals_map[dim],
+        x_vals=[2**i for i in range(4, 8)] if m == 2 else [2**i for i in range(2, 6)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -61,13 +65,15 @@ configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"md_lrpe_cosine-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}-{dim}d-l{l}",
+        plot_name=f"lrpe_cosine_md-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act_dim[0]}-dim_{act_dim[1]}-{dtype_name}-{m}d-l{l}"
+        if act_dim[0] is not None else f"lrpe_cosine_md-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act_dim[0]}-{dtype_name}-{m}d-l{l}",
         args={
             "b": b,
             "h": h,
             "l": l,
             "d": d,
-            "dim": dim,
+            "act_dim": act_dim,
+            "m": m,
             "dtype": dtype_map[dtype_name],
             "device": device,
             "mode": mode,
@@ -77,21 +83,31 @@ configs = [
     for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
+    for m in [2, 3]
+    for l in [0, 10]
+    for act_dim in act_dim_list
+    # witout dim
+    # for act in ["silu", "none"]
+    # for dim in [None]
+    # with dim
+    # for act in ["softmax"]
+    # for dim in [-1, -2]
 ]
 
 
 @triton.testing.perf_report(configs)
-def benchmark(b, h, n, l, d, dim, dtype, device, mode, provider, bench_type="speed"):
+def benchmark(b, h, n, l, d, act_dim, m, dtype, device, mode, provider, bench_type="speed"):
     torch.manual_seed(2024)
     assert mode in ["fwd", "bwd"]
     warmup = 25
     rep = 100
 
-    shape = tuple([b, h] + [n] * dim + [d])
+    act, dim = act_dim
+    shape = tuple([b, h] + [n] * m + [d])
     h = shape[1]
     d = shape[-1]
-    m = len(shape) - 3
-    e = next_power_of_two((d + m - 1) // m)
+    # m = len(shape) - 3
+    e = (d + m - 1) // m
     x = (torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
     x, ps_x = pack([x], "b h * d")
     if l > 0:
@@ -105,7 +121,7 @@ def benchmark(b, h, n, l, d, dim, dtype, device, mode, provider, bench_type="spe
     module = module_map[provider]
 
     try:
-        fn = lambda: module(x, theta, shape=shape[2:-1], l=l)
+        fn = lambda: module(x, theta, shape=shape[2:-1], l=l, act=act, dim=dim)
     except:
         fn = None
 
@@ -145,6 +161,6 @@ def benchmark(b, h, n, l, d, dim, dtype, device, mode, provider, bench_type="spe
         return mb
 
 
-save_path = "stat/md_lrpe_cosine"
+save_path = "stat/lrpe_cosine_md"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
