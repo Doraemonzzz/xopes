@@ -23,7 +23,8 @@ def _lrpe_cosine_md_fwd_triton(
     e: tl.constexpr,
     m: tl.constexpr,
     ACT: tl.constexpr,
-    BLOCK: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -35,15 +36,15 @@ def _lrpe_cosine_md_fwd_triton(
     offset_d = m * e
 
     # compute from the last theta block
-    x_block_ptr = X + offset_x + offset_d + tl.arange(0, BLOCK)
-    theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK)
-    o_cos_block_ptr = O + offset_o + offset_d + tl.arange(0, BLOCK)
-    o_sin_block_ptr = O + offset_o + offset_d + d + tl.arange(0, BLOCK)
+    x_block_ptr = X + offset_x + offset_d + tl.arange(0, BLOCK_E)
+    theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK_E)
+    o_cos_block_ptr = O + offset_o + offset_d + tl.arange(0, BLOCK_E)
+    o_sin_block_ptr = O + offset_o + offset_d + d + tl.arange(0, BLOCK_E)
     # triton only support load block at least 16 elements, use this to get shape
     shape_block_ptr = Shape + m + tl.arange(0, 16)
     shape_mask = tl.arange(0, 16) < 1
     # mask
-    e_mask = tl.arange(0, BLOCK) < e
+    e_mask = tl.arange(0, BLOCK_E) < e
 
     c = off_n - l
     offset = 0
@@ -59,6 +60,15 @@ def _lrpe_cosine_md_fwd_triton(
     #     # concat((x, 0)) = concat(x * cos(0), x * sin(0))
     #     theta_ = tl.zeros((e,), dtype=tl.float32)
 
+    # for softmax act, we should compute max and denominator first
+    if ACT == "softmax":
+        x_block_ptr_ = X + offset_x + tl.arange(0, BLOCK_D)
+        d_mask = tl.arange(0, BLOCK_D) < d
+        x_ = tl.load(x_block_ptr_, mask=d_mask, other=-float("inf")).to(tl.float32)
+        x_max = tl.max(x_, axis=0)
+        numerator_ = tl.exp(x_ - x_max)
+        denominator = tl.sum(numerator_)
+
     for i in range(m):
         # update block ptr
         shape_block_ptr -= 1
@@ -66,7 +76,7 @@ def _lrpe_cosine_md_fwd_triton(
         o_cos_block_ptr -= e
         o_sin_block_ptr -= e
         offset_d -= e
-        mask = ((offset_d + tl.arange(0, BLOCK)) < d) & e_mask
+        mask = ((offset_d + tl.arange(0, BLOCK_E)) < d) & e_mask
 
         # compute dim
         dim = tl.sum(tl.load(shape_block_ptr, mask=shape_mask, other=0).to(tl.int32))
@@ -74,11 +84,10 @@ def _lrpe_cosine_md_fwd_triton(
         c = c // dim
 
         # compute
-        if ACT != "none":
-            if ACT == "softmax":
-                value = -float("inf")
-            else:
-                value = 0
+        if ACT == "softmax":
+            value = -float("inf")
+        else:
+            value = 0
 
         x = tl.load(x_block_ptr, mask=mask, other=value).to(tl.float32)
         if ACT != "none":
@@ -90,10 +99,9 @@ def _lrpe_cosine_md_fwd_triton(
                 x = x * tl.sigmoid(x)
             elif ACT == "softmax":
                 # for stable
-                x_minus_max = x - tl.max(x, axis=0)
+                x_minus_max = x - x_max
                 # softmax
                 numerator = tl.exp(x_minus_max)
-                denominator = tl.sum(numerator)
                 x = numerator / denominator
 
         theta = theta_ * offset
@@ -124,7 +132,8 @@ def _lrpe_cosine_md_bwd_triton(
     e: tl.constexpr,
     m: tl.constexpr,
     ACT: tl.constexpr,
-    BLOCK: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -136,16 +145,16 @@ def _lrpe_cosine_md_bwd_triton(
     offset_d = m * e
 
     # compute from the last theta block
-    theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK)
-    dx_block_ptr = DX + offset_x + offset_d + tl.arange(0, BLOCK)
-    x_block_ptr = X + offset_x + offset_d + tl.arange(0, BLOCK)
-    do_cos_block_ptr = DO + offset_o + offset_d + tl.arange(0, BLOCK)
-    do_sin_block_ptr = DO + offset_o + offset_d + d + tl.arange(0, BLOCK)
+    theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK_E)
+    dx_block_ptr = DX + offset_x + offset_d + tl.arange(0, BLOCK_E)
+    x_block_ptr = X + offset_x + offset_d + tl.arange(0, BLOCK_E)
+    do_cos_block_ptr = DO + offset_o + offset_d + tl.arange(0, BLOCK_E)
+    do_sin_block_ptr = DO + offset_o + offset_d + d + tl.arange(0, BLOCK_E)
     # triton only support load block at least 16 elements, use this to get shape
     shape_block_ptr = Shape + m + tl.arange(0, 16)
     shape_mask = tl.arange(0, 16) < 1
     # mask
-    e_mask = tl.arange(0, BLOCK) < e
+    e_mask = tl.arange(0, BLOCK_E) < e
 
     c = off_n - l
     offset = 0
@@ -169,7 +178,7 @@ def _lrpe_cosine_md_bwd_triton(
         do_cos_block_ptr -= e
         do_sin_block_ptr -= e
         offset_d -= e
-        mask = ((offset_d + tl.arange(0, BLOCK)) < d) & e_mask
+        mask = ((offset_d + tl.arange(0, BLOCK_E)) < d) & e_mask
 
         # compute dim
         dim = tl.sum(tl.load(shape_block_ptr, mask=shape_mask, other=0).to(tl.int32))
@@ -198,19 +207,26 @@ def _lrpe_cosine_md_bwd_triton(
             elif ACT == "silu":
                 sigmoid = tl.sigmoid(x)
                 dx = dx * sigmoid * (1 + x * (1 - sigmoid))
-            elif ACT == "softmax":
-                # for stable
-                x_minus_max = x - tl.max(x, axis=0)
-                # softmax
-                numerator = tl.exp(x_minus_max)
-                denominator = tl.sum(numerator)
-                o = numerator / denominator
-
-                # scalar
-                s = tl.sum(o * dx, axis=0)
-                dx = o * dx - s * o
 
         tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
+
+    # for softmax, since s involves dx, we shoud compute again
+    if ACT == "softmax":
+        x_block_ptr_ = X + offset_x + tl.arange(0, BLOCK_D)
+        d_mask = tl.arange(0, BLOCK_D) < d
+        x_ = tl.load(x_block_ptr_, mask=d_mask, other=-float("inf")).to(tl.float32)
+        x_minus_max = x_ - tl.max(x_, axis=0)
+        numerator = tl.exp(x_minus_max)
+        denominator = tl.sum(numerator)
+        o = numerator / denominator
+
+        dx_block_ptr_ = DX + offset_x + tl.arange(0, BLOCK_D)
+        dx_ = tl.load(dx_block_ptr_, mask=d_mask, other=0).to(tl.float32)
+
+        # compute
+        s = tl.sum(o * dx_, axis=0)
+        dx_ = o * dx_ - s * o
+        tl.store(dx_block_ptr_, dx_.to(dx_block_ptr_.dtype.element_ty), mask=d_mask)
 
 
 class LrpeCosineMdTriton(torch.autograd.Function):
@@ -250,13 +266,14 @@ def lrpe_cosine_md_fwd_triton(x, theta, shape, l=0, act="none", dim=None):
     output_shape[-1] *= 2
 
     o = torch.empty(output_shape, dtype=x.dtype, device=x.device)
-    BLOCK = next_power_of_two(e)
+    BLOCK_D = next_power_of_two(d)
+    BLOCK_E = next_power_of_two(e)
 
     def grid(meta):
         return (b, h, n)
 
     _lrpe_cosine_md_fwd_triton[grid](
-        x, theta, o, shape, b, h, n, l, d, e, m, act, BLOCK
+        x, theta, o, shape, b, h, n, l, d, e, m, act, BLOCK_D, BLOCK_E
     )
 
     return o
@@ -270,13 +287,14 @@ def lrpe_cosine_md_bwd_triton(x, theta, do, shape, l=0, act="none", dim=None, **
     m = len(shape)
 
     dx = torch.empty_like(x)
-    BLOCK = next_power_of_two(e)
+    BLOCK_D = next_power_of_two(d)
+    BLOCK_E = next_power_of_two(e)
 
     def grid(meta):
         return (b, h, n)
 
     _lrpe_cosine_md_bwd_triton[grid](
-        x, theta, do, dx, shape, b, h, n, l, d, e, m, act, BLOCK
+        x, theta, do, dx, shape, b, h, n, l, d, e, m, act, BLOCK_D, BLOCK_E
     )
 
     return dx

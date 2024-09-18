@@ -81,6 +81,6 @@ if __name__ == "__main__":
         do_token = torch.randn((b, h, l, 2 * d), dtype=dtype, device=device)
         do = torch.cat([do_token, do], dim=-2)
 
-    o = lrpe_cosine_md_torch(x, theta, shape=shape[2:-1], l=l)
+    o = lrpe_cosine_md_torch(x, theta, shape=shape[2:-1], l=l, act=act, dim=dim)
 
     o.backward(do)
