@@ -60,7 +60,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [ ] add lrpe 2d;
   - [ ] add lrpe 3d;
   - [ ] add support for 2d, 3d, md lrpe;
-  - [ ] add pad for lrpe;
+  - [x] add feature pad for 1d lrpe;
   - [ ] add act for 2d, 3d, md lrpe;
   - [ ] add act;
     - [ ] add jit act

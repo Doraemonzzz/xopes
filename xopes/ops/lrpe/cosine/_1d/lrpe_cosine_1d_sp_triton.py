@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
-from xopes.utils import contiguous, generate_configs
+from xopes.utils import contiguous, generate_configs, next_power_of_two
 
 
 @triton.autotune(
@@ -20,6 +20,7 @@ def _lrpe_cosine_1d_sp_fwd_triton(
     n: tl.constexpr,
     d: tl.constexpr,
     ACT: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -28,13 +29,20 @@ def _lrpe_cosine_1d_sp_fwd_triton(
     offset_x = off_b * h * n * d + off_h * n * d + off_n * d
     offset_theta = off_h * d
     offset_o = off_b * h * n * 2 * d + off_h * n * 2 * d + off_n * 2 * d
+    # mask
+    d_mask = tl.arange(0, BLOCK) < d
 
-    x_block_ptr = X + offset_x + tl.arange(0, d)
-    theta_block_ptr = Theta + offset_theta + tl.arange(0, d)
-    o_cos_block_ptr = O + offset_o + tl.arange(0, d)
-    o_sin_block_ptr = O + offset_o + d + tl.arange(0, d)
+    x_block_ptr = X + offset_x + tl.arange(0, BLOCK)
+    theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK)
+    o_cos_block_ptr = O + offset_o + tl.arange(0, BLOCK)
+    o_sin_block_ptr = O + offset_o + d + tl.arange(0, BLOCK)
 
-    x = tl.load(x_block_ptr).to(tl.float32)
+    if ACT == "softmax":
+        value = -float("inf")
+    else:
+        value = 0
+
+    x = tl.load(x_block_ptr, mask=d_mask, other=value).to(tl.float32)
     if ACT != "none":
         if ACT == "relu":
             x = tl.where(x >= 0, x, 0)
@@ -50,12 +58,14 @@ def _lrpe_cosine_1d_sp_fwd_triton(
             denominator = tl.sum(numerator)
             x = numerator / denominator
 
-    theta = tl.load(theta_block_ptr).to(tl.float32) * (off_n + offset)
+    theta = tl.load(theta_block_ptr, mask=d_mask, other=0).to(tl.float32) * (
+        off_n + offset
+    )
     o_cos = x * tl.cos(theta)
     o_sin = x * tl.sin(theta)
 
-    tl.store(o_cos_block_ptr, o_cos.to(o_cos_block_ptr.dtype.element_ty))
-    tl.store(o_sin_block_ptr, o_sin.to(o_cos_block_ptr.dtype.element_ty))
+    tl.store(o_cos_block_ptr, o_cos.to(o_cos_block_ptr.dtype.element_ty), mask=d_mask)
+    tl.store(o_sin_block_ptr, o_sin.to(o_cos_block_ptr.dtype.element_ty), mask=d_mask)
 
 
 @triton.autotune(
@@ -74,6 +84,7 @@ def _lrpe_cosine_1d_sp_bwd_triton(
     n: tl.constexpr,
     d: tl.constexpr,
     ACT: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -82,21 +93,31 @@ def _lrpe_cosine_1d_sp_bwd_triton(
     offset_x = off_b * h * n * d + off_h * n * d + off_n * d
     offset_theta = off_h * d
     offset_o = off_b * h * n * 2 * d + off_h * n * 2 * d + off_n * 2 * d
+    # mask
+    d_mask = tl.arange(0, BLOCK) < d
 
-    theta_block_ptr = Theta + offset_theta + tl.arange(0, d)
-    dx_block_ptr = DX + offset_x + tl.arange(0, d)
-    do_cos_block_ptr = DO + offset_o + tl.arange(0, d)
-    do_sin_block_ptr = DO + offset_o + d + tl.arange(0, d)
+    theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK)
+    dx_block_ptr = DX + offset_x + tl.arange(0, BLOCK)
+    do_cos_block_ptr = DO + offset_o + tl.arange(0, BLOCK)
+    do_sin_block_ptr = DO + offset_o + d + tl.arange(0, BLOCK)
 
-    do_cos = tl.load(do_cos_block_ptr).to(tl.float32)
-    do_sin = tl.load(do_sin_block_ptr).to(tl.float32)
+    do_cos = tl.load(do_cos_block_ptr, mask=d_mask, other=0).to(tl.float32)
+    do_sin = tl.load(do_sin_block_ptr, mask=d_mask, other=0).to(tl.float32)
 
-    theta = tl.load(theta_block_ptr).to(tl.float32) * (off_n + offset)
+    theta = tl.load(theta_block_ptr, mask=d_mask, other=0).to(tl.float32) * (
+        off_n + offset
+    )
     dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
 
     if ACT != "none":
-        x_block_ptr = X + offset_x + tl.arange(0, d)
-        x = tl.load(x_block_ptr).to(tl.float32)
+        if ACT == "softmax":
+            value = -float("inf")
+        else:
+            value = 0
+
+        x_block_ptr = X + offset_x + tl.arange(0, BLOCK)
+        x = tl.load(x_block_ptr, mask=d_mask, other=value).to(tl.float32)
+
         if ACT == "relu":
             dx = tl.where(x >= 0, dx, 0)
         elif ACT == "sigmoid":
@@ -117,7 +138,7 @@ def _lrpe_cosine_1d_sp_bwd_triton(
             c = tl.sum(o * dx, axis=0)
             dx = o * dx - c * o
 
-    tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty))
+    tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=d_mask)
 
 
 class LrpeCosine1dSpTriton(torch.autograd.Function):
@@ -149,11 +170,12 @@ def lrpe_cosine_1d_sp_fwd_triton(x, theta, offset=0, act="none", dim=None, **kwa
 
     b, h, n, d = x.shape
     o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
+    BLOCK = next_power_of_two(d)
 
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_1d_sp_fwd_triton[grid](x, theta, o, offset, b, h, n, d, act)
+    _lrpe_cosine_1d_sp_fwd_triton[grid](x, theta, o, offset, b, h, n, d, act, BLOCK)
 
     return o
 
@@ -165,11 +187,14 @@ def lrpe_cosine_1d_sp_bwd_triton(
 
     b, h, n, d = x.shape
     dx = torch.empty_like(x)
+    BLOCK = next_power_of_two(d)
 
     def grid(meta):
         return (b, h, n)
 
-    _lrpe_cosine_1d_sp_bwd_triton[grid](x, theta, do, dx, offset, b, h, n, d, act)
+    _lrpe_cosine_1d_sp_bwd_triton[grid](
+        x, theta, do, dx, offset, b, h, n, d, act, BLOCK
+    )
 
     return dx
 
