@@ -78,8 +78,21 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [x] add act for lrpe cosine md;
     - [x] triton
     - [x] triton cache
-    - [ ] triton block parallel
-      - [ ] left softmax + dim = -2
+    - [x] triton block parallel
+      - [x] left softmax + dim = -2
+        - [ ] left bwd
+  - [ ] add act;
+    - [ ] add jit act
+      - [ ] https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/ops/activations.py
+      - [ ] https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/ops/activations.py
+  - [x] test fused act + lrpe + linear attention with output gate
+    - [ ] left softmax + dim = -2
+    - [ ] lrpe cosine md
+  - [ ] custom benchmark function
+- 240919
+  - [x] add act for lrpe cosine md;
+    - [x] triton block parallel
+      - [ ] left bwd
   - [ ] add act;
     - [ ] add jit act
       - [ ] https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/ops/activations.py
