@@ -80,6 +80,9 @@ def test(shape, l, dtype):
     o_lrpe_cosine_md_cache_triton.backward(do, retain_graph=True)
     dx_lrpe_cosine_md_cache_triton, x.grad = x.grad.clone(), None
 
+    o_lrpe_cosine_md_bp_triton.backward(do, retain_graph=True)
+    dx_lrpe_cosine_md_bp_triton, x.grad = x.grad.clone(), None
+
     atol, rtol = get_threshold(dtype)
 
     # # forward
@@ -91,12 +94,6 @@ def test(shape, l, dtype):
     #     o_lrpe_cosine_md_torch, o_lrpe_cosine_md_cache_triton, atol=atol, rtol=rtol
     # ), f"o diff: {torch.abs(o_lrpe_cosine_md_torch - o_lrpe_cosine_md_cache_triton).max().item()}"
 
-    # print(torch.norm((o_lrpe_cosine_md_torch - o_lrpe_cosine_md_bp_triton)[..., :d]))
-    # print(torch.norm((o_lrpe_cosine_md_torch - o_lrpe_cosine_md_bp_triton)[..., d:]))
-    # print(o_lrpe_cosine_md_bp_triton[-1, -1, -1, :])
-    # print(o_lrpe_cosine_md_torch[-1, -1, -1, :])
-    # print(x.shape, o_lrpe_cosine_md_torch)
-    print(torch.norm((o_lrpe_cosine_md_torch - o_lrpe_cosine_md_bp_triton)[:, :, :l]))
     assert torch.allclose(
         o_lrpe_cosine_md_torch, o_lrpe_cosine_md_bp_triton, atol=atol, rtol=rtol
     ), f"o diff: {torch.abs(o_lrpe_cosine_md_torch - o_lrpe_cosine_md_bp_triton).max().item()}"
@@ -109,3 +106,7 @@ def test(shape, l, dtype):
     # assert torch.allclose(
     #     dx_lrpe_cosine_md_torch, dx_lrpe_cosine_md_cache_triton, atol=atol, rtol=rtol
     # ), f"dx diff: {torch.abs(dx_lrpe_cosine_md_torch - dx_lrpe_cosine_md_cache_triton).max().item()}"
+
+    assert torch.allclose(
+        dx_lrpe_cosine_md_torch, dx_lrpe_cosine_md_bp_triton, atol=atol, rtol=rtol
+    ), f"dx diff: {torch.abs(dx_lrpe_cosine_md_torch - dx_lrpe_cosine_md_bp_triton).max().item()}"

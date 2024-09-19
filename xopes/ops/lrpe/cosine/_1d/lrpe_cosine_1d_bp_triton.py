@@ -212,67 +212,64 @@ def _lrpe_cosine_1d_bp_bwd_triton(
 
     theta_ = tl.load(theta_block_ptr, mask=d_mask[None, :], other=0).to(tl.float32)
 
-    if ACT != "none":
-        if ACT == "softmax":  # compute c first
-            x_block_ptr = (
-                X
-                + offset_x
-                + tl.arange(0, BLOCK_N)[:, None] * d
-                + tl.arange(0, BLOCK_D)[None, :]
-            )
-            x_stat1_block_ptr = (
-                X_STAT1 + off_b * h * d + off_h * d + offset_d + tl.arange(0, BLOCK_D)
-            )
-            x_stat2_block_ptr = (
-                X_STAT2 + off_b * h * d + off_h * d + offset_d + tl.arange(0, BLOCK_D)
-            )
-            x_max = tl.load(x_stat1_block_ptr, mask=d_mask, other=0).to(tl.float32)
-            denominator = tl.load(x_stat2_block_ptr, mask=d_mask, other=1).to(
-                tl.float32
-            )
+    if ACT == "softmax":  # compute c first
+        x_block_ptr = (
+            X
+            + offset_x
+            + tl.arange(0, BLOCK_N)[:, None] * d
+            + tl.arange(0, BLOCK_D)[None, :]
+        )
+        x_stat1_block_ptr = (
+            X_STAT1 + off_b * h * d + off_h * d + offset_d + tl.arange(0, BLOCK_D)
+        )
+        x_stat2_block_ptr = (
+            X_STAT2 + off_b * h * d + off_h * d + offset_d + tl.arange(0, BLOCK_D)
+        )
+        x_max = tl.load(x_stat1_block_ptr, mask=d_mask, other=0).to(tl.float32)
+        denominator = tl.load(x_stat2_block_ptr, mask=d_mask, other=1).to(tl.float32)
 
-            c = tl.zeros([BLOCK_D], dtype=tl.float32)
+        c = tl.zeros([BLOCK_D], dtype=tl.float32)
 
-            for i in range(tl.cdiv(n, BLOCK_N)):
-                n_mask = array < n
-                mask = n_mask[:, None] & d_mask[None, :]
+        for i in range(tl.cdiv(n, BLOCK_N)):
+            n_mask = array < n
+            mask = n_mask[:, None] & d_mask[None, :]
 
-                do_cos = tl.load(do_cos_block_ptr, mask=mask, other=0).to(tl.float32)
-                do_sin = tl.load(do_sin_block_ptr, mask=mask, other=0).to(tl.float32)
+            do_cos = tl.load(do_cos_block_ptr, mask=mask, other=0).to(tl.float32)
+            do_sin = tl.load(do_sin_block_ptr, mask=mask, other=0).to(tl.float32)
 
-                theta = theta_ * (array[:, None] + offset)
-                dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
+            theta = theta_ * (array[:, None] + offset)
+            dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
 
-                x = tl.load(x_block_ptr, mask=mask, other=0).to(tl.float32)
-                # for stable
-                x_minus_max = x - x_max
-                # softmax
-                numerator = tl.exp(x_minus_max)
-                o = numerator / denominator
+            x = tl.load(x_block_ptr, mask=mask, other=0).to(tl.float32)
+            # for stable
+            x_minus_max = x - x_max
+            # softmax
+            numerator = tl.exp(x_minus_max)
+            o = numerator / denominator
 
-                # scalar
-                c += tl.sum(o * dx, axis=0)
+            # scalar
+            c += tl.sum(o * dx, axis=0)
 
-                x_block_ptr += BLOCK_N * d
-                array += BLOCK_N
-                do_cos_block_ptr += BLOCK_N * 2 * d
-                do_sin_block_ptr += BLOCK_N * 2 * d
+            x_block_ptr += BLOCK_N * d
+            array += BLOCK_N
+            do_cos_block_ptr += BLOCK_N * 2 * d
+            do_sin_block_ptr += BLOCK_N * 2 * d
 
-            # reinit
-            do_cos_block_ptr = (
-                DO
-                + offset_o
-                + tl.arange(0, BLOCK_N)[:, None] * 2 * d
-                + tl.arange(0, BLOCK_D)[None, :]
-            )
-            do_sin_block_ptr = (
-                DO
-                + offset_o
-                + d
-                + tl.arange(0, BLOCK_N)[:, None] * 2 * d
-                + tl.arange(0, BLOCK_D)[None, :]
-            )
-            array = tl.arange(0, BLOCK_N)
+        # reinit
+        do_cos_block_ptr = (
+            DO
+            + offset_o
+            + tl.arange(0, BLOCK_N)[:, None] * 2 * d
+            + tl.arange(0, BLOCK_D)[None, :]
+        )
+        do_sin_block_ptr = (
+            DO
+            + offset_o
+            + d
+            + tl.arange(0, BLOCK_N)[:, None] * 2 * d
+            + tl.arange(0, BLOCK_D)[None, :]
+        )
+        array = tl.arange(0, BLOCK_N)
 
     for i in range(tl.cdiv(n, BLOCK_N)):
         n_mask = array < n

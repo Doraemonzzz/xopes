@@ -22,12 +22,12 @@ def get_params():
 
 @pytest.mark.parametrize("shape", get_params())
 # without dim
-@pytest.mark.parametrize("act", ["relu", "sigmoid", "silu"])
-@pytest.mark.parametrize("dim", [None])
+# @pytest.mark.parametrize("act", ["relu", "sigmoid", "silu"])
+# @pytest.mark.parametrize("dim", [None])
 # with dim
-# @pytest.mark.parametrize("act", ["softmax"])
+@pytest.mark.parametrize("act", ["softmax"])
 # @pytest.mark.parametrize("dim", [-1, -2])
-# @pytest.mark.parametrize("dim", [-2])
+@pytest.mark.parametrize("dim", [-2])
 @pytest.mark.parametrize("l", [5])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test(shape, l, act, dim, dtype):

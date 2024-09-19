@@ -15,6 +15,7 @@ def _lrpe_cosine_md_bp_fwd_triton(
     Theta,
     O,
     Shape,
+    ThetaCache,
     X_STAT1,
     X_STAT2,
     b: tl.constexpr,
@@ -37,6 +38,7 @@ def _lrpe_cosine_md_bp_fwd_triton(
     offset_theta = off_h * e
     offset_o = off_b * h * n * 2 * d + off_h * n * 2 * d
     offset_d = m * e
+    offset_theta_cache = off_h * n * d + l * d
 
     if ACT == "softmax":
         value = -float("inf")
@@ -91,6 +93,14 @@ def _lrpe_cosine_md_bp_fwd_triton(
 
     # compute the first l element
     if l > 0:
+        offset_theta_cache_l = off_h * n * d
+        theta_cache_block_ptr_l = (
+            ThetaCache
+            + offset_theta_cache_l
+            + tl.arange(0, BLOCK_L)[:, None]
+            + tl.arange(0, BLOCK_D)[None, :]
+        )
+
         x_block_ptr_l = (
             X
             + offset_x
@@ -137,6 +147,11 @@ def _lrpe_cosine_md_bp_fwd_triton(
         tl.store(
             o_sin_block_ptr_l, zero.to(o_sin_block_ptr_l.dtype.element_ty), mask=ld_mask
         )
+        tl.store(
+            theta_cache_block_ptr_l,
+            zero.to(theta_cache_block_ptr_l.dtype.element_ty),
+            mask=ld_mask,
+        )
 
     # compute from the last theta block
     x_block_ptr = (
@@ -171,8 +186,15 @@ def _lrpe_cosine_md_bp_fwd_triton(
     e_mask = tl.arange(0, BLOCK_E) < e
 
     theta_ = tl.load(theta_block_ptr, mask=e_mask[None, :], other=0).to(tl.float32)
-
     array = tl.arange(0, BLOCK_N)
+    theta_cache_block_ptr = (
+        ThetaCache
+        + offset_theta_cache
+        + offset_d
+        + tl.arange(0, BLOCK_N)[:, None] * e
+        + tl.arange(0, BLOCK_E)[None, :]
+    )
+
     for i in range(tl.cdiv(n - l, BLOCK_N)):
         n_mask = array < n - l  # !!! important
         c = array[:, None]
@@ -195,13 +217,15 @@ def _lrpe_cosine_md_bp_fwd_triton(
                 + tl.arange(0, BLOCK_E)[None, :]
             )
 
-        for i in range(m):
+        for j in range(m):
             # update block ptr
             shape_block_ptr -= 1
             x_block_ptr -= e
             o_cos_block_ptr -= e
             o_sin_block_ptr -= e
             offset_d -= e
+            theta_cache_block_ptr -= e
+
             de_mask = ((offset_d + tl.arange(0, BLOCK_E)) < d) & e_mask
             mask = n_mask[:, None] & de_mask[None, :]
 
@@ -246,6 +270,12 @@ def _lrpe_cosine_md_bp_fwd_triton(
             tl.store(
                 o_sin_block_ptr, o_sin.to(o_sin_block_ptr.dtype.element_ty), mask=mask
             )
+            if i == 0:
+                tl.store(
+                    theta_cache_block_ptr,
+                    theta.to(theta_cache_block_ptr.dtype.element_ty),
+                    mask=mask,
+                )
 
         x_block_ptr += BLOCK_N * d + e * m
         array += BLOCK_N
@@ -264,6 +294,9 @@ def _lrpe_cosine_md_bp_bwd_triton(
     DO,
     DX,
     Shape,
+    ThetaCache,
+    X_STAT1,
+    X_STAT2,
     b: tl.constexpr,
     h: tl.constexpr,
     n: tl.constexpr,
@@ -277,68 +310,121 @@ def _lrpe_cosine_md_bp_bwd_triton(
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
-    off_n = tl.program_id(2)
     # compute offset
-    offset_x = off_b * h * n * d + off_h * n * d + off_n * d
-    offset_theta = off_h * e
-    offset_o = off_b * h * n * 2 * d + off_h * n * 2 * d + off_n * 2 * d
-    offset_d = m * e
-
-    # compute from the last theta block
-    theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK_E)
-    dx_block_ptr = DX + offset_x + offset_d + tl.arange(0, BLOCK_E)
-    x_block_ptr = X + offset_x + offset_d + tl.arange(0, BLOCK_E)
-    do_cos_block_ptr = DO + offset_o + offset_d + tl.arange(0, BLOCK_E)
-    do_sin_block_ptr = DO + offset_o + offset_d + d + tl.arange(0, BLOCK_E)
-    # triton only support load block at least 16 elements, use this to get shape
-    shape_block_ptr = Shape + m + tl.arange(0, 16)
-    shape_mask = tl.arange(0, 16) < 1
-    # mask
-    e_mask = tl.arange(0, BLOCK_E) < e
-
-    c = off_n - l
-    offset = 0
-
-    n_mask = c >= 0
-    theta_ = tl.load(theta_block_ptr, mask=e_mask & n_mask[None], other=0).to(
-        tl.float32
+    offset_x = off_b * h * n * d + off_h * n * d
+    offset_o = off_b * h * n * 2 * d + off_h * n * 2 * d
+    offset_theta_cache = off_h * n * d
+    # compute block ptr
+    theta_block_ptr = (
+        ThetaCache
+        + offset_theta_cache
+        + tl.arange(0, BLOCK_N) * d
+        + tl.arange(0, BLOCK_D)[None, :]
     )
-    # this is equivalent to:
-    # if off_n >= l:
-    #     theta_ = tl.load(theta_block_ptr).to(tl.float32)
-    # else:
-    #     # concat((x, 0)) = concat(x * cos(0), x * sin(0))
-    #     theta_ = tl.zeros((e,), dtype=tl.float32)
+    dx_block_ptr = (
+        DX
+        + offset_x
+        + tl.arange(0, BLOCK_N)[:, None] * d
+        + tl.arange(0, BLOCK_D)[None, :]
+    )
+    do_cos_block_ptr = (
+        DO
+        + offset_o
+        + tl.arange(0, BLOCK_N)[:, None] * 2 * d
+        + tl.arange(0, BLOCK_D)[None, :]
+    )
+    do_sin_block_ptr = (
+        DO
+        + offset_o
+        + d
+        + tl.arange(0, BLOCK_N)[:, None] * 2 * d
+        + tl.arange(0, BLOCK_D)[None, :]
+    )
+    array = tl.arange(0, BLOCK_N)
+    # mask
+    d_mask = tl.arange(0, BLOCK_D) < d
 
-    for i in range(m):
-        # update block ptr
-        shape_block_ptr -= 1
-        dx_block_ptr -= e
-        x_block_ptr -= e
-        do_cos_block_ptr -= e
-        do_sin_block_ptr -= e
-        offset_d -= e
-        mask = ((offset_d + tl.arange(0, BLOCK_E)) < d) & e_mask
+    if ACT == "softmax":  # compute c first
+        x_block_ptr = (
+            X
+            + offset_x
+            + tl.arange(0, BLOCK_N)[:, None] * d
+            + tl.arange(0, BLOCK_D)[None, :]
+        )
+        x_stat1_block_ptr = X_STAT1 + off_b * h * d + off_h * d + tl.arange(0, BLOCK_D)
+        x_stat2_block_ptr = X_STAT2 + off_b * h * d + off_h * d + tl.arange(0, BLOCK_D)
+        x_max = tl.load(x_stat1_block_ptr, mask=d_mask, other=0).to(tl.float32)
+        denominator = tl.load(x_stat2_block_ptr, mask=d_mask, other=1).to(tl.float32)
 
-        # compute dim
-        dim = tl.sum(tl.load(shape_block_ptr, mask=shape_mask, other=0).to(tl.int32))
-        offset = c % dim
-        c = c // dim
+        c = tl.zeros([BLOCK_D], dtype=tl.float32)
 
-        # compute
+        for i in range(tl.cdiv(n, BLOCK_N)):
+            n_mask = array < n
+            mask = n_mask[:, None] & d_mask[None, :]
+
+            do_cos = tl.load(do_cos_block_ptr, mask=mask, other=0).to(tl.float32)
+            do_sin = tl.load(do_sin_block_ptr, mask=mask, other=0).to(tl.float32)
+            theta = tl.load(theta_block_ptr, mask=mask, other=0).to(tl.float32)
+
+            dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
+
+            x = tl.load(x_block_ptr, mask=mask, other=0).to(tl.float32)
+            # for stable
+            x_minus_max = x - x_max
+            # softmax
+            numerator = tl.exp(x_minus_max)
+            o = numerator / denominator
+
+            # scalar
+            c += tl.sum(o * dx, axis=0)
+
+            x_block_ptr += BLOCK_N * d
+            array += BLOCK_N
+            do_cos_block_ptr += BLOCK_N * 2 * d
+            do_sin_block_ptr += BLOCK_N * 2 * d
+            theta_block_ptr += BLOCK_N * d
+
+        # reinit
+        do_cos_block_ptr = (
+            DO
+            + offset_o
+            + tl.arange(0, BLOCK_N)[:, None] * 2 * d
+            + tl.arange(0, BLOCK_D)[None, :]
+        )
+        do_sin_block_ptr = (
+            DO
+            + offset_o
+            + d
+            + tl.arange(0, BLOCK_N)[:, None] * 2 * d
+            + tl.arange(0, BLOCK_D)[None, :]
+        )
+        array = tl.arange(0, BLOCK_N)
+        theta_block_ptr = (
+            ThetaCache
+            + offset_theta_cache
+            + tl.arange(0, BLOCK_N) * d
+            + tl.arange(0, BLOCK_D)[None, :]
+        )
+
+    for i in range(tl.cdiv(n, BLOCK_N)):
+        n_mask = array < n
+        mask = n_mask[:, None] & d_mask[None, :]
+
         do_cos = tl.load(do_cos_block_ptr, mask=mask, other=0).to(tl.float32)
         do_sin = tl.load(do_sin_block_ptr, mask=mask, other=0).to(tl.float32)
-        theta = theta_ * offset
+        theta = tl.load(theta_block_ptr, mask=mask, other=0).to(tl.float32)
+
         dx = do_cos * tl.cos(theta) + do_sin * tl.sin(theta)
 
         if ACT != "none":
-            if ACT == "softmax":
-                value = -float("inf")
-            else:
-                value = 0
-
-            x = tl.load(x_block_ptr, mask=mask, other=value).to(tl.float32)
-
+            x_block_ptr = (
+                X
+                + offset_x
+                + i * BLOCK_N * d
+                + tl.arange(0, BLOCK_N)[:, None] * d
+                + tl.arange(0, BLOCK_D)[None, :]
+            )
+            x = tl.load(x_block_ptr, mask=mask, other=0).to(tl.float32)
             if ACT == "relu":
                 dx = tl.where(x >= 0, dx, 0)
             elif ACT == "sigmoid":
@@ -347,35 +433,33 @@ def _lrpe_cosine_md_bp_bwd_triton(
             elif ACT == "silu":
                 sigmoid = tl.sigmoid(x)
                 dx = dx * sigmoid * (1 + x * (1 - sigmoid))
+            elif ACT == "softmax":
+                # for stable
+                x_minus_max = x - x_max
+                # softmax
+                numerator = tl.exp(x_minus_max)
+                o = numerator / denominator
+                # scalar
+                dx = o * dx - c * o
 
         tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
 
-    # for softmax, since s involves dx, we shoud compute again
-    if ACT == "softmax":
-        x_block_ptr_ = X + offset_x + tl.arange(0, BLOCK_D)
-        d_mask = tl.arange(0, BLOCK_D) < d
-        x_ = tl.load(x_block_ptr_, mask=d_mask, other=-float("inf")).to(tl.float32)
-        x_minus_max = x_ - tl.max(x_, axis=0)
-        numerator = tl.exp(x_minus_max)
-        denominator = tl.sum(numerator)
-        o = numerator / denominator
-
-        dx_block_ptr_ = DX + offset_x + tl.arange(0, BLOCK_D)
-        dx_ = tl.load(dx_block_ptr_, mask=d_mask, other=0).to(tl.float32)
-
-        # compute
-        s = tl.sum(o * dx_, axis=0)
-        dx_ = o * dx_ - s * o
-        tl.store(dx_block_ptr_, dx_.to(dx_block_ptr_.dtype.element_ty), mask=d_mask)
+        dx_block_ptr += BLOCK_N * d
+        array += BLOCK_N
+        do_cos_block_ptr += BLOCK_N * 2 * d
+        do_sin_block_ptr += BLOCK_N * 2 * d
+        theta_block_ptr += BLOCK_N * d
 
 
 class LrpeCosineMdBpTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, theta, shape, l=0, act="none", dim=None):
-        o, x_stat1, x_stat2 = lrpe_cosine_md_bp_fwd_triton(x, theta, shape, l, act, dim)
+        o, theta_cache, x_stat1, x_stat2 = lrpe_cosine_md_bp_fwd_triton(
+            x, theta, shape, l, act, dim
+        )
 
-        ctx.save_for_backward(x, theta, shape, x_stat1, x_stat2)
+        ctx.save_for_backward(x, theta, shape, theta_cache, x_stat1, x_stat2)
         ctx.l = l
         ctx.act = act
         ctx.dim = dim
@@ -385,12 +469,14 @@ class LrpeCosineMdBpTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def backward(ctx, do):
-        x, theta, shape, x_stat1, x_stat2 = ctx.saved_tensors
+        x, theta, shape, theta_cache, x_stat1, x_stat2 = ctx.saved_tensors
         l = ctx.l
         act = ctx.act
         dim = ctx.dim
 
-        dx = lrpe_cosine_md_bp_bwd_triton(x, theta, do, shape, l, act, dim)
+        dx = lrpe_cosine_md_bp_bwd_triton(
+            x, theta, do, shape, theta_cache, x_stat1, x_stat2, l, act, dim
+        )
 
         return dx, None, None, None, None, None
 
@@ -407,6 +493,7 @@ def lrpe_cosine_md_bp_fwd_triton(x, theta, shape, l=0, act="none", dim=None):
     output_shape[-1] *= 2
 
     o = torch.empty(output_shape, dtype=x.dtype, device=x.device)
+    theta_cache = torch.empty((h, n, d), dtype=torch.float32, device=theta.device)
     x_stat1 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
     x_stat2 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
 
@@ -422,6 +509,7 @@ def lrpe_cosine_md_bp_fwd_triton(x, theta, shape, l=0, act="none", dim=None):
         theta,
         o,
         shape,
+        theta_cache,
         x_stat1,
         x_stat2,
         b,
@@ -437,11 +525,21 @@ def lrpe_cosine_md_bp_fwd_triton(x, theta, shape, l=0, act="none", dim=None):
         BLOCK_L,
     )
 
-    return o, x_stat1, x_stat2
+    return o, theta_cache, x_stat1, x_stat2
 
 
 def lrpe_cosine_md_bp_bwd_triton(
-    x, theta, do, shape, l=0, act="none", dim=None, **kwargs
+    x,
+    theta,
+    do,
+    shape,
+    theta_cache,
+    x_stat1,
+    x_stat2,
+    l=0,
+    act="none",
+    dim=None,
+    **kwargs,
 ):
     assert act in ACT_SET, f"act: {act} not in {ACT_SET}"
     assert dim in [-2, None], "dim must in [-2, None]"
@@ -459,7 +557,25 @@ def lrpe_cosine_md_bp_bwd_triton(
         return (b, h, n)
 
     _lrpe_cosine_md_bp_bwd_triton[grid](
-        x, theta, do, dx, shape, b, h, n, l, d, e, m, act, BLOCK_D, BLOCK_E, BLOCK_L
+        x,
+        theta,
+        do,
+        dx,
+        shape,
+        theta_cache,
+        x_stat1,
+        x_stat2,
+        b,
+        h,
+        n,
+        l,
+        d,
+        e,
+        m,
+        act,
+        BLOCK_D,
+        BLOCK_E,
+        BLOCK_L,
     )
 
     return dx
@@ -513,4 +629,4 @@ if __name__ == "__main__":
     dim = -2
 
     o = lrpe_cosine_md_bp_triton(x, theta, shape=shape[2:-1], act=act, dim=dim)
-    # o.backward(do)
+    o.backward(do)

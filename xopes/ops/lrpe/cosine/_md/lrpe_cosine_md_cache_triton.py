@@ -14,8 +14,8 @@ def _lrpe_cosine_md_cache_fwd_triton(
     X,
     Theta,
     O,
-    ThetaCache,
     Shape,
+    ThetaCache,
     b: tl.constexpr,
     h: tl.constexpr,
     n: tl.constexpr,
@@ -132,10 +132,10 @@ def _lrpe_cosine_md_cache_fwd_triton(
 def _lrpe_cosine_md_cache_bwd_triton(
     X,
     Theta,
-    ThetaCache,
     DO,
     DX,
     Shape,
+    ThetaCache,
     b: tl.constexpr,
     h: tl.constexpr,
     n: tl.constexpr,
@@ -223,7 +223,7 @@ class LrpeCosineMdCacheTriton(torch.autograd.Function):
         dim = ctx.dim
 
         dx = lrpe_cosine_md_cache_bwd_triton(
-            x, theta, theta_cache, do, shape, l, act, dim
+            x, theta, do, shape, theta_cache, l, act, dim
         )
 
         return dx, None, None, None, None, None
@@ -251,14 +251,14 @@ def lrpe_cosine_md_cache_fwd_triton(
         return (b, h, n)
 
     _lrpe_cosine_md_cache_fwd_triton[grid](
-        x, theta, o, theta_cache, shape, b, h, n, l, d, e, m, act, BLOCK_D, BLOCK_E
+        x, theta, o, shape, theta_cache, b, h, n, l, d, e, m, act, BLOCK_D, BLOCK_E
     )
 
     return o, theta_cache
 
 
 def lrpe_cosine_md_cache_bwd_triton(
-    x, theta, theta_cache, do, shape, l=0, act="none", dim=None, **kwargs
+    x, theta, do, shape, theta_cache, l=0, act="none", dim=None, **kwargs
 ):
     assert act in ACT_SET, f"act: {act} not in {ACT_SET}"
     assert dim in [-1, None], "dim must in [-1, None]"
@@ -275,7 +275,7 @@ def lrpe_cosine_md_cache_bwd_triton(
         return (b, h, n)
 
     _lrpe_cosine_md_cache_bwd_triton[grid](
-        x, theta, theta_cache, do, dx, shape, b, h, n, d, e, m, act, BLOCK_D, BLOCK_E
+        x, theta, do, dx, shape, theta_cache, b, h, n, d, e, m, act, BLOCK_D, BLOCK_E
     )
 
     return dx
