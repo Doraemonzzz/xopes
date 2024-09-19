@@ -351,12 +351,11 @@ def lrpe_cosine_1d_bp_fwd_triton(x, theta, offset=0, act="none", dim=None, **kwa
 
     b, h, n, d = x.shape
     o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
+    x_stat1 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
+    x_stat2 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
 
     def grid(meta):
         return (b, h, triton.cdiv(d, meta["BLOCK_D"]))
-
-    x_stat1 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
-    x_stat2 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
 
     _lrpe_cosine_1d_bp_fwd_triton[grid](
         x, theta, o, x_stat1, x_stat2, offset, b, h, n, d, act

@@ -1,3 +1,4 @@
+from .lrpe_cosine_md_bp_triton import lrpe_cosine_md_bp_triton
 from .lrpe_cosine_md_cache_triton import (
     lrpe_cosine_md_cache_bwd_triton,
     lrpe_cosine_md_cache_fwd_triton,

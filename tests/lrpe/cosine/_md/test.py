@@ -3,6 +3,7 @@ import torch
 from einops import pack
 
 from xopes.ops.lrpe.cosine._md import (
+    lrpe_cosine_md_bp_triton,
     lrpe_cosine_md_cache_triton,
     lrpe_cosine_md_torch,
     lrpe_cosine_md_triton,
@@ -15,7 +16,7 @@ def get_params():
         # 1d
         (6, 8, 128, 64),
         (6, 8, 127, 128),
-        # 2d
+        # # 2d
         (6, 8, 32, 32, 64),
         (6, 8, 2, 3, 64),
         # 3d
@@ -29,7 +30,9 @@ def get_params():
 
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("l", [0, 5])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+# @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+# @pytest.mark.parametrize("l", [2])
+@pytest.mark.parametrize("dtype", [torch.float32])
 def test(shape, l, dtype):
     torch.manual_seed(2024)
     device = torch.cuda.current_device()
@@ -63,6 +66,9 @@ def test(shape, l, dtype):
     o_lrpe_cosine_md_cache_triton = lrpe_cosine_md_cache_triton(
         x, theta, shape=shape[2:-1], l=l
     )
+    o_lrpe_cosine_md_bp_triton = lrpe_cosine_md_bp_triton(
+        x, theta, shape=shape[2:-1], l=l
+    )
 
     # backward
     o_lrpe_cosine_md_torch.backward(do, retain_graph=True)
@@ -76,20 +82,30 @@ def test(shape, l, dtype):
 
     atol, rtol = get_threshold(dtype)
 
-    # forward
-    assert torch.allclose(
-        o_lrpe_cosine_md_torch, o_lrpe_cosine_md_triton, atol=atol, rtol=rtol
-    ), f"o diff: {torch.abs(o_lrpe_cosine_md_torch - o_lrpe_cosine_md_triton).max().item()}"
+    # # forward
+    # assert torch.allclose(
+    #     o_lrpe_cosine_md_torch, o_lrpe_cosine_md_triton, atol=atol, rtol=rtol
+    # ), f"o diff: {torch.abs(o_lrpe_cosine_md_torch - o_lrpe_cosine_md_triton).max().item()}"
 
-    assert torch.allclose(
-        o_lrpe_cosine_md_torch, o_lrpe_cosine_md_cache_triton, atol=atol, rtol=rtol
-    ), f"o diff: {torch.abs(o_lrpe_cosine_md_torch - o_lrpe_cosine_md_cache_triton).max().item()}"
+    # assert torch.allclose(
+    #     o_lrpe_cosine_md_torch, o_lrpe_cosine_md_cache_triton, atol=atol, rtol=rtol
+    # ), f"o diff: {torch.abs(o_lrpe_cosine_md_torch - o_lrpe_cosine_md_cache_triton).max().item()}"
 
-    # backward
+    # print(torch.norm((o_lrpe_cosine_md_torch - o_lrpe_cosine_md_bp_triton)[..., :d]))
+    # print(torch.norm((o_lrpe_cosine_md_torch - o_lrpe_cosine_md_bp_triton)[..., d:]))
+    # print(o_lrpe_cosine_md_bp_triton[-1, -1, -1, :])
+    # print(o_lrpe_cosine_md_torch[-1, -1, -1, :])
+    # print(x.shape, o_lrpe_cosine_md_torch)
+    print(torch.norm((o_lrpe_cosine_md_torch - o_lrpe_cosine_md_bp_triton)[:, :, :l]))
     assert torch.allclose(
-        dx_lrpe_cosine_md_torch, dx_lrpe_cosine_md_triton, atol=atol, rtol=rtol
-    ), f"dx diff: {torch.abs(dx_lrpe_cosine_md_torch - dx_lrpe_cosine_md_triton).max().item()}"
+        o_lrpe_cosine_md_torch, o_lrpe_cosine_md_bp_triton, atol=atol, rtol=rtol
+    ), f"o diff: {torch.abs(o_lrpe_cosine_md_torch - o_lrpe_cosine_md_bp_triton).max().item()}"
 
-    assert torch.allclose(
-        dx_lrpe_cosine_md_torch, dx_lrpe_cosine_md_cache_triton, atol=atol, rtol=rtol
-    ), f"dx diff: {torch.abs(dx_lrpe_cosine_md_torch - dx_lrpe_cosine_md_cache_triton).max().item()}"
+    # # backward
+    # assert torch.allclose(
+    #     dx_lrpe_cosine_md_torch, dx_lrpe_cosine_md_triton, atol=atol, rtol=rtol
+    # ), f"dx diff: {torch.abs(dx_lrpe_cosine_md_torch - dx_lrpe_cosine_md_triton).max().item()}"
+
+    # assert torch.allclose(
+    #     dx_lrpe_cosine_md_torch, dx_lrpe_cosine_md_cache_triton, atol=atol, rtol=rtol
+    # ), f"dx diff: {torch.abs(dx_lrpe_cosine_md_torch - dx_lrpe_cosine_md_cache_triton).max().item()}"

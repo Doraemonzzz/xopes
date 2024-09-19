@@ -308,6 +308,7 @@ def lrpe_cosine_md_triton(x, theta, shape, l=0, act="none", dim=None, **kwargs):
     # shape: n1, ... , nm
     # l: we do not do lrpe cosine on the first l tokens
     assert act in ACT_SET, f"act: {act} not in {ACT_SET}"
+    assert dim in [-1, None], "dim must in [-1, None]"
     shape = torch.tensor(shape, dtype=torch.int32, device=x.device)
     assert (
         theta.shape[-1] * len(shape) >= x.shape[-1]
