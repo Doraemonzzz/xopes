@@ -4,11 +4,16 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops import multinomial_torch, online_multinomial_torch
+from xopes.ops import (
+    multinomial_torch,
+    online_multinomial_torch,
+    online_with_cache_multinomial_torch,
+)
 from xopes.utils import get_memory
 
 b, d = 12, 4096
 num_samples = 1
+num_samples = 2048
 device = torch.device("cuda")
 
 dtype_map = {
@@ -19,19 +24,22 @@ dtype_map = {
 
 module_map = {
     "torch": multinomial_torch,
-    "online_torch": online_multinomial_torch,
-    "online_torch_c": torch.compile(online_multinomial_torch),
+    "owc_t": online_with_cache_multinomial_torch,
+    "owc_t_c": torch.compile(online_with_cache_multinomial_torch),
+    "o_t": online_multinomial_torch,
+    "o_t_c": torch.compile(online_multinomial_torch),
 }
 
 configs = [
     triton.testing.Benchmark(
         x_names=["V"],
-        x_vals=[2**i for i in range(10, 20)],
+        # x_vals=[2**i for i in range(10, 20)],
+        x_vals=[2**i for i in range(10, 14)],
         xlabel="Vocab Size",
         ylabel="Execution Time(ms)",
         line_arg="provider",
-        line_vals=["torch", "online_torch", "online_torch_c"],
-        line_names=["Torch", "Online_Torch", "Online_Torch_C"],
+        line_vals=["torch", "owc_t", "owc_t_c", "o_t", "o_t_c"],
+        line_names=["Torch", "Owc_T", "Owc_T_C", "O_T", "O_T_C"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -39,7 +47,7 @@ configs = [
             ("blue", "-"),
             ("black", "-"),
         ],
-        plot_name=f"multinomial-{bench_type}-{mode}-batch{b}-dim{d}-num${num_samples}-{dtype_name}",
+        plot_name=f"multinomial-{bench_type}-{mode}-batch{b}-dim{d}-num{num_samples}-{dtype_name}",
         args={
             "b": b,
             "d": d,
@@ -53,7 +61,7 @@ configs = [
     for mode in [
         "fwd",
     ]
-    for dtype_name in ["bf16"]
+    for dtype_name in ["fp32"]
     for bench_type in ["speed", "memory"]
 ]
 
