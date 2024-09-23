@@ -1,0 +1,2 @@
+from .multinomial_torch import multinomial_torch
+from .online_multinomial_torch import online_multinomial_torch
