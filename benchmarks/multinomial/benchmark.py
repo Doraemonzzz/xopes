@@ -7,13 +7,14 @@ import triton
 from xopes.ops import (
     multinomial_torch,
     online_multinomial_torch,
+    online_multinomial_triton,
     online_with_cache_multinomial_torch,
 )
 from xopes.utils import get_memory
 
 b, d = 12, 4096
 num_samples = 1
-num_samples = 2048
+# num_samples = 2048
 device = torch.device("cuda")
 
 dtype_map = {
@@ -28,6 +29,7 @@ module_map = {
     "owc_t_c": torch.compile(online_with_cache_multinomial_torch),
     "o_t": online_multinomial_torch,
     "o_t_c": torch.compile(online_multinomial_torch),
+    "triton": online_multinomial_triton,
 }
 
 configs = [
@@ -38,14 +40,15 @@ configs = [
         xlabel="Vocab Size",
         ylabel="Execution Time(ms)",
         line_arg="provider",
-        line_vals=["torch", "owc_t", "owc_t_c", "o_t", "o_t_c"],
-        line_names=["Torch", "Owc_T", "Owc_T_C", "O_T", "O_T_C"],
+        line_vals=["torch", "owc_t", "owc_t_c", "o_t", "o_t_c", "triton"],
+        line_names=["Torch", "Owc_T", "Owc_T_C", "O_T", "O_T_C", "Triton"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
             ("green", "-"),
             ("blue", "-"),
             ("black", "-"),
+            ("purple", "-"),
         ],
         plot_name=f"multinomial-{bench_type}-{mode}-batch{b}-dim{d}-num{num_samples}-{dtype_name}",
         args={

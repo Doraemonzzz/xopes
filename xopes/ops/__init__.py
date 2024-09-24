@@ -21,5 +21,6 @@ from .lrpe import lrpe_bwd, lrpe_fn, lrpe_fwd
 from .multinomial import (
     multinomial_torch,
     online_multinomial_torch,
+    online_multinomial_triton,
     online_with_cache_multinomial_torch,
 )
