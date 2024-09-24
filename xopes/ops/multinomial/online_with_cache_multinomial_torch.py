@@ -20,7 +20,7 @@ def online_with_cache_multinomial_torch(x, W, num_samples, block_size=128):
         logits = torch.matmul(x, weight)
         lse = torch.logsumexp(logits, dim=-1, keepdim=True)
         prob = torch.exp(logits - lse)
-        sample = torch.multinomial(prob, num_samples, replacement=True)
+        sample = start + torch.multinomial(prob, num_samples, replacement=True)
 
         sample_list.append(sample)
         lse_list.append(lse)

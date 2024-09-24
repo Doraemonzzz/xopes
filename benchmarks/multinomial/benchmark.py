@@ -77,7 +77,7 @@ def benchmark(
     assert mode in ["fwd", "bwd"]
     warmup = 25
     rep = 100
-    x = torch.randn((b, d), dtype=dtype, device=device).requires_grad_()
+    x = torch.randn((b, d), dtype=dtype, device=device)
     weight = torch.randn((d, V), dtype=dtype, device=device)
 
     module = module_map[provider]

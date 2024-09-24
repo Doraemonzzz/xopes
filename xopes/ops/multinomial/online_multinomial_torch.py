@@ -28,9 +28,13 @@ def online_multinomial_torch(
         # sample current block
         logits_curr = torch.matmul(x, weight)
         lse_curr = torch.logsumexp(logits_curr, dim=-1, keepdim=True)
-        max_value_curr = torch.max(logits_curr, dim=-1, keepdim=True).values
+        max_value_curr = torch.max(logits_curr, dim=-1, keepdim=True).values.to(
+            max_value.dtype
+        )
         prob_curr = torch.exp(logits_curr - lse_curr)
-        sample_curr = torch.multinomial(prob_curr, num_samples, replacement=True)
+        sample_curr = start + torch.multinomial(
+            prob_curr, num_samples, replacement=True
+        )
 
         # sample by binomial
         # m = max(ma, mb)
@@ -42,12 +46,13 @@ def online_multinomial_torch(
             + max_value
         )
         prob = torch.exp(lse_curr - lse)
-        # x = 0: sample_curr
-        # x = 1: sample
-        index = torch.multinomial(prob, num_samples, replacement=True)
+
+        # x = 1: sample_curr
+        # x = 0: sample
+        index = (torch.rand(b, num_samples, device=x.device) < prob).to(torch.int64)
         mask = index == 1
         sample[mask] = sample_curr[mask]
-
+    print(sample)
     return sample
 
 
