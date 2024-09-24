@@ -107,7 +107,7 @@ def _online_multinomial_triton(
         # sample by multinomial
         max_value_curr = tl.max(logits, axis=1)[:, None]
         numerator = tl.exp(logits - max_value_curr)
-        denominator = tl.sum(numerator, axis=1)[:, None] + 1e-5
+        denominator = tl.sum(numerator, axis=1)[:, None]
         # lse(x) = lse(x - a) + a
         lse_curr = tl.log(denominator) + max_value_curr
         prob_curr = numerator / denominator

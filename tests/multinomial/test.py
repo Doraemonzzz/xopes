@@ -6,12 +6,13 @@ from xopes.ops.multinomial import (
     online_multinomial_torch,
     online_multinomial_triton,
     online_with_cache_multinomial_torch,
+    parallel_multinomial_triton,
 )
 from xopes.utils import get_threshold
 
 
 def get_params():
-    shape = [(12, 4096, 2048)(12, 16, 16)(12, 16, 256)]
+    shape = [(12, 4096, 2048), (12, 16, 16), (12, 16, 256)]
 
     return shape
 
@@ -31,7 +32,6 @@ def test(shape, num_samples, dtype, n):
     for i in range(n):
         # for i in [6]:
         W = torch.full((d, V), fill_value=value, dtype=dtype, device=device)
-        # index = torch.randint(0, V, (1, 1), dtype=torch.int64, device=device)
         index = torch.tensor([i * v], dtype=torch.int64, device=device)
         W[:, index] = 1
 
@@ -42,6 +42,7 @@ def test(shape, num_samples, dtype, n):
             x, W, num_samples
         )
         sample_online_triton = online_multinomial_triton(x, W, num_samples)
+        sample_parallel_triton = parallel_multinomial_triton(x, W, num_samples)
 
         atol, rtol = get_threshold(dtype)
 
@@ -56,3 +57,7 @@ def test(shape, num_samples, dtype, n):
         assert torch.allclose(
             sample_torch, sample_online_triton, atol=atol, rtol=rtol
         ), f"o diff: {torch.abs(sample_torch - sample_online_triton).max().item()}"
+
+        assert torch.allclose(
+            sample_torch, sample_parallel_triton, atol=atol, rtol=rtol
+        ), f"o diff: {torch.abs(sample_torch - sample_parallel_triton).max().item()}"
