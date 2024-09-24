@@ -12,7 +12,9 @@ from xopes.ops import (
 )
 from xopes.utils import get_memory
 
-b, d = 12, 4096
+torch._dynamo.config.suppress_errors = True
+
+b, d = 12 * 2048, 4096
 num_samples = 1
 # num_samples = 2048
 device = torch.device("cuda")
@@ -40,8 +42,10 @@ configs = [
         xlabel="Vocab Size",
         ylabel="Execution Time(ms)",
         line_arg="provider",
-        line_vals=["torch", "owc_t", "owc_t_c", "o_t", "o_t_c", "triton"],
-        line_names=["Torch", "Owc_T", "Owc_T_C", "O_T", "O_T_C", "Triton"],
+        # line_vals=["torch", "owc_t", "owc_t_c", "o_t", "o_t_c", "triton"],
+        # line_names=["Torch", "Owc_T", "Owc_T_C", "O_T", "O_T_C", "Triton"],
+        line_vals=["torch", "owc_t", "o_t", "triton"],
+        line_names=["Torch", "Owc_T", "O_T", "Triton"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -64,7 +68,7 @@ configs = [
     for mode in [
         "fwd",
     ]
-    for dtype_name in ["fp32"]
+    for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
 ]
 

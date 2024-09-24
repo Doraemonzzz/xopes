@@ -32,6 +32,7 @@ def online_multinomial_torch(
             max_value.dtype
         )
         prob_curr = torch.exp(logits_curr - lse_curr)
+
         sample_curr = start + torch.multinomial(
             prob_curr, num_samples, replacement=True
         )
@@ -52,7 +53,7 @@ def online_multinomial_torch(
         index = (torch.rand(b, num_samples, device=x.device) < prob).to(torch.int64)
         mask = index == 1
         sample[mask] = sample_curr[mask]
-    print(sample)
+
     return sample
 
 

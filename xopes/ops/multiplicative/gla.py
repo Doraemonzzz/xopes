@@ -12,7 +12,6 @@ import triton
 import triton.language as tl
 from einops import rearrange
 from packaging import version
-from torch.cuda.amp import custom_bwd, custom_fwd
 
 from xopes.utils import contiguous
 
@@ -475,7 +474,6 @@ def bwd_inner_chunk(
 class FusedChunkGLAFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
-    @custom_fwd
     def forward(ctx, q, k, v, g, scale, initial_state, output_final_state):
         ctx.g_dtype = g.dtype
         g_original = g
@@ -626,7 +624,6 @@ class FusedChunkGLAFunction(torch.autograd.Function):
 
     @staticmethod
     @contiguous
-    @custom_bwd
     def backward(ctx, do, d_final_state=None):
         q, k, v, g_origin, A, initial_state = ctx.saved_tensors
         batch_size, n_heads, seq_len, d_head_qk = q.shape
