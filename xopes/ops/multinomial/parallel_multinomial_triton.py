@@ -4,7 +4,6 @@ import triton.language as tl
 
 from xopes.utils import generate_configs, next_power_of_two
 
-
 # @triton.autotune(
 #     [
 #         triton.Config({'BLOCK_B': 128, 'BLOCK_D': 256, 'BLOCK_V': 64, 'GROUP_M': 8}, num_stages=3,
@@ -22,7 +21,7 @@ from xopes.utils import generate_configs, next_power_of_two
 #         triton.Config({'BLOCK_B': 64, 'BLOCK_D': 32, 'BLOCK_V': 32, 'GROUP_M': 8}, num_stages=5,
 #                       num_warps=2),
 #         triton.Config({'BLOCK_B': 32, 'BLOCK_D': 64, 'BLOCK_V': 32, 'GROUP_M': 8}, num_stages=5,
-#                       num_warps=2), 
+#                       num_warps=2),
 #     ],
 #     key=["b", "d", "v", "k"],
 # )
@@ -58,7 +57,7 @@ from xopes.utils import generate_configs, next_power_of_two
 #     # 0, 3, 6
 #     # 1, 4, 7
 #     # 7, 8, 9
-#     # e.g, 
+#     # e.g,
 #     # NUM_BLOCK_B = NUM_BLOCK_V = 9, GROUP_M = 3
 #     # GROUP = 27
 #     GROUP = GROUP_M * NUM_BLOCK_V
@@ -219,7 +218,7 @@ def _parallel_multinomial_triton(
     offset_lse_max_value = offset_b * NUM_BLOCK_V
     # mask
     b_mask = (offset_b + tl.arange(0, BLOCK_B)) < b
-    k_mask = tl.arange(0, BLOCK_K) < k
+    tl.arange(0, BLOCK_K) < k
 
     # 1, BLOCK_K
     sample_block_ptr = (
@@ -243,8 +242,14 @@ def _parallel_multinomial_triton(
         + tl.arange(0, BLOCK_D)[:, None] * v
         + tl.arange(0, BLOCK_V)[None, :]
     )
-    lse_cache_ptr = Lse_cache + offset_lse_max_value + tl.arange(0, BLOCK_B)[:, None] * NUM_BLOCK_V
-    max_value_cache_ptr = Max_value_cache + offset_lse_max_value + tl.arange(0, BLOCK_B)[:, None] * NUM_BLOCK_V
+    lse_cache_ptr = (
+        Lse_cache + offset_lse_max_value + tl.arange(0, BLOCK_B)[:, None] * NUM_BLOCK_V
+    )
+    max_value_cache_ptr = (
+        Max_value_cache
+        + offset_lse_max_value
+        + tl.arange(0, BLOCK_B)[:, None] * NUM_BLOCK_V
+    )
     # for random
     # BLOCK_B, 1, k
     rand_block_ptr = tl.zeros([BLOCK_B, 1, k], dtype=tl.float32)
@@ -262,7 +267,7 @@ def _parallel_multinomial_triton(
         max_value = tl.load(max_valuek_ptr, mask=b_mask, other=value)
     else:
         max_value = tl.full([BLOCK_B, 1], value=value, dtype=tl.float32)
-    
+
     logits = tl.zeros([BLOCK_B, BLOCK_V], dtype=tl.float32)
     v_mask = (offset_v + tl.arange(0, BLOCK_V)) < v
 
@@ -313,6 +318,7 @@ def _parallel_multinomial_triton(
         max_value_curr.to(max_value_cache_ptr.dtype.element_ty),
     )
 
+
 @triton.autotune(
     generate_configs(
         {
@@ -360,13 +366,21 @@ def _parallel_multinomial_reduce_triton(
     # )
     # BLOCK_B,
     sample_out_block_ptr = (
-        Sample_out
-        + offset_sample_out
-        + tl.arange(0, BLOCK_B)[:, None] * k
+        Sample_out + offset_sample_out + tl.arange(0, BLOCK_B)[:, None] * k
     )
     # BLOCK_B, NUM_BLOCK_V
-    lse_cache_ptr = Lse_cache + offset_lse_max_value + tl.arange(0, BLOCK_B)[:, None] * NUM_BLOCK_V + tl.arange(0, NUM_BLOCK_V)[None, :]
-    max_value_cache_ptr = Max_value_cache + offset_lse_max_value + tl.arange(0, BLOCK_B)[:, None] * NUM_BLOCK_V + tl.arange(0, NUM_BLOCK_V)[None, :]
+    lse_cache_ptr = (
+        Lse_cache
+        + offset_lse_max_value
+        + tl.arange(0, BLOCK_B)[:, None] * NUM_BLOCK_V
+        + tl.arange(0, NUM_BLOCK_V)[None, :]
+    )
+    max_value_cache_ptr = (
+        Max_value_cache
+        + offset_lse_max_value
+        + tl.arange(0, BLOCK_B)[:, None] * NUM_BLOCK_V
+        + tl.arange(0, NUM_BLOCK_V)[None, :]
+    )
     # for random
     # BLOCK_B, 1
     rand_block_ptr = tl.zeros([BLOCK_B, 1], dtype=tl.float32)
@@ -381,7 +395,7 @@ def _parallel_multinomial_reduce_triton(
     numerator = tl.exp(logits - max_value_curr)
     denominator = tl.sum(numerator, axis=1)[:, None]
     # lse(x) = lse(x - a) + a
-    lse_curr = tl.log(denominator) + max_value_curr
+    tl.log(denominator) + max_value_curr
     prob_curr = numerator / denominator
     # BLOCK_B, NUM_BLOCK_V
     prob_cum_curr = tl.cumsum(prob_curr, axis=1)
@@ -397,7 +411,7 @@ def _parallel_multinomial_reduce_triton(
     upper = (prob_cum_curr[:, :, None] >= p).to(tl.int32)
     # BLOCK_B,
     index = tl.argmax(upper, axis=1)
-    
+
     # BLOCK_B, 1
     sample_index_block_ptr = (
         Sample
@@ -410,7 +424,7 @@ def _parallel_multinomial_reduce_triton(
     tl.store(
         sample_out_block_ptr,
         sample_out.to(sample_out_block_ptr.dtype.element_ty),
-        mask=b_mask[:, None]
+        mask=b_mask[:, None],
     )
 
 
@@ -423,13 +437,17 @@ def parallel_multinomial_triton(x, W, num_samples, lse=None, max_value=None):
     """
     b, d = x.shape
     d, v = W.shape
-    
+
     BLOCK_V = 128
     NUM_BLOCK_V = (v + BLOCK_V - 1) // BLOCK_V
-    sample = torch.empty((b, NUM_BLOCK_V, num_samples), dtype=torch.int32, device=x.device)
+    sample = torch.empty(
+        (b, NUM_BLOCK_V, num_samples), dtype=torch.int32, device=x.device
+    )
     lse_cache = torch.empty((b, NUM_BLOCK_V), dtype=torch.float32, device=x.device)
-    max_value_cache = torch.empty((b, NUM_BLOCK_V), dtype=torch.float32, device=x.device)
-    
+    max_value_cache = torch.empty(
+        (b, NUM_BLOCK_V), dtype=torch.float32, device=x.device
+    )
+
     load_lse = lse is not None
     load_max_value = max_value is not None
     BLOCK_K = max(16, next_power_of_two(num_samples))
@@ -437,6 +455,7 @@ def parallel_multinomial_triton(x, W, num_samples, lse=None, max_value=None):
 
     def grid(meta):
         return (triton.cdiv(b, meta["BLOCK_B"]), triton.cdiv(v, BLOCK_V))
+
     print(lse_cache)
     print(max_value)
     _parallel_multinomial_triton[grid](
@@ -458,10 +477,10 @@ def parallel_multinomial_triton(x, W, num_samples, lse=None, max_value=None):
         NUM_BLOCK_V,
         BLOCK_K,
     )
-    
+
     def grid(meta):
         return (triton.cdiv(b, meta["BLOCK_B"]), num_samples)
-    
+
     sample_out = torch.empty((b, num_samples), dtype=torch.int32, device=x.device)
 
     _parallel_multinomial_reduce_triton[grid](
