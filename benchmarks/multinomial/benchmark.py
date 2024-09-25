@@ -9,12 +9,14 @@ from xopes.ops import (
     online_multinomial_torch,
     online_multinomial_triton,
     online_with_cache_multinomial_torch,
+    parallel_multinomial_triton,
 )
 from xopes.utils import get_memory
 
 torch._dynamo.config.suppress_errors = True
 
 b, d = 12 * 2048, 4096
+b, d = 12, 4096
 num_samples = 1
 # num_samples = 2048
 device = torch.device("cuda")
@@ -31,7 +33,8 @@ module_map = {
     "owc_t_c": torch.compile(online_with_cache_multinomial_torch),
     "o_t": online_multinomial_torch,
     "o_t_c": torch.compile(online_multinomial_torch),
-    "triton": online_multinomial_triton,
+    "om_tr": online_multinomial_triton,
+    "pm_tr": parallel_multinomial_triton,
 }
 
 configs = [
@@ -44,8 +47,8 @@ configs = [
         line_arg="provider",
         # line_vals=["torch", "owc_t", "owc_t_c", "o_t", "o_t_c", "triton"],
         # line_names=["Torch", "Owc_T", "Owc_T_C", "O_T", "O_T_C", "Triton"],
-        line_vals=["torch", "owc_t", "o_t", "triton"],
-        line_names=["Torch", "Owc_T", "O_T", "Triton"],
+        line_vals=["torch", "owc_t", "o_t", "om_tr", "pm_tr"],
+        line_names=["Torch", "Owc_T", "O_T", "Om_Tr", "Pm_Tr"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
