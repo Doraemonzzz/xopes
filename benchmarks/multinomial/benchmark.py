@@ -16,9 +16,10 @@ from xopes.utils import get_memory
 torch._dynamo.config.suppress_errors = True
 
 b, d = 12 * 2048, 4096
-b, d = 12, 4096
+# b, d = 12, 4096
 num_samples = 1
 # num_samples = 2048
+num_samples = 16
 device = torch.device("cuda")
 
 dtype_map = {
@@ -47,8 +48,10 @@ configs = [
         line_arg="provider",
         # line_vals=["torch", "owc_t", "owc_t_c", "o_t", "o_t_c", "triton"],
         # line_names=["Torch", "Owc_T", "Owc_T_C", "O_T", "O_T_C", "Triton"],
-        line_vals=["torch", "owc_t", "o_t", "om_tr", "pm_tr"],
-        line_names=["Torch", "Owc_T", "O_T", "Om_Tr", "Pm_Tr"],
+        # line_vals=["torch", "owc_t", "o_t", "om_tr", "pm_tr"],
+        # line_names=["Torch", "Owc_T", "O_T", "Om_Tr", "Pm_Tr"],
+        line_vals=["torch", "pm_tr"],
+        line_names=["Torch", "Pm_Tr"],
         styles=[
             ("red", "-"),
             ("orange", "-"),

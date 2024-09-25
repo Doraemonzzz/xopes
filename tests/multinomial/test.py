@@ -18,7 +18,7 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("num_samples", [1])
+@pytest.mark.parametrize("num_samples", [8])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("n", [8])
 def test(shape, num_samples, dtype, n):
