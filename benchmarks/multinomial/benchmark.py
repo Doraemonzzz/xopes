@@ -9,6 +9,7 @@ from xopes.ops import (
     online_multinomial_torch,
     online_multinomial_triton,
     online_with_cache_multinomial_torch,
+    parallel_gumbel_multinomial_triton,
     parallel_multinomial_triton,
 )
 from xopes.utils import get_memory
@@ -19,7 +20,7 @@ b, d = 12 * 2048, 4096
 # b, d = 12, 4096
 num_samples = 1
 # num_samples = 2048
-num_samples = 16
+# num_samples = 16
 device = torch.device("cuda")
 
 dtype_map = {
@@ -36,6 +37,7 @@ module_map = {
     "o_t_c": torch.compile(online_multinomial_torch),
     "om_tr": online_multinomial_triton,
     "pm_tr": parallel_multinomial_triton,
+    "pgm_tr": parallel_gumbel_multinomial_triton,
 }
 
 configs = [
@@ -50,8 +52,8 @@ configs = [
         # line_names=["Torch", "Owc_T", "Owc_T_C", "O_T", "O_T_C", "Triton"],
         # line_vals=["torch", "owc_t", "o_t", "om_tr", "pm_tr"],
         # line_names=["Torch", "Owc_T", "O_T", "Om_Tr", "Pm_Tr"],
-        line_vals=["torch", "pm_tr"],
-        line_names=["Torch", "Pm_Tr"],
+        line_vals=["torch", "pm_tr", "pgm_tr"],
+        line_names=["Torch", "Pm_Tr", "Pgm_Tr"],
         styles=[
             ("red", "-"),
             ("orange", "-"),

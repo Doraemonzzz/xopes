@@ -6,6 +6,7 @@ from xopes.ops.multinomial import (
     online_multinomial_torch,
     online_multinomial_triton,
     online_with_cache_multinomial_torch,
+    parallel_gumbel_multinomial_triton,
     parallel_multinomial_triton,
 )
 from xopes.utils import get_threshold
@@ -18,7 +19,7 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("num_samples", [8])
+@pytest.mark.parametrize("num_samples", [1, 8])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("n", [8])
 def test(shape, num_samples, dtype, n):
@@ -43,6 +44,9 @@ def test(shape, num_samples, dtype, n):
         )
         sample_online_triton = online_multinomial_triton(x, W, num_samples)
         sample_parallel_triton = parallel_multinomial_triton(x, W, num_samples)
+        sample_parallel_gumbel_triton = parallel_gumbel_multinomial_triton(
+            x, W, num_samples
+        )
 
         atol, rtol = get_threshold(dtype)
 
@@ -61,3 +65,7 @@ def test(shape, num_samples, dtype, n):
         assert torch.allclose(
             sample_torch, sample_parallel_triton, atol=atol, rtol=rtol
         ), f"o diff: {torch.abs(sample_torch - sample_parallel_triton).max().item()}"
+
+        assert torch.allclose(
+            sample_torch, sample_parallel_gumbel_triton, atol=atol, rtol=rtol
+        ), f"o diff: {torch.abs(sample_torch - sample_parallel_gumbel_triton).max().item()}"
