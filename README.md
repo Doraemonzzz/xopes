@@ -119,8 +119,10 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
     - [ ] lrpe cosine md
   - [ ] custom benchmark function
   - [ ] multinomial
-    - [ ] triton online
-    - [ ] triton parallel
+    - [x] triton online
+    - [x] triton parallel
+    - [x] triton parallel gumbel
+    - [ ] document
 
 # Note
 ```
