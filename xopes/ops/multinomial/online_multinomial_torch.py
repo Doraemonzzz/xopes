@@ -54,7 +54,7 @@ def online_multinomial_torch(
         mask = index == 1
         sample[mask] = sample_curr[mask]
 
-    return sample
+    return sample, lse
 
 
 if __name__ == "__main__":

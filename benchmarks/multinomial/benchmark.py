@@ -16,8 +16,8 @@ from xopes.utils import get_memory
 
 torch._dynamo.config.suppress_errors = True
 
-b, d = 12 * 2048, 4096
-# b, d = 12, 4096
+# b, d = 12 * 2048, 4096
+b, d = 12, 4096
 num_samples = 1
 # num_samples = 2048
 # num_samples = 16
@@ -43,8 +43,8 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["V"],
-        # x_vals=[2**i for i in range(10, 20)],
-        x_vals=[2**i for i in range(10, 14)],
+        x_vals=[2**i for i in range(10, 20)],
+        # x_vals=[2**i for i in range(10, 14)],
         xlabel="Vocab Size",
         ylabel="Execution Time(ms)",
         line_arg="provider",
