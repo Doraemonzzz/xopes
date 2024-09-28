@@ -22,6 +22,7 @@ def _gumbel_multinomial_reduce_triton(
     b: tl.constexpr,
     k: tl.constexpr,
     m: tl.constexpr,  # num samples
+    top_k: tl.constexpr,
     BLOCK_M: tl.constexpr,
 ):
     off_b = tl.program_id(0)
@@ -46,6 +47,16 @@ def _gumbel_multinomial_reduce_triton(
     value = -float("inf")
 
     logits = tl.load(lse_ptr, mask=m_mask[None, :], other=value)
+    if top_k != -1:
+        logits_ = tl.sort(logits, dim=1, descending=True)
+        # triton doesn't support index, this is equivalent to logits_mask = logits >= logits_[:, top_k - 1]
+        index = (
+            tl.full([1, 1], 1, tl.int1) & (tl.arange(0, BLOCK_M) == top_k - 1)[None, :]
+        )
+        threshold = tl.sum(tl.where(index, logits_, 0))
+        logits_mask = logits >= threshold
+        tl.static_print("aaa", threshold)
+        logits = tl.where(logits_mask, logits, value)
     # use Gumbel Max to sample
     # sample from p1, ..., pk is equivalent to sample
     # argmax {log pi - log(-log(ui))} = argmax {logits - log(-log(ui))}, ui ~ U(0,1)
@@ -64,7 +75,7 @@ def _gumbel_multinomial_reduce_triton(
     )
 
 
-def gumbel_multinomial_reduce_triton(sample, lse):
+def gumbel_multinomial_reduce_triton(sample, lse, top_k=-1):
     """
     sample: b k m
     lse: b m
@@ -79,7 +90,7 @@ def gumbel_multinomial_reduce_triton(sample, lse):
     BLOCK_M = next_power_of_two(m)
 
     _gumbel_multinomial_reduce_triton[grid](
-        sample, lse, sample_out, seed, b, k, m, BLOCK_M
+        sample, lse, sample_out, seed, b, k, m, top_k, BLOCK_M
     )
 
     return sample_out.to(torch.int64)

@@ -28,6 +28,7 @@ def _parallel_gumbel_multinomial_triton(
     d: tl.constexpr,
     v: tl.constexpr,
     k: tl.constexpr,  # num samples
+    top_k: tl.constexpr,
     BLOCK_V: tl.constexpr,
     NUM_BLOCK_V: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -95,6 +96,18 @@ def _parallel_gumbel_multinomial_triton(
         w_block_ptr += BLOCK_D * v
 
     logits = tl.where(b_mask[:, None] & v_mask[None, :], logits, value)
+
+    if top_k != -1:
+        logits_ = tl.sort(logits, dim=1, descending=True)
+        # triton doesn't support index, this is equivalent to logits_mask = logits >= logits_[:, top_k - 1]
+        index = (
+            tl.full([BLOCK_B, 1], 1, tl.int1)
+            & (tl.arange(0, BLOCK_V) == top_k - 1)[None, :]
+        )
+        threshold = tl.sum(tl.where(index, logits_, 0))
+        logits_mask = logits >= threshold
+        tl.static_print("aaa", threshold)
+        logits = tl.where(logits_mask, logits, value)
     # use Gumbel Max to sample
     # sample from p1, ..., pk is equivalent to sample
     # argmax {log pi - log(-log(ui))} = argmax {logits - log(-log(ui))}, ui ~ U(0,1)
@@ -215,6 +228,7 @@ def _parallel_gumbel_multinomial_reduce_triton(
     d: tl.constexpr,
     v: tl.constexpr,
     k: tl.constexpr,  # num samples
+    top_k: tl.constexpr,
     BLOCK_V: tl.constexpr,
     NUM_BLOCK_V: tl.constexpr,
     NUM_BLOCK_V_PAD: tl.constexpr,
@@ -242,6 +256,17 @@ def _parallel_gumbel_multinomial_reduce_triton(
     value = -float("inf")
 
     logits = tl.load(lse_cache_ptr, mask=num_block_v_mask[None, :], other=value)
+    if top_k != -1:
+        logits_ = tl.sort(logits, dim=1, descending=True)
+        # triton doesn't support index, this is equivalent to logits_mask = logits >= logits_[:, top_k - 1]
+        index = (
+            tl.full([1, 1], 1, tl.int1)
+            & (tl.arange(0, NUM_BLOCK_V_PAD) == top_k - 1)[None, :]
+        )
+        threshold = tl.sum(tl.where(index, logits_, 0))
+        logits_mask = logits >= threshold
+        tl.static_print("aaa", threshold)
+        logits = tl.where(logits_mask, logits, value)
     # use Gumbel Max to sample
     # sample from p1, ..., pk is equivalent to sample
     # argmax {log pi - log(-log(ui))} = argmax {logits - log(-log(ui))}, ui ~ U(0,1)
@@ -270,13 +295,16 @@ def _parallel_gumbel_multinomial_reduce_triton(
             tl.store(lse_out_block_ptr, lse.to(lse_out_block_ptr.dtype.element_ty))
 
 
-def parallel_gumbel_multinomial_triton(x, W, num_samples=1, lse=None, output_lse=False):
+def parallel_gumbel_multinomial_triton(
+    x, W, num_samples=1, lse=None, output_lse=False, top_k=-1
+):
     """
     x: b d or b 1 d
     W: d v
     lse: b
     max_value: b
     """
+    assert top_k in [-1, 1], "top_k should be -1 or 1"
     b = x.shape[0]
     d = x.shape[1]
     d, v = W.shape
@@ -310,12 +338,14 @@ def parallel_gumbel_multinomial_triton(x, W, num_samples=1, lse=None, output_lse
         d,
         v,
         num_samples,
+        top_k,
         BLOCK_V,
         NUM_BLOCK_V,
         BLOCK_K,
     )
     # print("bbb")
-    # print(lse_cache)
+
+    print(lse_cache)
 
     def grid(meta):
         return (b, num_samples)
@@ -337,6 +367,7 @@ def parallel_gumbel_multinomial_triton(x, W, num_samples=1, lse=None, output_lse
         d,
         v,
         num_samples,
+        top_k,
         BLOCK_V,
         NUM_BLOCK_V,
         NUM_BLOCK_V_PAD,
