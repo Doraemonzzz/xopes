@@ -106,7 +106,6 @@ def _parallel_gumbel_multinomial_triton(
         )
         threshold = tl.sum(tl.where(index, logits_, 0))
         logits_mask = logits >= threshold
-        tl.static_print("aaa", threshold)
         logits = tl.where(logits_mask, logits, value)
     # use Gumbel Max to sample
     # sample from p1, ..., pk is equivalent to sample
@@ -265,7 +264,6 @@ def _parallel_gumbel_multinomial_reduce_triton(
         )
         threshold = tl.sum(tl.where(index, logits_, 0))
         logits_mask = logits >= threshold
-        tl.static_print("aaa", threshold)
         logits = tl.where(logits_mask, logits, value)
     # use Gumbel Max to sample
     # sample from p1, ..., pk is equivalent to sample
@@ -343,9 +341,6 @@ def parallel_gumbel_multinomial_triton(
         NUM_BLOCK_V,
         BLOCK_K,
     )
-    # print("bbb")
-
-    print(lse_cache)
 
     def grid(meta):
         return (b, num_samples)
