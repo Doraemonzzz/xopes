@@ -1,3 +1,4 @@
+from .gumbel_multinomial_reduce_torch import gumbel_multinomial_reduce_torch
 from .gumbel_multinomial_reduce_triton import gumbel_multinomial_reduce_triton
 from .multinomial_torch import multinomial_torch
 from .online_multinomial_torch import online_multinomial_torch
