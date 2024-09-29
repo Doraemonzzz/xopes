@@ -24,6 +24,7 @@ from .multinomial import (
     online_multinomial_torch,
     online_multinomial_triton,
     online_with_cache_multinomial_torch,
+    parallel_gumbel_multinomial_torch,
     parallel_gumbel_multinomial_triton,
     parallel_multinomial_triton,
 )
