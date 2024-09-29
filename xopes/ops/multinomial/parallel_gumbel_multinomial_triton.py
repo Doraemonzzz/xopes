@@ -10,8 +10,7 @@ from xopes.utils import generate_configs, next_power_of_two
         {
             "BLOCK_B": [32, 64, 128],
             "BLOCK_D": [32, 64, 128],
-            "num_warps": [4],
-            # "num_warps": [2, 4, 8],
+            "num_warps": [2, 4, 8],
         }
     ),
     key=["b", "d", "v", "k"],
@@ -293,7 +292,7 @@ def _parallel_gumbel_multinomial_reduce_triton(
             lse = tl.log(denominator) + max_value
             tl.store(lse_out_block_ptr, lse.to(lse_out_block_ptr.dtype.element_ty))
 
-@torch.compile(fullgraph=True)
+
 def parallel_gumbel_multinomial_triton(
     x, W, num_samples=1, lse=None, output_lse=False, top_k=-1
 ):
