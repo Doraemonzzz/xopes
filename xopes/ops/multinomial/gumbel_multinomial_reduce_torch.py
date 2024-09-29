@@ -10,9 +10,11 @@ def gumbel_multinomial_reduce_torch(sample, lse, top_k=-1):
 
     q = torch.empty((b, k, m), dtype=lse.dtype, device=lse.device).exponential_(1)
     stat = lse.unsqueeze(-2) - q
-    sample = torch.argmax(stat, dim=-1).to(dtype=torch.int)
+    idx = torch.argmax(stat, dim=-1, keepdim=True)
 
-    return sample.to(torch.int64)
+    sample_out = torch.gather(sample, -1, idx).squeeze(-1)
+
+    return sample_out.to(torch.int64)
 
 
 if __name__ == "__main__":
