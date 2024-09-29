@@ -123,6 +123,11 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
     - [x] triton parallel
     - [x] triton parallel gumbel
     - [ ] document
+- 240929
+  - [ ] multinomial
+    - [ ] triton parallel gumbel small vocab bug
+    - [ ] unify input shape
+    - [ ] reduce kernel bug
 
 # Note
 ```
