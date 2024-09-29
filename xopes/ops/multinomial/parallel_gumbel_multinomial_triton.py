@@ -346,9 +346,10 @@ def parallel_gumbel_multinomial_triton(
         return (b, num_samples)
 
     sample_out = torch.empty((b, num_samples), dtype=torch.int32, device=x.device)
-    lse_out = None
-    if output_lse:
-        lse_out = torch.empty((b, 1), dtype=torch.float32, device=x.device)
+    # lse_out = None
+    # if output_lse:
+    #     lse_out = torch.empty((b, 1), dtype=torch.float32, device=x.device)
+    lse_out = torch.empty((b, 1), dtype=torch.float32, device=x.device)
 
     NUM_BLOCK_V_PAD = next_power_of_two(NUM_BLOCK_V)
     _parallel_gumbel_multinomial_reduce_triton[grid](
