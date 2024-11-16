@@ -371,3 +371,65 @@ additive decay:
 $$
 \mathbf s_t =\sum_{k=1}^t (t+1-k) \mathbf e_k.
 $$
+
+
+### 讨论：$\mathbf s_t$的影响
+
+#### wo flip
+
+将公式展开不难得到：
+$$
+\begin{aligned}
+\mathbf{o}_t
+&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\mathbf g_t \mathbf{x}_t \\
+&=\left(\mathbf s_{t-1} / \mathbf s_t\right) (\left(\mathbf s_{t-2} / \mathbf s_{t-1}\right) \mathbf{o}_{t-2}+\mathbf g_{t-1} \mathbf{x}_{t-1})+\mathbf g_t \mathbf{x}_t \\
+&=\mathbf s_{t-2} /\mathbf s_t \mathbf{o}_{t-2}+\mathbf s_{t-1} / \mathbf s_t \mathbf g_{t-1}\mathbf x_{t-1}+\mathbf g_t \mathbf{x}_t  \\
+&=\ldots \\
+&=\sum_{k=1}^t(\mathbf s_k/ \mathbf s_t)\mathbf g_k \mathbf x_k.
+
+
+\end{aligned}
+$$
+
+
+##### multiply
+
+$$
+\begin{aligned}
+\mathbf s_t
+&=\exp \left(\sum_{j=1}^t\mathbf e_j \right), \\
+\mathbf s_k/\mathbf s_t
+&=\exp \left(-\sum_{j=k+1}^t\mathbf e_j \right).
+\end{aligned}
+$$
+
+
+
+##### additive
+
+$$
+\begin{aligned}
+\mathbf s_t
+&=\sum_{j=1}^t\mathbf e_j , \\
+\mathbf s_k/\mathbf s_t
+&=\left( \sum_{j=1}^k\mathbf e_j\right) /\left( \sum_{j=1}^t\mathbf e_j\right).
+\end{aligned}
+$$
+
+
+
+#### w flip
+
+将公式展开不难得到：
+$$
+\begin{aligned}
+\mathbf p_{t}&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf p_{t-1} +  \mathbf g_t \mathbf{x}_{t},   \\
+&=\sum_{k=1}^t(\mathbf s_k/ \mathbf s_t)\mathbf g_t \mathbf x_t,  \\
+\mathbf o_{t}&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf o_{t-1} + \mathbf p_t\\
+&=\sum_{k=1}^t(\mathbf s_k/ \mathbf s_t) \mathbf p_k \\
+&=\sum_{k=1}^t(\mathbf s_k/ \mathbf s_t) \sum_{j=1}^k(\mathbf s_j/ \mathbf s_k)\mathbf g_j \mathbf x_j\\
+&= \sum_{k=1}^t \sum_{j=1}^k(\mathbf s_j/ \mathbf s_t)\mathbf g_j \mathbf x_j \\
+&= \sum_{j=1}^t \sum_{k=j}^t(\mathbf s_j/ \mathbf s_t)\mathbf g_j \mathbf x_j \\
+&= \sum_{j=1}^t (t-j+1)(\mathbf s_j/ \mathbf s_t)\mathbf g_j \mathbf x_j.
+\end{aligned}
+$$
