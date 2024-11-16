@@ -7,7 +7,8 @@
   - Parallel over sequence.
 - `lrpe_cosine_md_cache_triton`, `lrpe_cosine_md_cache_fwd_triton`, `lrpe_cosine_md_cache_bwd_triton`:
   - Parallel over sequence, with cache theta.
-
+- `lrpe_cosine_md_bp_fwd_triton`, `lrpe_cosine_md_bp_bwd_triton`, `lrpe_cosine_md_bp_triton`:
+  - Perform parallel in block units, use for scenarios where dim = -2.
 
 
 Fwd input:

@@ -284,7 +284,7 @@ def _lrpe_cosine_md_bp_fwd_triton(
 
 
 @triton.autotune(
-    generate_configs({"num_warps": [2, 4, 8]}),
+    generate_configs({"BLOCK_N": [16, 32, 64, 128], "num_warps": [2, 4, 8]}),
     key=["h", "n", "d", "m"],
 )
 @triton.jit
@@ -307,6 +307,8 @@ def _lrpe_cosine_md_bp_bwd_triton(
     ACT: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    BLOCK_L: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -318,7 +320,7 @@ def _lrpe_cosine_md_bp_bwd_triton(
     theta_block_ptr = (
         ThetaCache
         + offset_theta_cache
-        + tl.arange(0, BLOCK_N) * d
+        + tl.arange(0, BLOCK_N)[:, None] * d
         + tl.arange(0, BLOCK_D)[None, :]
     )
     dx_block_ptr = (
@@ -494,7 +496,9 @@ def lrpe_cosine_md_bp_fwd_triton(x, theta, shape, l=0, act="none", dim=None):
 
     o = torch.empty(output_shape, dtype=x.dtype, device=x.device)
     theta_cache = torch.empty((h, n, d), dtype=torch.float32, device=theta.device)
+    # max
     x_stat1 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
+    # denominator
     x_stat2 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
 
     BLOCK_D = next_power_of_two(d)
@@ -554,7 +558,7 @@ def lrpe_cosine_md_bp_bwd_triton(
     BLOCK_L = next_power_of_two(l) if l > 0 else 0
 
     def grid(meta):
-        return (b, h, n)
+        return (b, h)
 
     _lrpe_cosine_md_bp_bwd_triton[grid](
         x,
@@ -563,8 +567,8 @@ def lrpe_cosine_md_bp_bwd_triton(
         dx,
         shape,
         theta_cache,
-        x_stat1,
-        x_stat2,
+        x_stat1,  # max
+        x_stat2,  # denominator
         b,
         h,
         n,

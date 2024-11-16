@@ -11,7 +11,7 @@ folder=lrpe/cosine/_md
 # folder=flao/non_causal
 # folder=flao/fal_non_causal
 # folder=act
-folder=multinomial
+# folder=multinomial
 
 mkdir -p $folder/log
 

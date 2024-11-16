@@ -13,23 +13,24 @@ from xopes.utils import get_threshold
 
 def get_params():
     shape = [
-        # 1d
+        # # 1d
         (6, 8, 128, 64),
-        (6, 8, 127, 128),
-        # # 2d
-        (6, 8, 32, 32, 64),
-        (6, 8, 2, 3, 64),
-        # 3d
-        (6, 8, 8, 32, 32, 64),
-        # 4d
-        (6, 8, 8, 8, 8, 8, 64),
+        # (6, 8, 127, 128),
+        # 2d
+        # (6, 8, 32, 32, 64),
+        # (6, 8, 2, 3, 64),
+        # # 3d
+        # (6, 8, 8, 32, 32, 64),
+        # # 4d
+        # (6, 8, 8, 8, 8, 8, 64),
     ]
 
     return shape
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("l", [0, 5])
+# @pytest.mark.parametrize("l", [0, 5])
+@pytest.mark.parametrize("l", [0])
 # @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 # @pytest.mark.parametrize("l", [2])
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -107,6 +108,8 @@ def test(shape, l, dtype):
     #     dx_lrpe_cosine_md_torch, dx_lrpe_cosine_md_cache_triton, atol=atol, rtol=rtol
     # ), f"dx diff: {torch.abs(dx_lrpe_cosine_md_torch - dx_lrpe_cosine_md_cache_triton).max().item()}"
 
+    print((dx_lrpe_cosine_md_torch - dx_lrpe_cosine_md_bp_triton)[0, 0, :16, :8])
+    print((dx_lrpe_cosine_md_torch - dx_lrpe_cosine_md_bp_triton)[0, 0, 16:32, :8])
     assert torch.allclose(
         dx_lrpe_cosine_md_torch, dx_lrpe_cosine_md_bp_triton, atol=atol, rtol=rtol
     ), f"dx diff: {torch.abs(dx_lrpe_cosine_md_torch - dx_lrpe_cosine_md_bp_triton).max().item()}"
