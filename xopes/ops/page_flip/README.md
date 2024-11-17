@@ -6,7 +6,7 @@
 $$
 \begin{aligned}
 s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
- s_t^j&=s_t^{j-1}+\exp \left(\mathbf{q}_t \mathbf{k}_j^T / \sqrt{d}\right), \\
+ s_t^j&=s_t^{j-1}+\exp \left(\mathbf{q}_t^\top \mathbf{k}_j / \sqrt{d}\right), \\
 \mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
 \mathbf{o}_t&=\mathbf{o}_t^t,\\
 t&=1,\ldots, n, \\
@@ -432,4 +432,311 @@ $$
 &= \sum_{j=1}^t \sum_{k=j}^t(\mathbf s_j/ \mathbf s_t)\mathbf g_j \mathbf x_j \\
 &= \sum_{j=1}^t (t-j+1)(\mathbf s_j/ \mathbf s_t)\mathbf g_j \mathbf x_j.
 \end{aligned}
+$$
+
+
+
+## 定义$k$阶RNN
+
+在后续讨论之前，我们定义$k$阶RNN。
+
+0阶，记：
+$$
+\mathbf h_t^0 =\mathbf x_t.
+$$
+1阶：
+$$
+\begin{aligned}
+\mathbf h_t^0 &=f^0(\mathbf x_t), \\
+\mathbf h_t^1 &= f^1(\mathbf h_{t-1}^1, \mathbf h_t^0).
+
+\end{aligned}
+$$
+2阶：
+$$
+\begin{aligned}
+\mathbf h_t^0 &=f^0(\mathbf x_t), \\
+\mathbf h_t^1 &= f^1(\mathbf h_{t-1}^1, \mathbf h_t^0),\\
+\mathbf h_t^2 &= f^2(\mathbf h_{t-1}^2,\mathbf h_t^1, \mathbf h_t^0).
+\end{aligned}
+$$
+$k$阶：
+$$
+\begin{aligned}
+\mathbf h_t^0 &=f^0(\mathbf x_t), \\
+\mathbf h_t^1 &= f^1(\mathbf h_{t-1}^1, \mathbf h_t^0),\\
+\ldots, \\
+\mathbf h_t^k &= f^k(\mathbf h_{t-1}^k ,\mathbf h_{t}^{k-1} ,\ldots , \mathbf h_t^0).
+\end{aligned}
+$$
+可以看出：
+
+- Softmax attention是2阶RNN；
+- Linear RNN wo flip是2阶RNN；
+- Linear RNN w flip是3阶RNN；
+
+在后续讨论中，我们将用第$j$次递推表示映射关系$\mathbf h_t^j =  f^{j-1}(\mathbf h_t^{j-1},\ldots, \mathbf h_t^{1},\mathbf x_t)$。
+
+例如，对于：
+$$
+\begin{aligned}
+s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
+ s_t^j&=s_t^{j-1}+\exp \left(\mathbf{q}_t \mathbf{k}_j^T / \sqrt{d}\right), \\
+\mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
+\mathbf{o}_t&=\mathbf{o}_t^t,\\
+t&=1,\ldots, n, \\
+j&=1, \ldots, t.
+\end{aligned}
+$$
+我们有：
+
+对于每个$s$：
+$$
+\begin{aligned}
+\mathbf h_t^0 &=f^0(\mathbf x_t)=\exp \left(\mathbf{q}_s \mathbf{k}_t^T / \sqrt{d}\right), \\
+\mathbf h_t^1 &= f^1(\mathbf h_{t-1}^1, \mathbf h_t^0)=\mathbf h_{t-1}^1+\mathbf h_t^0 ,\\
+\mathbf h_t^2 &= f^2(\mathbf h_{t-1}^2,\mathbf h_t^1, \mathbf h_t^0)=
+\left(\mathbf h_{t-1}^1 / \mathbf h_{t}^1\right) \mathbf h_{t-1}^2+\left(1-\mathbf h_{t-1}^1 / \mathbf h_{t}^1\right) \mathbf{v}_j.
+\end{aligned}
+$$
+输出为：
+$$
+\mathbf o_s = \mathbf h_s^2.
+$$
+注意上述递推式应该进行化简，我们来看之前的例子。
+
+
+
+### 例子
+
+对于multply decay，因为
+$$
+\mathbf s_{t-1} / \mathbf s_t=\exp(-\mathbf e_t).
+$$
+所以递推式实际上为：
+$$
+\mathbf{o}_t=\exp(-\mathbf e_t) \mathbf{o}_{t-1}+\mathbf g_t \mathbf{x}_t
+$$
+这说明multiply decay实际上是1阶递推，而additive decay是2阶递推。对于flip的版本，multiply decay实际上是2阶递推，additive decay是3阶递推。
+
+
+
+#### wo flip
+
+
+$$
+\begin{aligned}
+\textbf{multiply decay}:
+\log \mathbf s_{0}& =\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
+\log \mathbf s_t&=  \log  \mathbf s_{t-1} +   \mathbf e_t,\\
+\textbf{additive decay}:
+ \mathbf s_{0}& =\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
+\mathbf s_t&=  \mathbf s_{t-1} +  \mathbf e_t,\\
+\textbf{compute}:
+\mathbf{o}_t&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\mathbf g_t \mathbf{x}_t .
+\end{aligned}
+$$
+
+
+
+#### w flip
+
+$$
+\begin{aligned}
+\textbf{multiply decay}:
+\log \mathbf s_{0}& =\mathbf 0,\mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0,\\
+\mathbf q_{t} &=\mathbf q_{t-1}+\mathbf e_t, \\
+  \log \mathbf s_{t} &= \log \mathbf s_{t-1} +   \mathbf q_{t}, \\
+
+\textbf{additive decay}:
+\mathbf s_{0}& =\mathbf 0,\mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
+\mathbf  q_{t} &=\mathbf q_{t-1}+\mathbf e_t, \\
+\mathbf  s_{t} &=\mathbf s_{t-1} +\mathbf q_{t}, \\
+\textbf{compute}:\mathbf p_{t}&=(\mathbf s_{t-1} / \mathbf s_t)\mathbf p_{t-1} +  \mathbf g_t \mathbf{x}_{t},   \\
+\mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + \mathbf p_t.
+\end{aligned}
+$$
+
+
+
+## 讨论新的attention
+
+这一节我们讨论一些新的attention和我们之前讨论内容的关系。
+
+
+
+### stick-breaking attention (使用multply decay)
+
+注意下式为multiply版本的2次attention：
+$$
+\begin{aligned}
+s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
+ s_t^j&=s_t^{j-1}+\exp \left(\mathbf{q}_t \mathbf{k}_j^T / \sqrt{d}\right), \\
+\mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
+\mathbf{o}_t&=\mathbf{o}_t^t,\\
+t&=1,\ldots, n, \\
+j&=1, \ldots, t.
+\end{aligned}
+$$
+相应的也有additive版本的2次attention (stick-breaking attention)：
+$$
+\begin{aligned}
+\log s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
+\log  s_t^j&=\log s_t^{j-1}+\exp \left(\mathbf{q}_t \mathbf{k}_j^\top\right), \\
+\mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
+\mathbf{o}_t&=\mathbf{o}_t^t,\\
+t&=1,\ldots, n, \\
+j&=1, \ldots, t.
+\end{aligned}
+$$
+
+注意stick-breaking attention中没有使用$\exp(x)$，使用的是$\log(1+\exp(x))$。
+
+总结：（需要修改）
+
+$f^1$修改为
+
+- $\mathbf h_t^1 = f^1(\mathbf h_{t-1}^1, \mathbf h_t^0)=\mathbf h_{t-1}^1\exp(\mathbf h_t^0)$；
+  - 也等价于：$\log \mathbf h_t^1=\log \mathbf h_{t-1}^1+\exp(\mathbf q_s \mathbf k_t^\top)$；
+
+
+
+### alibi
+
+alibi将递推改写为：
+$$
+\begin{aligned}
+s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
+ s_t^j&=\lambda s_t^{j-1}+\exp \left(\mathbf{q}_t \mathbf{k}_j^T / \sqrt{d}\right), \\
+\mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
+\mathbf{o}_t&=\mathbf{o}_t^t,\\
+t&=1,\ldots, n, \\
+j&=1, \ldots, t.
+\end{aligned}
+$$
+
+所以alibi是将data independent的multiply decay引入了第一重递推。
+
+
+
+### forgeting transformer
+
+$$
+\begin{aligned}
+s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
+ s_t^j&=\mathrm{sigmoid}(f_j) s_t^{j-1}+\exp \left(\mathbf{q}_t^\top \mathbf{k}_j / \sqrt{d}\right), \\
+\mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
+\mathbf{o}_t&=\mathbf{o}_t^t,\\
+t&=1,\ldots, n, \\
+j&=1, \ldots, t.
+\end{aligned}
+$$
+
+所以forgeting transformer是将data dependent的multiply decay引入了第一重递推。
+
+
+
+### Selective Attention Improves Transformer
+
+$$
+\begin{aligned}
+s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
+ s_t^j&=\mathrm{sigmoid}(\mathbf a_t^\top \mathbf b_j) s_t^{j-1}+\exp \left(\mathbf{q}_t^\top \mathbf{k}_j / \sqrt{d}\right), \\
+\mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
+\mathbf{o}_t&=\mathbf{o}_t^t,\\
+t&=1,\ldots, n, \\
+j&=1, \ldots, t.
+\end{aligned}
+$$
+
+
+
+### Gated ABC
+
+$$
+\begin{aligned}
+\mathbf a_t &= \alpha_t \mathbf a_{t-1}+(1-\alpha_t)\mathbf k_t^\top, \\
+\mathbf b_t&= \beta_t \mathbf b_{t-1}+(1-\beta_t)\mathbf v_t^\top,\\
+\mathbf o_t &= \mathrm{Softmax}(\mathbf q_t \mathbf a_t^\top)\mathbf b_t.
+\end{aligned}
+$$
+
+所以实际上gated abc是1阶rnn。
+
+
+
+### RoPE
+
+$$
+\begin{aligned}
+s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
+ s_t^j&=s_t^{j-1}+\exp \left(\mathbf{q}_t \exp(i(t-j)\theta)\mathbf{k}_j^T / \sqrt{d}\right), \\
+\mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
+\mathbf{o}_t&=\mathbf{o}_t^t,\\
+t&=1,\ldots, n, \\
+j&=1, \ldots, t.
+\end{aligned}
+$$
+
+
+
+### 一些想法
+
+结合之前的讨论，我们知道被修改的部分通常为第一次递推，即score function的递推（我们记$e_{tj}\triangleq f \left(\mathbf{q}_t, \mathbf{k}_j\right)\ge 0$）：
+
+baseline:
+
+2次：
+$$
+s_{t}^j =s_{t}^{j-1}+ e_{tj}.
+$$
+1次：
+$$
+s_{t}^j =s_{t}^{j-1}+ e_{j}.
+$$
+multiply decay:
+
+2次+2次：
+$$
+s_{t}^j =\lambda_t^j s_{t}^{j-1}+ e_{tj}.
+$$
+2次+1次：
+$$
+s_{t}^j =\lambda_j s_{t}^{j-1}+ e_{tj}.
+$$
+1次+1次：
+$$
+s_{t}^j =\lambda^j s_{t}^{j-1}+ e_{j}.
+$$
+additive decay:
+
+2次：
+$$
+\log s_{t}^j =\log s_{t}^{j-1}+ e_{tj}.
+$$
+2次+2次：(additive + additive)
+$$
+\log s_{t}^j =\lambda_t^j \log s_{t}^{j-1}+ e_{tj}.
+$$
+2次+1次：(additive + additive)
+$$
+\log s_{t}^j =\lambda_j \log s_{t}^{j-1}+ e_{tj}.
+$$
+1次：
+$$
+\log s_{j} =\log s_{j-1}+ e_{j}.
+$$
+1次+1次：(additive + multiply)
+$$
+\log s_{j} = \lambda_j \log s_{j-1}+ e_{j}.
+$$
+复数：
+
+2次：
+$$
+s_{t}^j =\exp(i\theta) s_{t}^{j-1}+ e_{tj}.
+$$
+1次：
+$$
+s_{j} =\exp(i\theta) s_{j-1}+ e_{j}.
 $$
