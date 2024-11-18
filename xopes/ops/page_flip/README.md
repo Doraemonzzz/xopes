@@ -1,5 +1,13 @@
 # PageTurner: Page-Flipping with Linear Time Complexity
 
+## 命名
+
+- $\mathbf e_{j}=f(x_j)$：权重；
+- $s_t^j$：累积权重；
+- $s_{t}^{j-1}/s_t^{j-1}$：相对累积权重；
+
+
+
 ## $O(n^2)$的rnn
 
 首先回忆online softmax attention:
@@ -192,7 +200,7 @@ $$
 此时：
 $$
 \begin{aligned}
-\mathbf s_{0}& =0,\mathbf o_{0} =\mathbf 0,\mathbf e_j\triangleq \exp(\mathbf y_j) \\
+\log\mathbf s_{0}& =0,\mathbf o_{0} =\mathbf 0,\mathbf e_j\triangleq \exp(\mathbf y_j) \\
 \log \mathbf s_t&=  \log  \mathbf s_{t-1} +\mathbf e_t, \\
 \mathbf{o}_t&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\left(1-\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{x}_j ,\\
 t&=1,\ldots, n.
@@ -205,25 +213,7 @@ $$
 t&=1,\ldots, n.
 \end{aligned}
 $$
-翻书递推式可以推广为：
-$$
-\begin{aligned}
-\log \mathbf s_{0}& =0,\mathbf o_{0} =\mathbf 0, \\
-\log \mathbf s_t&=  \log  \mathbf s_{t-1} + \mathbf e_t,\\
-
-\mathbf{o}_t&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\left(1-\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{x}_j ,\\
-t&=1,\ldots, n.
-\end{aligned}
-$$
-注意到此时：
-$$
-\begin{aligned}
-\mathbf{o}_t&=(\exp(-\mathbf e_t)) \mathbf{o}_{t-1}+\left(1-\exp(-\mathbf e_t)\right) \mathbf{x}_j ,\\
-t&=1,\ldots, n.
-
-\end{aligned}
-$$
-公式$\ref{ref7}$可以推广为：
+翻书公式可以推广为：
 $$
 \begin{aligned}
 \mathbf q_{t} &= \mathbf q_{t-1}+\mathbf e_t, \\
@@ -396,9 +386,9 @@ $$
 
 $$
 \begin{aligned}
-\mathbf s_t
+\mathbf s_t 
 &=\exp \left(\sum_{j=1}^t\mathbf e_j \right), \\
-\mathbf s_k/\mathbf s_t
+\mathbf s_k/\mathbf s_t  
 &=\exp \left(-\sum_{j=k+1}^t\mathbf e_j \right).
 \end{aligned}
 $$
@@ -409,9 +399,9 @@ $$
 
 $$
 \begin{aligned}
-\mathbf s_t
+\mathbf s_t 
 &=\sum_{j=1}^t\mathbf e_j , \\
-\mathbf s_k/\mathbf s_t
+\mathbf s_k/\mathbf s_t  
 &=\left( \sum_{j=1}^k\mathbf e_j\right) /\left( \sum_{j=1}^t\mathbf e_j\right).
 \end{aligned}
 $$
@@ -442,7 +432,7 @@ $$
 
 0阶，记：
 $$
-\mathbf h_t^0 =\mathbf x_t.
+\mathbf h_t^0 =f^0(\mathbf x_t).
 $$
 1阶：
 $$
@@ -469,11 +459,17 @@ $$
 \mathbf h_t^k &= f^k(\mathbf h_{t-1}^k ,\mathbf h_{t}^{k-1} ,\ldots , \mathbf h_t^0).
 \end{aligned}
 $$
+注意这里的阶数是最简形式的阶数，例如multiply decay是1阶RNN，因为$\mathbf s_{t-1}/\mathbf s_t=\exp(- e_t)$。
+
 可以看出：
 
 - Softmax attention是2阶RNN；
-- Linear RNN wo flip是2阶RNN；
-- Linear RNN w flip是3阶RNN；
+- Linear RNN wo flip；
+  - additive是2阶RNN；
+  - multiply是1阶RNN；
+- Linear RNN w flip；
+  - additive是4阶RNN；
+  - multiply是3阶RNN；
 
 在后续讨论中，我们将用第$j$次递推表示映射关系$\mathbf h_t^j =  f^{j-1}(\mathbf h_t^{j-1},\ldots, \mathbf h_t^{1},\mathbf x_t)$。
 
@@ -607,15 +603,13 @@ alibi将递推改写为：
 $$
 \begin{aligned}
 s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
- s_t^j&=\lambda s_t^{j-1}+\exp \left(\mathbf{q}_t \mathbf{k}_j^T / \sqrt{d}\right), \\
+ s_t^j&=s_t^{j-1}+\lambda^{t-j}\exp \left(\mathbf{q}_t \mathbf{k}_j^T / \sqrt{d}\right), \\
 \mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
 \mathbf{o}_t&=\mathbf{o}_t^t,\\
 t&=1,\ldots, n, \\
 j&=1, \ldots, t.
 \end{aligned}
 $$
-
-所以alibi是将data independent的multiply decay引入了第一重递推。
 
 
 
@@ -624,15 +618,13 @@ $$
 $$
 \begin{aligned}
 s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
- s_t^j&=\mathrm{sigmoid}(f_j) s_t^{j-1}+\exp \left(\mathbf{q}_t^\top \mathbf{k}_j / \sqrt{d}\right), \\
+ s_t^j&= s_t^{j-1}+(f_j/f_t)\exp \left(\mathbf{q}_t^\top \mathbf{k}_j / \sqrt{d}\right), \\
 \mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
 \mathbf{o}_t&=\mathbf{o}_t^t,\\
 t&=1,\ldots, n, \\
 j&=1, \ldots, t.
 \end{aligned}
 $$
-
-所以forgeting transformer是将data dependent的multiply decay引入了第一重递推。
 
 
 
@@ -641,7 +633,7 @@ $$
 $$
 \begin{aligned}
 s_{t}^0& = 0, \mathbf o_{t}^0 =\mathbf 0,\\
- s_t^j&=\mathrm{sigmoid}(\mathbf a_t^\top \mathbf b_j) s_t^{j-1}+\exp \left(\mathbf{q}_t^\top \mathbf{k}_j / \sqrt{d}\right), \\
+ s_t^j&= s_t^{j-1}+\mathrm{sigmoid}(\mathbf a_t^\top \mathbf b_j)\exp \left(\mathbf{q}_t^\top \mathbf{k}_j / \sqrt{d}\right), \\
 \mathbf{o}_t^j&=\left(s_t^{j-1} / s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-s_t^{j-1} / s_t^j\right) \mathbf{v}_j, \\
 \mathbf{o}_t&=\mathbf{o}_t^t,\\
 t&=1,\ldots, n, \\
@@ -698,15 +690,15 @@ multiply decay:
 
 2次+2次：
 $$
-s_{t}^j =\lambda_t^j s_{t}^{j-1}+ e_{tj}.
+s_{t}^j =s_{t}^{j-1}+f_{tj} e_{tj}.
 $$
 2次+1次：
 $$
-s_{t}^j =\lambda_j s_{t}^{j-1}+ e_{tj}.
+s_{t}^j =s_{t}^{j-1}+f_j/f_t  e_{tj}.
 $$
 1次+1次：
 $$
-s_{t}^j =\lambda^j s_{t}^{j-1}+ e_{j}.
+s_{t}^j = s_{t}^{j-1}+ f_j e_{j}.
 $$
 additive decay:
 
@@ -716,11 +708,11 @@ $$
 $$
 2次+2次：(additive + additive)
 $$
-\log s_{t}^j =\lambda_t^j \log s_{t}^{j-1}+ e_{tj}.
+\log s_{t}^j =\log s_{t}^{j-1}+ f_{t,j}e_{tj}.
 $$
 2次+1次：(additive + additive)
 $$
-\log s_{t}^j =\lambda_j \log s_{t}^{j-1}+ e_{tj}.
+\log s_{t}^j = \log s_{t}^{j-1}+f_j e_{tj}.
 $$
 1次：
 $$
@@ -728,15 +720,73 @@ $$
 $$
 1次+1次：(additive + multiply)
 $$
-\log s_{j} = \lambda_j \log s_{j-1}+ e_{j}.
+\log s_{j} = \log s_{j-1}+ f_je_{j}.
 $$
-复数：
 
-2次：
+
+## 权重映射的选择
+
+我们需要选择$f:\mathbb R\to \mathbb R^+$，并且是单调映射。
+
+可以的选择：
+
+- $f(x)=\exp(x)$；
+- $f(x)=\log(1+\exp(x))$；
+- $f(x)=\mathrm{Relu}(x)$；
+- $f(x)=\log(\pi /2 \mathrm{sigmoid}(x))=\log(\pi /2)+x-\log(1+\exp(x))$；
+
+
+
+## 复数如何处理
+
+首先回到最简单的RNN：
 $$
-s_{t}^j =\exp(i\theta) s_{t}^{j-1}+ e_{tj}.
+\begin{aligned}
+\mathbf s_{0}& =0,\mathbf o_{0} =\mathbf 0,\mathbf e_j\triangleq \exp(\mathbf y_j) \\
+ \mathbf s_t&=\mathbf s_{t-1}+\mathbf e_t, \\
+\mathbf{o}_t&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\left(1-\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{x}_j ,\\
+t&=1,\ldots, n.
+\end{aligned}
 $$
-1次：
+在传统的RNN中引入复数的形式如下：
 $$
-s_{j} =\exp(i\theta) s_{j-1}+ e_{j}.
+\begin{aligned}
+\mathbf s_{0}& =0,\mathbf o_{0} =\mathbf 0,\mathbf e_j\triangleq \exp(\mathbf y_j) \\
+ \mathbf s_t&=\mathbf s_{t-1}+\mathbf e_t, \\
+\mathbf{o}_t&=\exp(i\theta)\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\left(1-\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{x}_j ,\\
+t&=1,\ldots, n.
+\end{aligned}
 $$
+我们可以对此推广：
+
+$\theta$的multiply decay：
+$$
+\begin{aligned}
+\mathbf s_{0}& =0,\mathbf o_{0} =\mathbf 0,\mathbf e_j\triangleq \exp(\mathbf y_j) \\
+\log \theta_t&= \log \theta_{t-1}+\Delta_t, \\
+ \mathbf s_t&=\mathbf s_{t-1}+\mathbf e_t, \\
+\mathbf{o}_t&=\exp(i(\theta_{t-1}/\theta_t))\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\left(1-\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{x}_j ,\\
+t&=1,\ldots, n.
+\end{aligned}
+$$
+$\theta$的additive decay：
+$$
+\begin{aligned}
+\mathbf s_{0}& =0,\mathbf o_{0} =\mathbf 0,\mathbf e_j\triangleq \exp(\mathbf y_j) \\
+\theta_t&= \theta_{t-1}+\Delta_t, \\
+ \mathbf s_t&=\mathbf s_{t-1}+\mathbf e_t, \\
+\mathbf{o}_t&=\exp(i(\theta_{t-1}/\theta_t))\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\left(1-\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{x}_j ,\\
+t&=1,\ldots, n.
+\end{aligned}
+$$
+
+
+
+
+
+
+
+
+
+
+
