@@ -386,9 +386,9 @@ $$
 
 $$
 \begin{aligned}
-\mathbf s_t 
+\mathbf s_t
 &=\exp \left(\sum_{j=1}^t\mathbf e_j \right), \\
-\mathbf s_k/\mathbf s_t  
+\mathbf s_k/\mathbf s_t
 &=\exp \left(-\sum_{j=k+1}^t\mathbf e_j \right).
 \end{aligned}
 $$
@@ -399,9 +399,9 @@ $$
 
 $$
 \begin{aligned}
-\mathbf s_t 
+\mathbf s_t
 &=\sum_{j=1}^t\mathbf e_j , \\
-\mathbf s_k/\mathbf s_t  
+\mathbf s_k/\mathbf s_t
 &=\left( \sum_{j=1}^k\mathbf e_j\right) /\left( \sum_{j=1}^t\mathbf e_j\right).
 \end{aligned}
 $$
@@ -779,14 +779,3 @@ $$
 t&=1,\ldots, n.
 \end{aligned}
 $$
-
-
-
-
-
-
-
-
-
-
-
