@@ -733,7 +733,7 @@ $$
 - $f(x)=\exp(x)$；
 - $f(x)=\log(1+\exp(x))$；
 - $f(x)=\mathrm{Relu}(x)$；
-- $f(x)=\log(\cos(\pi /2 \times \mathrm{sigmoid}(x)))$；
+- $f(x)=-\log(\cos(\pi /2 \times \mathrm{sigmoid}(x)))$；
 
 
 
