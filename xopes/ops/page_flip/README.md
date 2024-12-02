@@ -261,7 +261,7 @@ $$
  \mathbf s_{0}& =\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
 \mathbf s_t&=  \mathbf s_{t-1} +  \mathbf e_t,\\
 \textbf{compute}:
-\mathbf{o}_t&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\mathbf g_t \mathbf{x}_t .
+\mathbf{o}_t&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+(1-\mathbf s_{t-1} /\mathbf s_{t})\mathbf g_t \mathbf{x}_t .
 \end{aligned}
 $$
 
@@ -279,7 +279,7 @@ $$
 \mathbf s_{0}& =\mathbf 0,\mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
 \mathbf  q_{t} &=\mathbf q_{t-1}+\mathbf e_t, \\
 \mathbf  s_{t} &=\mathbf s_{t-1} +\mathbf q_{t}, \\
-\textbf{compute}:\mathbf p_{t}&=(\mathbf s_{t-1} / \mathbf s_t)\mathbf p_{t-1} +  \mathbf g_t \mathbf{x}_{t},   \\
+\textbf{compute}:\mathbf p_{t}&=(\mathbf s_{t-1} / \mathbf s_t)\mathbf p_{t-1} + (1-\mathbf s_{t-1} /\mathbf s_{t}) \mathbf g_t \mathbf{x}_{t},   \\
 \mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + \mathbf p_t.
 \end{aligned}
 $$
@@ -301,7 +301,7 @@ $$
  \mathbf s_{0}& =\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
 \mathbf s_t&=  \mathbf s_{t-1} +  \mathbf e_t,\\
 \textbf{compute}:
-\mathbf{o}_t&=\mathrm{diag}\{\left(\mathbf s_{t-1} / \mathbf s_t\right)\}  \mathbf{o}_{t-1}+\mathbf g_t \mathbf{x}_t^\top .
+\mathbf{o}_t&=\mathrm{diag}\{\left(\mathbf s_{t-1} / \mathbf s_t\right)\}  \mathbf{o}_{t-1}+((1-\mathbf s_{t-1} /\mathbf s_{t})\mathbf g_t) \mathbf{x}_t^\top .
 \end{aligned}
 $$
 
@@ -320,7 +320,7 @@ $$
 \mathbf s_{0}& =\mathbf 0,\mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
 \mathbf  q_{t} &=\mathbf q_{t-1}+\mathbf e_t, \\
 \mathbf  s_{t} &=\mathbf s_{t-1} +\mathbf q_{t}, \\
-\textbf{compute}:\mathbf p_{t}&=\mathrm{diag}\{\left(\mathbf s_{t-1} / \mathbf s_t\right)\} \mathbf p_{t-1} +  \mathbf g_t \mathbf{x}_{t}^\top ,   \\
+\textbf{compute}:\mathbf p_{t}&=\mathrm{diag}\{\left(\mathbf s_{t-1} / \mathbf s_t\right)\} \mathbf p_{t-1} +  ((1-\mathbf s_{t-1} /\mathbf s_{t})\mathbf g_t) \mathbf{x}_{t}^\top ,   \\
 \mathbf o_{t}&=\mathrm{diag}\{\left(\mathbf s_{t-1} / \mathbf s_t\right)\} \mathbf o_{t-1} + \mathbf p_t.
 \end{aligned}
 $$

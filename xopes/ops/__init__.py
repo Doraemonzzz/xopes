@@ -30,3 +30,8 @@ from .multinomial import (
     parallel_multinomial_triton,
 )
 from .normalize import srmsnorm_fn
+from .page_flip import (
+    page_flip_naive_torch,
+    page_flip_recurrence_torch,
+    page_flip_recurrence_triton,
+)
