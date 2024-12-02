@@ -2,11 +2,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from xopes.ops import (
-    page_flip_recurrence_torch,
-    page_flip_naive_torch,
-    page_flip_recurrence_triton
-)
+from xopes.ops import page_flip_naive_torch, page_flip_recurrence_torch
 
 
 def get_params():
@@ -48,7 +44,9 @@ def get_params():
         True,
     ],
 )
-def test_lightning2(b, n, h, d, e, dtype, use_initial_state, output_final_state, use_normalize):
+def test_lightning2(
+    b, n, h, d, e, dtype, use_initial_state, output_final_state, use_normalize
+):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     f = F.softplus
@@ -69,19 +67,24 @@ def test_lightning2(b, n, h, d, e, dtype, use_initial_state, output_final_state,
         initial_state = None
 
     if dtype in [torch.float32]:
-        atol = 1e-2
-        rtol = 1e-2
+        pass
     elif dtype in [torch.float16]:
-        atol = 5e-2
-        rtol = 5e-2
+        pass
     else:
-        atol = 1e-1
-        rtol = 1e-1
+        pass
 
     # forward
     # naive torch
     if (not use_initial_state) and use_normalize:
-        o_naive_torch, final_state_naive_torch = page_flip_naive_torch(q, v, w, k=k, initial_state=initial_state, output_final_state=output_final_state, use_normalize=use_normalize)
+        o_naive_torch, final_state_naive_torch = page_flip_naive_torch(
+            q,
+            v,
+            w,
+            k=k,
+            initial_state=initial_state,
+            output_final_state=output_final_state,
+            use_normalize=use_normalize,
+        )
     # recurrence torch
     o_recurrence_torch, final_state_recurrence_torch = page_flip_recurrence_torch(
         q, v, w, k=k, initial_state=initial_state, output_final_state=output_final_state
@@ -102,7 +105,7 @@ def test_lightning2(b, n, h, d, e, dtype, use_initial_state, output_final_state,
         print(
             f"naive torch Vs recurrence torch (diff max): {torch.abs(o_naive_torch - o_recurrence_torch).max()}"
         )
-    
+
     # print(
     #     f"recurrence torch Vs recurrence triton (diff norm): {torch.norm(o_recurrence_torch - o_recurrence_triton).item()}"
     # )
@@ -112,16 +115,22 @@ def test_lightning2(b, n, h, d, e, dtype, use_initial_state, output_final_state,
 
     if output_final_state:
         if not use_initial_state:
-            print(f"recurrence torch state1 Vs recurrence torch state2 (diff norm): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).item()}")
-            print(f"recurrence torch state1 Vs recurrence torch state2 (diff max): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).max()}")
-            print(f"recurrence torch state2 Vs recurrence torch state4 (diff norm): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).item()}")
-            print(f"recurrence torch state2 Vs recurrence torch state4 (diff max): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).max()}")
-            
+            print(
+                f"recurrence torch state1 Vs recurrence torch state2 (diff norm): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).item()}"
+            )
+            print(
+                f"recurrence torch state1 Vs recurrence torch state2 (diff max): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).max()}"
+            )
+            print(
+                f"recurrence torch state2 Vs recurrence torch state4 (diff norm): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).item()}"
+            )
+            print(
+                f"recurrence torch state2 Vs recurrence torch state4 (diff max): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).max()}"
+            )
+
         # for i in range(4):
         #     print(f"recurrence torch state{i+1} Vs recurrence triton state{i+1} (diff norm): {torch.norm(final_state_recurrence_torch[i] - final_state_recurrence_triton[i]).item()}")
         #     print(f"recurrence torch state{i+1} Vs recurrence triton state{i+1} (diff max): {torch.norm(final_state_recurrence_torch[i] - final_state_recurrence_triton[i]).max()}")
-            
-        
 
     assert False
     # assert torch.allclose(
