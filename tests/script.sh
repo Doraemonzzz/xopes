@@ -13,6 +13,7 @@ folder=lrpe/cosine/_md
 # folder=act
 # folder=multinomial
 folder=normalize/srmsnorm
+folder=page_flip
 
 mkdir -p $folder/log
 
