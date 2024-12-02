@@ -29,3 +29,4 @@ from .multinomial import (
     parallel_gumbel_multinomial_triton,
     parallel_multinomial_triton,
 )
+from .normalize import srmsnorm_fn

@@ -4,7 +4,7 @@
 
 - $\mathbf e_{j}=f(x_j)$：权重；
 - $s_t^j$：累积权重；
-- $s_{t}^{j-1}/s_t^{j-1}$：相对累积权重；
+- $s_{t-1}^{j}/s_t^{j}$：相对累积权重；
 
 
 
@@ -38,7 +38,7 @@ $$
 \begin{aligned}
 \mathbf s_{0}& =0,\mathbf o_{0} =\mathbf 0,\mathbf e_j\triangleq \exp(\mathbf y_j) \\
  \mathbf s_t&=\mathbf s_{t-1}+\mathbf e_t, \\
-\mathbf{o}_t&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\left(1-\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{x}_j ,\\
+\mathbf{o}_t&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\left(1-\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{x}_t ,\\
 t&=1,\ldots, n.
 \end{aligned}
 $$
@@ -247,7 +247,7 @@ $$
 
 ### 拓展为更一般的形式(linear rnn)
 
-注意到$ (1-\mathbf s_{t-1} /\mathbf s_{t})$这一项可以理解为input gate，所以将上述形式进一步扩展：
+注意到$(1-\mathbf s_{t-1} /\mathbf s_{t})$这一项可以理解为input gate，所以将上述形式进一步扩展：
 
 #### wo flip
 
@@ -516,42 +516,6 @@ $$
 这说明multiply decay实际上是1阶递推，而additive decay是2阶递推。对于flip的版本，multiply decay实际上是2阶递推，additive decay是3阶递推。
 
 
-
-#### wo flip
-
-
-$$
-\begin{aligned}
-\textbf{multiply decay}:
-\log \mathbf s_{0}& =\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
-\log \mathbf s_t&=  \log  \mathbf s_{t-1} +   \mathbf e_t,\\
-\textbf{additive decay}:
- \mathbf s_{0}& =\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
-\mathbf s_t&=  \mathbf s_{t-1} +  \mathbf e_t,\\
-\textbf{compute}:
-\mathbf{o}_t&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}+\mathbf g_t \mathbf{x}_t .
-\end{aligned}
-$$
-
-
-
-#### w flip
-
-$$
-\begin{aligned}
-\textbf{multiply decay}:
-\log \mathbf s_{0}& =\mathbf 0,\mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0,\\
-\mathbf q_{t} &=\mathbf q_{t-1}+\mathbf e_t, \\
-  \log \mathbf s_{t} &= \log \mathbf s_{t-1} +   \mathbf q_{t}, \\
-
-\textbf{additive decay}:
-\mathbf s_{0}& =\mathbf 0,\mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
-\mathbf  q_{t} &=\mathbf q_{t-1}+\mathbf e_t, \\
-\mathbf  s_{t} &=\mathbf s_{t-1} +\mathbf q_{t}, \\
-\textbf{compute}:\mathbf p_{t}&=(\mathbf s_{t-1} / \mathbf s_t)\mathbf p_{t-1} +  \mathbf g_t \mathbf{x}_{t},   \\
-\mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + \mathbf p_t.
-\end{aligned}
-$$
 
 
 
