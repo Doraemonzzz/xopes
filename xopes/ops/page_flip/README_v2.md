@@ -161,10 +161,12 @@ $$
 &=\left(\mathbf s_{t-1} / \mathbf s_t^t\right) \mathbf{o}_{t-1}
 +\sum_{k=1}^t (\mathbf e_{k} /\mathbf s_{t}^t) \mathbf{x}_{k},  \\
 &=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}
-+\sum_{k=1}^t (\mathbf e_{k} /\mathbf s_{t}) \mathbf{x}_{k}  \\
++(1-\mathbf s_{t-1}/\mathbf s_t)\sum_{k=1}^t (\mathbf e_{k} /(\mathbf s_{t}-\mathbf s_{t-1})) \mathbf{x}_{k}  \\
+&\triangleq \left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}
++(1-\mathbf s_{t-1}/\mathbf s_t)\sum_{k=1}^t (\mathbf e_{k} /\mathbf q_{t}) \mathbf{x}_{k}  \\
 
 &\triangleq \left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}
-+\mathbf p_t. \\
++(1-\mathbf s_{t-1}/\mathbf s_t)\mathbf p_t. \\
 \end{aligned}
 $$
 另一方面：
@@ -176,11 +178,11 @@ $$
 &\ldots \\
 &= \mathbf s_{t}^{0} +\sum_{k=1}^t \mathbf e_k\\
 &= \mathbf s_{t-1} +\sum_{k=1}^t \mathbf e_k \\
-&\triangleq \mathbf s_{t-1} + \mathbf q_t \\
+&= \mathbf s_{t-1} + \mathbf q_t \\
 \mathbf q_t &= \sum_{k=1}^t \mathbf e_k\\
-\mathbf p_t &= \sum_{k=1}^t (\mathbf e_{k} /\mathbf s_{t}) \mathbf{x}_{k} \\
-&=(\mathbf s_{t-1}/\mathbf s_{t})\sum_{k=1}^{t-1} (\mathbf e_{k} /\mathbf s_{t-1}) \mathbf{x}_{k} +  (\mathbf e_{t} /\mathbf s_{t}) \mathbf{x}_{t} \\
-&= (\mathbf s_{t-1}/\mathbf s_{t}) \mathbf p_{t-1}+  (\mathbf e_{t} /\mathbf s_{t}) \mathbf{x}_{t}.
+\mathbf p_t &= \sum_{k=1}^t (\mathbf e_{k} /\mathbf q_{t}) \mathbf{x}_{k} \\
+&=(\mathbf q_{t-1}/\mathbf q_{t})\sum_{k=1}^{t-1} (\mathbf e_{k} /\mathbf q_{t-1}) \mathbf{x}_{k} +  (\mathbf e_{t} /\mathbf q_{t}) \mathbf{x}_{t} \\
+&= (\mathbf q_{t-1}/\mathbf q_{t}) \mathbf p_{t-1}+  (1- \mathbf q_{t-1} /\mathbf q_{t}) \mathbf{x}_{t}.
 \end{aligned}
 $$
 于是我们得到如下递推式：
@@ -189,10 +191,11 @@ $$
 \mathbf e_{t} &=\exp(\mathbf y_t), \\
 \mathbf q_{t} &=\mathbf q_{t-1}+\mathbf e_{t}, \\
 \mathbf s_{t} &=\mathbf s_{t-1} + \mathbf  q_{t}, \\
-\mathbf p_{t}&=(\mathbf s_{t-1} / \mathbf s_t)\mathbf p_{t-1} +  (\mathbf e_{t} /\mathbf s_{t}) \mathbf{x}_{t},   \\
-\mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + \mathbf p_t.
+\mathbf p_{t}&=(\mathbf q_{t-1} / \mathbf q_t)\mathbf p_{t-1} +  (1-\mathbf q_{t-1} /\mathbf q_{t}) \mathbf{x}_{t},   \\
+\mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + (1-\mathbf s_{t-1} /\mathbf s_{t}) \mathbf p_t.
 \end{aligned}
 $$
+
 
 
 ### 扩展为multiply decay
@@ -218,20 +221,89 @@ $$
 t&=1,\ldots, n.
 \end{aligned}
 $$
-翻书公式可以推广为：
+翻书版本为：
 $$
 \begin{aligned}
-\mathbf q_{t} &= \mathbf q_{t-1}+\mathbf e_t, \\
- \log \mathbf s_{t} &= \log \mathbf s_{t-1} +   \mathbf q_{t}, \\
-\mathbf p_{t}&=(\mathbf s_{t-1} / \mathbf s_t)\mathbf p_{t-1} +  (1-\mathbf s_{t-1} /\mathbf s_{t}) \mathbf{x}_{t},   \\
-\mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + \mathbf p_t.
+\mathbf s_{0}^0& =0, \mathbf o_{0}^0 =\mathbf 0,
+\mathbf e_j\triangleq \exp(\mathbf y_j)\\
+ \log \mathbf s_t^j&= \log \mathbf s_t^{j-1}+\mathbf  e_j, \\
+\mathbf{o}_t^j&=\left(\mathbf s_t^{j-1} / \mathbf s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-\mathbf s_t^{j-1} / \mathbf s_t^j\right) \mathbf{x}_j ,\\
+\mathbf o_{t}^0&= \mathbf o_{t-1}^{t-1}, \mathbf s_{t}^0 = \mathbf s_{t-1}^{t-1},\\
+\mathbf{o}_t&=\mathbf{o}_t^t, \mathbf s_t =\mathbf s_{t}^t,\\
+t&=1,\ldots, n, \\
+j&=1, \ldots, t.
 \end{aligned}
 $$
 
 
-#### 验证
+#### 化简
 
-将公式$\mathbf s_t$的定义代入公式可得：
+记：
+$$
+\mathbf s_t^j\triangleq \mathbf s_t^{j-1} + \Delta_t^j,\\
+
+\mathbf s_t^j= \mathbf s_t^{j-1}\exp(\mathbf  e_j), \Delta_t^j= \mathbf s_t^{j-1}(\exp(\mathbf e_j) - 1)
+$$
+将定义代入可得：
+$$
+\begin{aligned}
+\mathbf{o}_t^j
+&=\left(\mathbf s_t^{j-1} / \mathbf s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-\mathbf s_t^{j-1} / \mathbf s_t^j\right) \mathbf{x}_j  \\
+&=\left(\mathbf s_t^{j-1} / \mathbf s_t^j\right) \mathbf{o}_t^{j-1}+(\Delta_t^j /\mathbf s_{t}^j) \mathbf{x}_j  \\
+
+&=\left(\mathbf s_t^{j-1} / \mathbf s_t^j\right) \left(\left(\mathbf s_t^{j-2} / \mathbf s_t^{j-1}\right) \mathbf{o}_t^{j-2}+(\Delta_t^{j-1} /s_{t}^{j-1})  \mathbf x_{j-1}\right)+(\Delta_t^j /\mathbf s_{t}^j) \mathbf{x}_j  \\
+
+
+&=\left(\mathbf s_t^{j-2} / \mathbf s_t^j\right) \mathbf{o}_t^{j-2}+(\Delta_t^{j-1} /\mathbf s_{t}^j) \mathbf{x}_{j-1}+(\Delta_t^{j} /\mathbf s_{t}^j) \mathbf{x}_j  \\
+&=\ldots \\
+&=\left(\mathbf s_t^{0} / \mathbf s_t^j\right) \mathbf{o}_t^{0}
++\sum_{k=1}^j (\Delta_t^{k}  /\mathbf s_{t}^j) \mathbf{x}_{k}.  \\
+&=\left(\mathbf s_{t-1}^{t-1} / \mathbf s_t^j\right) \mathbf{o}_{t-1}^{t-1}
++\sum_{k=1}^j (\Delta_t^{k}  /\mathbf s_{t}^j) \mathbf{x}_{k}.  \\
+&=\left(\mathbf s_{t-1}/ \mathbf s_t^j\right) \mathbf{o}_{t-1}
++\sum_{k=1}^j (\Delta_t^{k} /\mathbf s_{t}^j) \mathbf{x}_{k}.  \\
+\end{aligned}
+$$
+取$j=t$可得：
+$$
+\begin{aligned}
+\mathbf{o}_t
+&=  \mathbf{o}_t^t \\
+&=\left(\mathbf s_{t-1} / \mathbf s_t^t\right) \mathbf{o}_{t-1}
++\sum_{k=1}^t (\Delta_t^{k} /\mathbf s_{t}^t) \mathbf{x}_{k},  \\
+&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}
++(1-\mathbf s_{t-1}/\mathbf s_t)\sum_{k=1}^t (\Delta_t^{k}  /(\mathbf s_t - \mathbf s_{t-1})) \mathbf{x}_{k}  \\
+&\triangleq \left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}
++(1-\mathbf s_{t-1}/\mathbf s_t)\sum_{k=1}^t (\Delta_t^{k} /\mathbf r_{t}) \mathbf{x}_{k}  \\
+
+&\triangleq \left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}
++(1-\mathbf s_{t-1}/\mathbf s_t)\mathbf p_t. \\
+\end{aligned}
+$$
+注意到：
+$$
+\begin{aligned}
+\mathbf q_t &= \sum_{k=1}^t \mathbf e_k\\
+\Delta_t^k
+&= (\exp(\mathbf e_k) - 1)\mathbf s_t^{k-1}\\
+&=(\exp(\mathbf e_k) - 1)\exp(\mathbf e_{k-1})\mathbf s_t^{k-2}\\
+&=\ldots \\
+&=(\exp(\mathbf e_k) - 1)\exp(\mathbf e_{k-1}) \ldots \exp(\mathbf  e_1)\mathbf s_t^{0}   \\
+&= (\exp(\mathbf q_k)-\exp(\mathbf q_{k-1}))\mathbf s_{t-1}\\
+\sum_{k=1}^t \Delta_t^k
+&= \sum_{k=1}^t (\mathbf s_{t}^{k}- \mathbf s_{t}^{k-1}) \\
+&=\mathbf s_{t}^{t}-\mathbf s_{t}^{0}  \\
+&=\mathbf s_t -\mathbf s_{t-1}\\
+&= (\exp(\mathbf q_t)-\exp(\mathbf q_{0}))\mathbf s_{t-1}  \\
+&=\mathbf r_t\\
+\frac{\Delta_t^k}{\mathbf r_t}
+&= \frac{(\exp(\mathbf q_k)-\exp(\mathbf q_{k-1}))\mathbf s_{t-1}}{ (\exp(\mathbf q_t)-\exp(\mathbf q_{0}))\mathbf s_{t-1}}\\
+&= \frac{\exp(\mathbf q_k)-\exp(\mathbf q_{k-1})}{\exp(\mathbf q_t)-\exp(\mathbf q_{0})} \\
+&= \frac{\alpha_k}{\beta_t}\\
+\beta_k&=\beta_{k-1}+\alpha_k.
+\end{aligned}
+$$
+另一方面：
 $$
 \begin{aligned}
 \log \mathbf s_t
@@ -240,14 +312,30 @@ $$
 &\ldots \\
 &= \log \mathbf s_{t}^{0} +\sum_{k=1}^t \mathbf e_k\\
 &= \log \mathbf s_{t-1} +\sum_{k=1}^t \mathbf e_k \\
-&\triangleq \log \mathbf s_{t-1} + \mathbf q_t \\
-\mathbf q_t &= \sum_{k=1}^t \mathbf e_k\\
-\mathbf p_t &= \sum_{k=1}^t (\mathbf e_{k} /\mathbf s_{t}) \mathbf{x}_{k} \\
-&=(\mathbf s_t/\mathbf s_{t-1})\sum_{k=1}^{t-1} (\mathbf e_{k} /\mathbf s_{t-1}) \mathbf{x}_{k} +  (\mathbf e_{t} /\mathbf s_{t}) \mathbf{x}_{t} \\
-&= (\mathbf s_t/\mathbf s_{t-1}) \mathbf p_{t-1}+  (\mathbf e_{t} /\mathbf s_{t}) \mathbf{x}_{t}\\
-&= (\mathbf s_t/\mathbf s_{t-1}) \mathbf p_{t-1}+  (1-\mathbf s_{t-1} /\mathbf s_{t}) \mathbf{x}_{t}.
+&= \log \mathbf s_{t-1} + \mathbf q_t \\
+\alpha_t&= \exp(\mathbf q_t)-\exp(\mathbf q_{t-1}) \\
+\beta_t &=  \exp(\mathbf q_t)-\exp(\mathbf q_{0})  \\
+&=\beta_{t-1}+ \alpha_t  \\
+\mathbf p_t &= \sum_{k=1}^t (\Delta_t^{k} /\mathbf r_{t}) \mathbf{x}_{k}  \\
+&= \sum_{k=1}^t (\alpha_k /\beta_t) \mathbf{x}_{k}  \\
+
+&=(\beta_{t-1}/\beta_t)\sum_{k=1}^{t-1} (\alpha_k  /\beta_{t-1}) \mathbf{x}_{k} +  (\alpha_t /\beta_t) \mathbf{x}_{t} \\
+&= (\beta_{t-1}/\beta_{t}) \mathbf p_{t-1}+  (1- \beta_{t-1} /\beta_{t}) \mathbf{x}_{t}.
 \end{aligned}
 $$
+于是我们得到如下递推式：
+$$
+\begin{aligned}
+\mathbf e_{t} &=\exp(\mathbf y_t), \\
+\mathbf q_{t} &=\mathbf q_{t-1}+\mathbf e_{t}, \\
+\log \mathbf s_{t} &=\log \mathbf s_{t-1} + \mathbf  q_{t}, \\
+\beta_t &=  \exp(\mathbf q_t)-\exp(\mathbf q_{0}),   \\
+\mathbf p_{t}&=(\beta_{t-1} / \beta_t)\mathbf p_{t-1} +  (1-\beta_{t-1} / \beta_t) \mathbf{x}_{t},   \\
+\mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + (1-\mathbf s_{t-1} /\mathbf s_{t}) \mathbf p_t.
+\end{aligned}
+$$
+
+
 
 
 ### 拓展为更一般的形式(linear rnn)
@@ -271,21 +359,23 @@ $$
 $$
 
 
+
 #### w flip
 
 $$
 \begin{aligned}
 \textbf{multiply decay}:
-\log \mathbf s_{0}& =\mathbf 0,\mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0,\\
-\mathbf q_{t} &=\mathbf q_{t-1}+\mathbf e_t, \\
-  \log \mathbf s_{t} &= \log \mathbf s_{t-1} +   \mathbf q_{t}, \\
+\log \mathbf s_{0}& =\mathbf 0,\log \mathbf r_{0}=\mathbf 0, \mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0,\\
+\log \mathbf  r_{t} &=\log \mathbf r_{t-1}+\mathbf e_t, \\
 
+  \log \mathbf s_{t} &= \log \mathbf s_{t-1} +    \log \mathbf r_{t}, \\
+\mathbf q_t &= \mathbf r_t-\mathbf r_0, \\
 \textbf{additive decay}:
 \mathbf s_{0}& =\mathbf 0,\mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
 \mathbf  q_{t} &=\mathbf q_{t-1}+\mathbf e_t, \\
 \mathbf  s_{t} &=\mathbf s_{t-1} +\mathbf q_{t}, \\
-\textbf{compute}:\mathbf p_{t}&=(\mathbf s_{t-1} / \mathbf s_t)\mathbf p_{t-1} + (1-\mathbf s_{t-1} /\mathbf s_{t}) \mathbf g_t \mathbf{x}_{t},   \\
-\mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + \mathbf p_t.
+\textbf{compute}:\mathbf p_{t}&=(\mathbf q_{t-1} / \mathbf q_t)\mathbf p_{t-1} +  (1-\mathbf q_{t-1} /\mathbf q_{t}) \mathbf g_t \mathbf{x}_{t},   \\
+\mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + (1-\mathbf s_{t-1} /\mathbf s_{t}) \mathbf p_t.
 \end{aligned}
 $$
 
@@ -317,20 +407,24 @@ $$
 $$
 \begin{aligned}
 \textbf{multiply decay}:
-\log \mathbf s_{0}& =\mathbf 0,\mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
-\mathbf q_{t} &=\mathbf q_{t-1}+\mathbf e_t, \\
-  \log \mathbf s_{t} &= \log \mathbf s_{t-1} +  \mathbf q_{t}, \\
+\log \mathbf s_{0}& =\mathbf 0,\log \mathbf r_{0}=\mathbf 0, \mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0,\\
+\log \mathbf  r_{t} &=\log \mathbf r_{t-1}+\mathbf e_t, \\
+
+  \log \mathbf s_{t} &= \log \mathbf s_{t-1} +  \log \mathbf r_{t}, \\
+\mathbf q_t &= \mathbf r_t-\mathbf r_0, \\
 
 \textbf{additive decay}:
 \mathbf s_{0}& =\mathbf 0,\mathbf q_{0}=\mathbf 0,\mathbf o_{0} =\mathbf 0, \\
 \mathbf  q_{t} &=\mathbf q_{t-1}+\mathbf e_t, \\
 \mathbf  s_{t} &=\mathbf s_{t-1} +\mathbf q_{t}, \\
-\textbf{compute}:\mathbf p_{t}&=\mathrm{diag}\{\left(\mathbf s_{t-1} / \mathbf s_t\right)\} \mathbf p_{t-1} +  ((1-\mathbf s_{t-1} /\mathbf s_{t})\mathbf g_t) \mathbf{x}_{t}^\top ,   \\
-\mathbf o_{t}&=\mathrm{diag}\{\left(\mathbf s_{t-1} / \mathbf s_t\right)\} \mathbf o_{t-1} + \mathbf p_t.
+\textbf{compute}:\mathbf p_{t}&=(\mathbf q_{t-1} / \mathbf q_t)\mathbf p_{t-1} +  (1-\mathbf q_{t-1} /\mathbf q_{t}) \mathbf g_t \mathbf{x}_{t}^\top,   \\
+\mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + (1-\mathbf s_{t-1} /\mathbf s_{t}) \mathbf p_t.
 \end{aligned}
 $$
 
 
+
+### todo(update later)
 
 ### 讨论：是否需要引入$\mathbf q_t$
 
@@ -354,6 +448,7 @@ $$
 $$
 
 
+
 #### 想法2：不需要
 
 直接将计算式合并可得：
@@ -366,6 +461,7 @@ additive decay:
 $$
 \mathbf s_t =\sum_{k=1}^t (t+1-k) \mathbf e_k.
 $$
+
 
 
 ### 讨论：$\mathbf s_t$的影响
