@@ -61,6 +61,8 @@ def page_flip_recurrence_torch(
         decay = w_cum_cum[:, i].to(torch.float32) / w_cum_cum[:, i + 1].to(
             torch.float32
         )
+        # !!! important
+        norm_factor = w[:, i].to(torch.float32) / w_cum_cum[:, i + 1].to(torch.float32)
         qi = q[:, i].to(torch.float32)
         if k is not None:
             ki = k[:, i].to(torch.float32)
@@ -69,13 +71,13 @@ def page_flip_recurrence_torch(
         vi = v[:, i].to(torch.float32)
         if ki is not None:
             if use_normalize:
-                s1 = decay.unsqueeze(-1) * s1 + ((1 - decay) * ki).unsqueeze(
+                s1 = decay.unsqueeze(-1) * s1 + (norm_factor * ki).unsqueeze(
                     -1
                 ) * vi.unsqueeze(-2)
             else:
                 s1 = decay.unsqueeze(-1) * s1 + ki.unsqueeze(-1) * vi.unsqueeze(-2)
         else:
-            s1 = decay.unsqueeze(-1) * s1 + (1 - decay).unsqueeze(-1) * vi.unsqueeze(-2)
+            s1 = decay.unsqueeze(-1) * s1 + norm_factor.unsqueeze(-1) * vi.unsqueeze(-2)
 
         s2 = decay.unsqueeze(-1) * s2 + s1
         oi = torch.einsum("... d, ... d e -> ... e", qi, s2)

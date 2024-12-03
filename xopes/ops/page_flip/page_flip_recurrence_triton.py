@@ -80,6 +80,7 @@ def _page_flip_prepare(
 def _page_flip_recrurrence_fwd(
     Q,  # B N H D
     V,  # B N H E
+    W,  # B N H D
     W_CUM_CUM,  # B (N + 1) H D
     K,  # B N H D
     O_GATE,  # B N H E
@@ -106,7 +107,8 @@ def _page_flip_recrurrence_fwd(
     off_h = tl.program_id(1)
     # compute offset
     offset_qk = off_b * N * H * D + off_h * D
-    offset_w = off_b * (N + 1) * H * D + off_h * D
+    offset_w = off_b * N * H * D + off_h * D
+    offset_w_cum_cum = off_b * (N + 1) * H * D + off_h * D
     offset_vo = off_b * N * H * E + off_h * E
     # mask
     d_mask = tl.arange(0, BLOCK_D) < D
@@ -114,7 +116,8 @@ def _page_flip_recrurrence_fwd(
     # compute block ptr
     q_block_ptr = Q + offset_qk + tl.arange(0, BLOCK_D)
     v_block_ptr = V + offset_vo + tl.arange(0, BLOCK_E)
-    w_block_ptr = W_CUM_CUM + offset_w + tl.arange(0, BLOCK_D)
+    w_block_ptr = W + offset_w + tl.arange(0, BLOCK_D)
+    w_cum_cum_block_ptr = W_CUM_CUM + offset_w_cum_cum + tl.arange(0, BLOCK_D)
     o_block_ptr = O + offset_vo + tl.arange(0, BLOCK_E)
     if USE_K:
         k_block_ptr = K + offset_qk + tl.arange(0, BLOCK_D)
@@ -147,29 +150,36 @@ def _page_flip_recrurrence_fwd(
         state1 = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
         state2 = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
 
-    w1 = tl.load(w_block_ptr, mask=d_mask, other=1).to(tl.float32)
-    w_block_ptr += H * D
+    w1 = tl.load(w_cum_cum_block_ptr, mask=d_mask, other=1).to(tl.float32)
+    w_cum_cum_block_ptr += H * D
 
     for i in range(N):
         q = tl.load(q_block_ptr, mask=d_mask, other=0.0).to(tl.float32)
         v = tl.load(v_block_ptr, mask=e_mask, other=0.0).to(tl.float32)
-        w2 = tl.load(w_block_ptr, mask=d_mask, other=0.0).to(tl.float32)
+        w2 = tl.load(w_cum_cum_block_ptr, mask=d_mask, other=0.0).to(tl.float32)
 
         if DECAY_TYPE == "additive":
             r = w1 / w2
         else:
             r = tl.exp(w1 - w2)
 
-        if USE_K:
-            k = tl.load(k_block_ptr, mask=d_mask, other=0.0).to(tl.float32)
-            if USE_NORMALIZE:
-                s = ((1 - r) * k)[:, None] * v[None, :]
+        if USE_NORMALIZE or (not USE_K):
+            w = tl.load(w_block_ptr, mask=d_mask, other=0.0).to(tl.float32)
+            if DECAY_TYPE == "additive":
+                norm_factor = w / w2
             else:
-                s = k[:, None] * v[None, :]
+                norm_factor = tl.exp(w - w2)
 
-            k_block_ptr += H * D
+            if USE_K:
+                k = tl.load(k_block_ptr, mask=d_mask, other=0.0).to(tl.float32)
+                norm_factor *= k
+
+            s = norm_factor[:, None] * v[None, :]
+
+            w_block_ptr += H * D
         else:
-            s = (1 - r)[:, None] * v[None, :]
+            k = tl.load(k_block_ptr, mask=d_mask, other=0.0).to(tl.float32)
+            s = k[:, None] * v[None, :]
 
         state1 = r[:, None] * state1 + s
         state2 = r[:, None] * state2 + state1
@@ -185,7 +195,7 @@ def _page_flip_recrurrence_fwd(
 
         q_block_ptr += H * D
         v_block_ptr += H * E
-        w_block_ptr += H * D
+        w_cum_cum_block_ptr += H * D
         o_block_ptr += H * E
         w1 = w2
 
@@ -294,6 +304,7 @@ class PageFlipRecurrenceTriton(torch.autograd.Function):
         _page_flip_recrurrence_fwd[grid](
             Q=q,
             V=v,
+            W=w,
             W_CUM_CUM=w_cum_cum,
             K=k,
             O_GATE=o_gate,

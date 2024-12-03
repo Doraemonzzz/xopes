@@ -2,13 +2,18 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from xopes.ops import page_flip_naive_torch, page_flip_recurrence_torch
+from xopes.ops import (
+    page_flip_naive_torch,
+    page_flip_recurrence_torch,
+    page_flip_recurrence_triton,
+)
 
 
 def get_params():
     array = [
         # standard shape
         (6, 128, 8, 128, 64),
+        # (1, 2, 1, 1, 1),
         # (6, 128, 8, 128, 128),
         # (6, 128, 8, 256, 128),
         # # special shape
@@ -89,13 +94,10 @@ def test_lightning2(
     o_recurrence_torch, final_state_recurrence_torch = page_flip_recurrence_torch(
         q, v, w, k=k, initial_state=initial_state, output_final_state=output_final_state
     )
-    # # recurrence triton
-    # (
-    #     o_recurrence_triton,
-    #     final_state_recurrence_triton,
-    # ) = page_flip_recurrence_triton(
-    #     q, v, w, k=k, initial_state=initial_state, output_final_state=output_final_state
-    # )
+    # recurrence triton
+    (o_recurrence_triton, final_state_recurrence_triton,) = page_flip_recurrence_triton(
+        q, v, w, k=k, initial_state=initial_state, output_final_state=output_final_state
+    )
 
     print(f"{'==' * 10} Output test {'==' * 10}")
     if (not use_initial_state) and use_normalize:
@@ -106,12 +108,12 @@ def test_lightning2(
             f"naive torch Vs recurrence torch (diff max): {torch.abs(o_naive_torch - o_recurrence_torch).max()}"
         )
 
-    # print(
-    #     f"recurrence torch Vs recurrence triton (diff norm): {torch.norm(o_recurrence_torch - o_recurrence_triton).item()}"
-    # )
-    # print(
-    #     f"recurrence torch Vs recurrence triton (diff max): {torch.abs(o_recurrence_torch - o_recurrence_triton).max()}"
-    # )
+    print(
+        f"recurrence torch Vs recurrence triton (diff norm): {torch.norm(o_recurrence_torch - o_recurrence_triton).item()}"
+    )
+    print(
+        f"recurrence torch Vs recurrence triton (diff max): {torch.abs(o_recurrence_torch - o_recurrence_triton).max()}"
+    )
 
     if output_final_state:
         if not use_initial_state:
