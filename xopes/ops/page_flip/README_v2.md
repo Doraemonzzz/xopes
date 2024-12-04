@@ -94,7 +94,7 @@ $$
 $$
 当$t=3$时：
 $$
-\mathbf s_{3}=\mathbf s_{2}+\mathbf e_2+\mathbf e_3=\mathbf e_1 + \mathbf e_2+\mathbf e_3,\\
+\mathbf s_{3}=\mathbf s_{2}+\mathbf e_3=\mathbf e_1 + \mathbf e_2+\mathbf e_3,\\
 
 \mathbf o_{3}=\frac{\mathbf e_1}{\mathbf e_1+\mathbf e_2+\mathbf e_3}\mathbf x_{1}+\frac{\mathbf e_2}{\mathbf e_1+\mathbf e_2+\mathbf e_3}\mathbf x_2+\frac{\mathbf e_3}{\mathbf e_1+\mathbf e_2+\mathbf e_3}\mathbf x_3.
 $$
@@ -234,6 +234,84 @@ t&=1,\ldots, n, \\
 j&=1, \ldots, t.
 \end{aligned}
 $$
+
+
+
+#### 例1(style 1)
+
+记$\lambda_j=\exp(-\mathbf e_j)$。
+
+当$t=1$时：
+$$
+\log \mathbf s_{1}=\mathbf e_0+ \mathbf e_1,\\
+ \mathbf o_1 = \exp(-\mathbf e_1)\mathbf o_0 + (1-\exp(-\mathbf e_1)) \mathbf x_1
+ =\lambda_1 \mathbf o_0+(1-\lambda_1) \mathbf x_1.
+$$
+当$t=2$时：
+$$
+\log \mathbf s_{2}=\log \mathbf s_{1}+\mathbf e_2=\mathbf e_1 + \mathbf e_2,\\
+
+\mathbf o_{2}=\exp(-\mathbf e_2)\mathbf o_{1}+(1-\exp(-\mathbf e_2))\mathbf x_2
+=\exp(-\mathbf e_1-\mathbf e_2)\mathbf o_{0}+(\exp(-\mathbf e_2)-\exp(-\mathbf e_1-\mathbf e_2))\mathbf x_1+(1-\exp(-\mathbf e_2))\mathbf x_2 \\
+=\lambda_1\lambda_2 \mathbf o_0 + \lambda_2(1-\lambda_1)\mathbf x_1 + (1-\lambda_2)\mathbf x_2
+$$
+当$t=3$时：
+$$
+\log \mathbf s_{3}=\log \mathbf s_{2}+\mathbf e_3=\mathbf e_1 + \mathbf e_2+\mathbf e_3,\\
+
+\mathbf o_{3}=\exp(-\mathbf e_3) \mathbf o_2+(1-\exp(-\mathbf e_3))\mathbf x_3  \\
+=\exp(-\mathbf e_1-\mathbf e_2-\mathbf e_3)\mathbf o_{0}+(\exp(-\mathbf e_2-\mathbf e_3)-\exp(-\mathbf e_1-\mathbf e_2-\mathbf e_3))\mathbf x_1+(\exp(-\mathbf e_3)-\exp(-\mathbf e_2-\mathbf e_3))\mathbf x_2+
+(1-\exp(-\mathbf e_3)) \mathbf x_3 \\
+=\lambda_1\lambda_2\lambda_3 \mathbf o_0 + \lambda_2\lambda_3(1-\lambda_1)\mathbf x_1 + \lambda_3(1-\lambda_2)\mathbf x_2+(1-\lambda_3) \mathbf x_3
+$$
+
+
+###
+
+
+
+#### 例2(style 2)
+
+记$\lambda_j=\exp(-\mathbf e_j)$。
+
+当$t=1$时：
+$$
+\log \mathbf s_{11}=\mathbf e_0+\mathbf e_1,\mathbf o_{11}=\lambda_1\mathbf o_0 + (1-\lambda_1) \mathbf x_1,\\
+ \mathbf o_1 = \mathbf o_{11}.
+$$
+当$t=2$时：
+$$
+\log \mathbf s_{21}=\log \mathbf s_{11}+\mathbf e_1=\mathbf e_0 + 2\mathbf e_1,
+\mathbf o_{21}=\lambda_1 \mathbf o_{11}+(1-\lambda_1) {\mathbf x_1}
+=\lambda_1^2 \mathbf o_0 + \lambda_1(1-\lambda_1) \mathbf x_1 + (1-\lambda_1)\mathbf x_1
+=\lambda_1^2 \mathbf o_0+(1-\lambda_1^2) \mathbf x_1,\\
+
+\log \mathbf s_{22}=\log \mathbf s_{21}+\mathbf e_2 =\mathbf e_0 +2\mathbf e_1+\mathbf e_2, \\
+\mathbf o_{22}= \lambda_2 \mathbf o_{21} + (1-\lambda_2) \mathbf x_2
+=\lambda_2 \lambda_1^2 \mathbf o_0+\lambda_2 (1-\lambda_1^2) \mathbf x_1+(1-\lambda_2) \mathbf x_2
+\\
+\mathbf o_2 = \mathbf o_{22}.
+$$
+当$t=3$时：
+$$
+\begin{aligned}
+\log\mathbf s_{31}
+&=\log \mathbf s_{22}+\mathbf e_1  \\
+&=\mathbf e_0+3\mathbf e_1+\mathbf e_2, \\
+\mathbf o_{31}
+&=\lambda_1 \mathbf o_{22} + (1-\lambda_1) \mathbf x_1 \\
+&=\lambda_2 \lambda_1^3 \mathbf o_0+ (1-\lambda_1+\lambda_1\lambda_2- \lambda_1^3 \lambda_2) \mathbf x_1+\lambda_1(1-\lambda_2) \mathbf x_2
+,\\
+\mathbf s_{32}&=\lambda_2\left( \lambda_2 \lambda_1^3 \mathbf o_0+ (1-\lambda_1+\lambda_1\lambda_2- \lambda_1^3 \lambda_2) \mathbf x_1+\lambda_1(1-\lambda_2) \mathbf x_2\right)
++(1-\lambda_2)\mathbf x_2,\\
+&= \lambda_1^3\lambda_2^2 \mathbf o_0 +\lambda_2 (1-\lambda_1+\lambda_1\lambda_2- \lambda_1^3 \lambda_2)\mathbf x_1 + (1-\lambda_2+\lambda_1\lambda_2 -\lambda_1\lambda_2^2) \mathbf x_2   \\
+o_{33}&=\lambda_3\left(   \lambda_1^3\lambda_2^2 \mathbf o_0 +\lambda_2 (1-\lambda_1+\lambda_1\lambda_2- \lambda_1^3 \lambda_2)\mathbf x_1 + (1-\lambda_2+\lambda_1\lambda_2 -\lambda_1\lambda_2^2) \mathbf x_2   \right)+(1-\lambda_3)\mathbf x_3, \\
+&=  \lambda_1^3\lambda_2^2\lambda_3 \mathbf o_0 + \lambda_2\lambda_3 (1-\lambda_1+\lambda_1\lambda_2- \lambda_1^3 \lambda_2)\mathbf x_1
++\lambda_3 (1-\lambda_2+\lambda_1\lambda_2 -\lambda_1\lambda_2^2) \mathbf x_2 + (1-\lambda_3) \mathbf x_3 \\
+\mathbf o_3 &=\mathbf o_{33}.
+\end{aligned}
+$$
+
 
 
 #### 化简
