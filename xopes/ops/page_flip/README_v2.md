@@ -314,7 +314,7 @@ $$
 
 
 
-#### 化简
+#### 化简(v1 need check)
 
 记：
 $$
@@ -413,6 +413,181 @@ $$
 \end{aligned}
 $$
 
+#### 化简(v2 clear)
+记：
+$$
+\mathbf s_t^j\triangleq \mathbf s_t^{j-1} + \Delta_t^j,\\
+
+\mathbf s_t^j= \mathbf s_t^{j-1}\exp(\mathbf  e_j), \Delta_t^j= \mathbf s_t^{j-1}(\exp(\mathbf e_j) - 1)
+$$
+将定义代入可得：
+$$
+\begin{aligned}
+\mathbf{o}_t^j
+&=\left(\mathbf s_t^{j-1} / \mathbf s_t^j\right) \mathbf{o}_t^{j-1}+\left(1-\mathbf s_t^{j-1} / \mathbf s_t^j\right) \mathbf{x}_j  \\
+&=\left(\mathbf s_t^{j-1} / \mathbf s_t^j\right) \mathbf{o}_t^{j-1}+(\Delta_t^j /\mathbf s_{t}^j) \mathbf{x}_j  \\
+
+&=\left(\mathbf s_t^{j-1} / \mathbf s_t^j\right) \left(\left(\mathbf s_t^{j-2} / \mathbf s_t^{j-1}\right) \mathbf{o}_t^{j-2}+(\Delta_t^{j-1} /s_{t}^{j-1})  \mathbf x_{j-1}\right)+(\Delta_t^j /\mathbf s_{t}^j) \mathbf{x}_j  \\
+
+
+&=\left(\mathbf s_t^{j-2} / \mathbf s_t^j\right) \mathbf{o}_t^{j-2}+(\Delta_t^{j-1} /\mathbf s_{t}^j) \mathbf{x}_{j-1}+(\Delta_t^{j} /\mathbf s_{t}^j) \mathbf{x}_j  \\
+&=\ldots \\
+&=\left(\mathbf s_t^{0} / \mathbf s_t^j\right) \mathbf{o}_t^{0}
++\sum_{k=1}^j (\Delta_t^{k}  /\mathbf s_{t}^j) \mathbf{x}_{k}.  \\
+&=\left(\mathbf s_{t-1}^{t-1} / \mathbf s_t^j\right) \mathbf{o}_{t-1}^{t-1}
++\sum_{k=1}^j (\Delta_t^{k}  /\mathbf s_{t}^j) \mathbf{x}_{k}.  \\
+&=\left(\mathbf s_{t-1}/ \mathbf s_t^j\right) \mathbf{o}_{t-1}
++\sum_{k=1}^j (\Delta_t^{k} /\mathbf s_{t}^j) \mathbf{x}_{k}.  \\
+\end{aligned}
+$$
+取$j=t$可得：
+$$
+\begin{aligned}
+\mathbf{o}_t
+&=  \mathbf{o}_t^t \\
+&=\left(\mathbf s_{t-1} / \mathbf s_t^t\right) \mathbf{o}_{t-1}
++\sum_{k=1}^t (\Delta_t^{k} /\mathbf s_{t}^t) \mathbf{x}_{k} \\
+&=\left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}
++\sum_{k=1}^t (\Delta_t^{k} /\mathbf s_{t}^t) \mathbf{x}_{k} \\
+
+&\triangleq \left(\mathbf s_{t-1} / \mathbf s_t\right) \mathbf{o}_{t-1}
++\mathbf p_t
+\end{aligned}
+$$
+注意到：
+$$
+\begin{aligned}
+\mathbf q_t &= \sum_{k=1}^t \mathbf e_k\\
+\Delta_t^k
+&= (\exp(\mathbf e_k) - 1)\mathbf s_t^{k-1}\\
+&=(\exp(\mathbf e_k) - 1)\exp(\mathbf e_{k-1})\mathbf s_t^{k-2}\\
+&=\ldots \\
+&=(\exp(\mathbf e_k) - 1)\exp(\mathbf e_{k-1}) \ldots \exp(\mathbf  e_1)\mathbf s_t^{0}   \\
+&= (\exp(\mathbf q_k)-\exp(\mathbf q_{k-1}))\mathbf s_{t-1}\\
+
+\mathbf s_{t}&= \mathbf s_{t-1}\exp(\mathbf q_t)  \\
+
+
+\log \mathbf s_t
+&= \log \mathbf s_{t}^t \\
+&= \log \mathbf s_{t}^{t-1} + \mathbf e_t \\
+&\ldots \\
+&= \log \mathbf s_{t}^{0} +\sum_{k=1}^t \mathbf e_k\\
+&= \log \mathbf s_{t-1} +\sum_{k=1}^t \mathbf e_k \\
+&= \log \mathbf s_{t-1} + \mathbf q_t \\
+
+\Delta_t^{k} /\mathbf s_{t}
+&=(\exp(\mathbf q_k)-\exp(\mathbf q_{k-1}))\mathbf s_{t-1}/(\mathbf s_{t-1}\exp(\mathbf q_t))\\
+&=  (\exp(\mathbf q_k)-\exp(\mathbf q_{k-1}))/\exp(\mathbf q_t)\\
+
+\mathbf p_t &= \sum_k (\exp(\mathbf q_k)-\exp(\mathbf q_{k-1}))/\exp(\mathbf q_t)\mathbf x_k \\
+\mathbf p_t
+& =\sum_{k=1}^t (\exp(\mathbf q_k)-\exp(\mathbf q_{k-1}))/\exp(\mathbf q_t)\mathbf x_k   \\
+&= \frac{\exp(\mathbf q_{t-1})}{\exp(\mathbf q_t)}\sum_{k=1}^{t-1} (\exp(\mathbf q_k)-\exp(\mathbf q_{k-1}))/\exp(\mathbf q_{t-1})\mathbf x_k
++(1-\exp(-\mathbf e_t)) \mathbf x_t \\
+&= \exp(-\mathbf e_t) \mathbf p_{t-1}
++(1-\exp(-\mathbf e_t)) \mathbf x_t \\
+\end{aligned}
+$$
+于是我们得到如下递推式：
+$$
+\begin{aligned}
+\mathbf q_{t} &=\mathbf q_{t-1}+\mathbf e_{t}, \\
+\log \mathbf s_{t} &=\log \mathbf s_{t-1} + \mathbf  q_{t}, \\
+\mathbf p_{t}& =\exp(-\mathbf e_t) \mathbf p_{t-1}
++(1-\exp(-\mathbf e_t)) \mathbf x_t \\,
+\mathbf o_{t}&=(\mathbf s_{t-1} / \mathbf s_t) \mathbf o_{t-1} + \mathbf p_t.
+\end{aligned}
+$$
+
+
+
+#### 例2(style 2)
+
+记$\lambda_j=\exp(-\mathbf e_j)$。
+
+当$t=1$时：
+$$
+\log \mathbf s_{11}=\mathbf e_1,\mathbf o_{11}= \mathbf x_1,\\
+ \mathbf o_1 = \mathbf o_{11}.
+$$
+当$t=2$时：
+$$
+\log \mathbf s_{21}=\log \mathbf s_{11}+\mathbf e_1= 2\mathbf e_1,
+\mathbf o_{21}=\lambda_1 \mathbf o_{11}+(1-\lambda_1) {\mathbf x_1}
+=
+\mathbf x_1,\\
+
+\log \mathbf s_{22}=\log \mathbf s_{21}+\mathbf e_2 =2\mathbf e_1+\mathbf e_2, \\
+\mathbf o_{22}= \lambda_2 \mathbf o_{21} + (1-\lambda_2) \mathbf x_2
+=\lambda_2 \mathbf x_1+(1-\lambda_2) \mathbf x_2
+\\
+\mathbf o_2 = \mathbf o_{22}.
+$$
+当$t=3$时：
+$$
+\begin{aligned}
+\log\mathbf s_{31}
+&=\log \mathbf s_{22}+\mathbf e_1  \\
+&=3\mathbf e_1+\mathbf e_2, \\
+\mathbf o_{31}
+&=\lambda_1 \mathbf o_{22} + (1-\lambda_1) \mathbf x_1 \\
+&=\lambda_1(\lambda_2 \mathbf x_1+(1-\lambda_2) \mathbf x_2)
++ (1-\lambda_1) \mathbf x_1\\
+&= (1-\lambda_1+\lambda_1\lambda_2)\mathbf x_1 + \lambda_1(1-\lambda_2)\mathbf x_2  \\
+
+\mathbf s_{32}&=\lambda_2\left((1-\lambda_1+\lambda_1\lambda_2)\mathbf x_1 + \lambda_1(1-\lambda_2)\mathbf x_2 \right)
++(1-\lambda_2)\mathbf x_2,\\
+&=( \lambda_2-\lambda_1 \lambda_2+\lambda_1\lambda_2^2)\mathbf x_1
++(1-\lambda_2 + \lambda_1\lambda_2-\lambda_1\lambda_2^2)\mathbf x_2
+\\
+o_{33}&=\lambda_3\left( ( \lambda_2-\lambda_1 \lambda_2+\lambda_1\lambda_2^2)\mathbf x_1
++(1-\lambda_2 + \lambda_1\lambda_2-\lambda_1\lambda_2^2)\mathbf x_2   \right)+(1-\lambda_3)\mathbf x_3, \\
+&=  ( \lambda_2\lambda_3-\lambda_1 \lambda_2\lambda_3+\lambda_1\lambda_2^2\lambda_3)\mathbf x_1
++(\lambda_3-\lambda_2\lambda_3 + \lambda_1\lambda_2\lambda_3-\lambda_1\lambda_2^2\lambda_3)\mathbf x_2 + (1-\lambda_3) \mathbf x_3 \\
+\mathbf o_3 &=\mathbf o_{33}.
+\end{aligned}
+$$
+公式验证：
+
+$t=1$：
+$$
+\begin{aligned}
+\mathbf q_{1} &=\mathbf e_{1}, \\
+\log \mathbf s_{1} &=\log \mathbf s_{0} + \mathbf  q_{1}, \\
+\mathbf p_{1}&=\lambda_1 \mathbf p_{0} +  (1-\lambda_1)\mathbf x_1,   \\
+&= (1-\lambda_1)\mathbf x_1 \\
+\mathbf o_{1}&=\lambda_1 \mathbf o_{0} + \mathbf p_1,\\
+&=\lambda_1 \mathbf o_{0} +  (1-\lambda_1)\mathbf x_1
+\end{aligned}
+$$
+$t=2$时：
+$$
+\begin{aligned}
+\mathbf q_{2} &=\mathbf q_1+ \mathbf e_{2}=\mathbf e_{1}+\mathbf e_{2}, \\
+\log \mathbf s_{2} &=\log \mathbf s_{1} + \mathbf  q_{2}=\log \mathbf s_{0} + \mathbf  q_{1} + \mathbf q_2, \\
+\mathbf p_{2}&=\lambda_2 \mathbf p_{1} +  (1-\lambda_2)\mathbf x_2,   \\
+&=\lambda_2(1-\lambda_1) \mathbf x_1  + (1-\lambda_2) \mathbf x_2 \\
+\mathbf o_{2}&=\lambda_1\lambda_2 \mathbf o_{1} + \mathbf p_2 \\
+&= \lambda_1\lambda_2 \left ( \lambda_1 \mathbf o_{0} +  (1-\lambda_1)\mathbf x_1 \right)
++\lambda_2(1-\lambda_1) \mathbf x_1  + (1-\lambda_2) \mathbf x_2 \\
+&= \lambda_2\lambda_1^2\mathbf o_0 + (\lambda_2-\lambda_1^2\lambda_2 )\mathbf x_1 + (1-\lambda_2) \mathbf x_2
+\end{aligned}
+$$
+$t=3$时：
+$$
+\begin{aligned}
+\mathbf q_{2} &=\mathbf q_2+ \mathbf e_{3}=\mathbf e_{1}+\mathbf e_{2}+\mathbf e_3, \\
+\log \mathbf s_{3} &=\log \mathbf s_{2} + \mathbf  q_{3}=\log \mathbf s_{0} + \mathbf  q_{1} + \mathbf q_2 + \mathbf q_3, \\
+\mathbf p_{3}&=\lambda_3 \mathbf p_{2} +  (1-\lambda_3)\mathbf x_3,   \\
+&=\lambda_3\left(  \lambda_2(1-\lambda_1) \mathbf x_1  + (1-\lambda_2) \mathbf x_2 \right)  + (1-\lambda_3) \mathbf x_3 \\
+&=(1-\lambda_1)\lambda_2\lambda_3 \mathbf x_1 + (1-\lambda_2)\lambda_3 \mathbf x_2 + (1-\lambda_3)\mathbf x_3   \\
+
+\mathbf o_{3}&=\lambda_1\lambda_2\lambda_3 \mathbf o_{2} + \mathbf p_3 \\
+&=\lambda_1\lambda_2\lambda_3 \left( \lambda_2\lambda_1^2\mathbf o_0 + (\lambda_2-\lambda_1^2\lambda_2 )\mathbf x_1 + (1-\lambda_2) \mathbf x_2 \right) + (1-\lambda_1)\lambda_2\lambda_3 \mathbf x_1 + (1-\lambda_2)\lambda_3 \mathbf x_2 + (1-\lambda_3)\mathbf x_3\\
+&= \lambda_1^3\lambda_2^2\lambda_3 \mathbf o_0 + \lambda_2\lambda_3(1-\lambda_2+\lambda_1\lambda_2-\lambda_1^3\lambda_2)\mathbf x_1+\lambda_3(1-\lambda_2+\lambda_1\lambda_2-\lambda_1\lambda_2^2)\mathbf x_2+(1-\lambda_3)\mathbf x_3.
+\end{aligned}
+$$
 
 
 

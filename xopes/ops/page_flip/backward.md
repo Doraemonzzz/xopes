@@ -193,9 +193,9 @@ $$
 &=(\mathbf q_t/ \mathbf s_t)^\top \left( \sum_{k=1}^{t}
 \left( \mathbf{D}(\mathbf u_0)\mathbf p_0+  + \sum_{j=1}^k\left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top  \right) \right) \\
 &= \sum_{k=1}^{t}
-\left( \mathbf{D}(\mathbf u_0)\mathbf p_0+  \sum_{j=1}^k (\mathbf q_t/ \mathbf s_t)^\top \left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top  \right) \\
+\left( (\mathbf q_t/ \mathbf s_t)^\top \mathbf{D}(\mathbf u_0)\mathbf p_0+  \sum_{j=1}^k (\mathbf q_t/ \mathbf s_t)^\top \left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top  \right) \\
 &= \sum_{k=1}^{t}
-\left(\mathbf{D}(\mathbf u_0)\mathbf p_0+ \sum_{j=1}^k (\mathbf q_t/ \mathbf s_t)^\top \left({\mathbf e_{j}} \odot \mathbf k_j \right) \mathbf{v}_{j}^\top \right)  \\
+\left((\mathbf q_t/ \mathbf s_t)^\top \mathbf{D}(\mathbf u_0)\mathbf p_0+ \sum_{j=1}^k (\mathbf q_t/ \mathbf s_t)^\top \left({\mathbf e_{j}} \odot \mathbf k_j \right) \mathbf{v}_{j}^\top \right)  \\
 
 
 
@@ -241,10 +241,180 @@ $$
 
 
 
+### Multiplicative
+
+$$
+\begin{aligned}
+\textbf{multiply decay}:
+\log \mathbf s_{0}& =\mathbf 0,\log \mathbf u_{0}=\mathbf 0, \mathbf u_{0}=\mathbf 0,\mathbf h_{0} =\mathbf 0,\\
+\log \mathbf  u_{t} &=\log \mathbf u_{t-1}+\mathbf e_t, \\
+
+  \log \mathbf s_{t} &= \log \mathbf s_{t-1} +  \log \mathbf u_{t}, \\
+
+\textbf{compute}:\mathbf p_{t}&=\mathbf D(\mathbf u_{t-1} / \mathbf u_t)\mathbf p_{t-1} +  ((1-\mathbf u_{t-1} /\mathbf u_{t}) \odot \mathbf k_t) \mathbf{v}_{t}^\top,   \\
+\mathbf h_{t}&=\mathbf D(\mathbf s_{t-1} / \mathbf s_t) \mathbf h_{t-1} +\mathbf p_t,\\
+\mathbf o_t&= \mathbf h_{t}^\top \mathbf q_t.
+\end{aligned}
+$$
 
 
 
-#### Multiplicative(need check, update later)
+##### 反向
+
+compute part:
+$$
+\begin{aligned}
+\mathbf {dq}_t & =\mathbf h_t\mathbf {do}_t \\
+\mathbf {dh}_{t-1}&=\mathbf D(\mathbf s_{t-1} / \mathbf s_t) \mathbf {dh}_{t} + \mathbf q_{t-1}\mathbf{do}_{t-1}^{\top}  \\
+\mathbf {dp}_{t-1}&= (\mathbf u_{t-1} / \mathbf u_t)\mathbf {dp}_{t}+\mathbf {dh}_{t-1}   \\
+\mathbf {dv}_{t}&= \mathbf {dp}_{t}^{\top} ((1-\mathbf u_{t-1} /\mathbf u_{t}) \odot \mathbf k_t) \\
+\mathbf {dk}_{t}&= (\mathbf {dp}_{t} \mathbf v_t) \odot (1-\mathbf u_{t-1} /\mathbf u_{t})
+ \\
+
+
+\end{aligned}
+$$
+记
+$$
+\begin{aligned}
+\gamma_t &=\mathbf u_{t-1}/\mathbf u_t=\exp(\log \mathbf u_{t-1}- \log \mathbf u_t )\\
+\lambda_t &=\mathbf s_{t-1}/\mathbf s_t=\exp(\log \mathbf s_{t-1}- \log \mathbf s_t )
+\end{aligned}
+$$
+
+
+$$
+\begin{aligned}
+
+
+\mathbf p_t
+&=\mathbf D\left(\frac{\mathbf u_0}{\mathbf u_t}\right) \mathbf p_0+ \sum_{k=1}^t\left(\frac{\mathbf u_{k}-\mathbf u_{k-1}}{\mathbf u_t} \odot \mathbf k_k \right) \mathbf{v}_{t}^\top  \\
+&=  \mathbf D\left(\frac{\mathbf u_0}{\mathbf u_t}\right) \mathbf p_0+\mathbf D\left( \frac{1}{\mathbf u_t} \right)\sum_{k=1}^t\left(({\mathbf u_{k}-\mathbf u_{k-1}}) \odot \mathbf k_k \right) \mathbf{v}_{k}^\top
+\\
+
+\mathbf h_t &= \mathbf D(\mathbf s_{t-1} / \mathbf s_t) \mathbf h_{t-1} +\mathbf p_t  \\
+&=\mathbf D(\mathbf s_{t-1} / \mathbf s_t)
+\left(\mathbf D(\mathbf s_{t-2} / \mathbf s_{t-1}) \mathbf h_{t-2} +\mathbf p_{t-1} \right) +\mathbf p_t  \\
+&=\mathbf D(\mathbf s_{t-2} / \mathbf s_t) \mathbf h_{t-2}+\mathbf D(\mathbf s_{t-1} / \mathbf s_t) \mathbf p_{t-1}  +\mathbf p_t  \\
+&=\mathbf D(\mathbf s_{0} / \mathbf s_t) \mathbf h_{0}+
+\sum_{k=1}^t\mathbf D(\mathbf s_{k} / \mathbf s_t) \mathbf p_{k}   \\
+
+&= \mathbf D \left(\frac{\mathbf s_0}{{\mathbf s_t}} \right) \mathbf h_0+\mathbf D \left(\frac{1}{{\mathbf s_t}} \right)\sum_{k=1}^{t}\mathbf D\left( {\mathbf s_{k}} \right)
+
+\left( \mathbf {D}(\mathbf u_0) \mathbf p_0+ \sum_{j=1}^k\left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top  \right)
+
+\end{aligned}
+$$
+梯度1:
+
+$$
+\begin{aligned}
+\mathbf h_t
+&= \mathbf D \left(\frac{\mathbf s_0}{{\mathbf s_t}} \right) \mathbf h_0+\mathbf D \left(\frac{1}{{\mathbf s_t}} \right)\sum_{k=1}^{t}\mathbf D (\mathbf s_k)
+\left( \mathbf {D}(\mathbf u_0) \mathbf p_0+ \sum_{j=1}^k\left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top  \right) \\
+
+\mathbf o_t^{\top}&= \mathbf q_t^\top \mathbf h_t \\
+&=\mathbf q_t^\top \left(\mathbf D \left(\frac{\mathbf s_0}{{\mathbf s_t}} \right) \mathbf h_0+ \mathbf D \left(\frac{1}{{\mathbf s_t}} \right)\sum_{k=1}^{t}\mathbf D (\mathbf s_k)\left( \mathbf {D}(\mathbf u_0) \mathbf p_0+ \sum_{j=1}^k\left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top  \right)\right) \\
+&=(\mathbf q_t/ \mathbf s_t)^\top \left(\mathbf D \left({\mathbf s_0} \right) \mathbf h_0+ \sum_{k=1}^{t}\mathbf D (\mathbf s_k)\left( \mathbf {D}(\mathbf u_0) \mathbf p_0+ \sum_{j=1}^k\left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top  \right)\right) \\
+&= (\mathbf q_t/ \mathbf s_t)^\top \mathbf D \left({\mathbf s_0} \right) \mathbf h_0+ \sum_{k=1}^{t}
+\left(
+(\mathbf q_t/ \mathbf s_t)^\top \mathbf D (\mathbf s_k) \mathbf{D}(\mathbf u_0)\mathbf p_0 +
+(\mathbf q_t/ \mathbf s_t)^\top  \mathbf D (\mathbf s_k)\sum_{j=1}^k \left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top  \right) \\
+
+\mathbf {d q}_t&=  \frac{1}{\mathbf s_t} \odot \left(
+\mathbf D(\mathbf s_0) \mathbf h_0 \mathbf {do}_t+
+\sum_{k=1}^{t}
+\left(
+\mathbf D (\mathbf s_k)\mathbf{D}(\mathbf u_0)\mathbf p_0 \mathbf{do}_t+
+ \mathbf D (\mathbf s_k) \sum_{j=1}^k\left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top  \mathbf {do}_t  \right) \right)\\
+&\triangleq   \mathbf {dq}_t^- +  \mathbf {dq}_t^+
+
+\end{aligned}
+$$
+
+
+
+注意到：
+$$
+\begin{aligned}
+\mathbf {ds}_t =& -\frac{\mathbf q_t}{\mathbf s_t^2} \odot \left(  \left(
+\mathbf D(\mathbf s_0) \mathbf h_0 \mathbf {do}_t+
+\sum_{k=1}^{t}
+\left(
+\mathbf D (\mathbf s_k)\mathbf{D}(\mathbf u_0)\mathbf p_0 \mathbf{do}_t+
+ \mathbf D (\mathbf s_k) \sum_{j=1}^k\left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top  \mathbf {do}_t  \right) \right)\\ \right) \\
++& \sum_{k\ge t} \frac{\mathbf q_k}{\mathbf s_k \odot \mathbf u_t}
+\left( \mathbf{D}(\mathbf u_0)\mathbf p_0 \mathbf{do}_t + \sum_{j=1}^k\left(({\mathbf u_{j}-\mathbf u_{j-1}}) \odot \mathbf k_j \right) \mathbf{v}_{j}^\top \mathbf {do}_k    \right)
+\end{aligned}
+$$
+
+
+注意到：
+$$
+\begin{aligned}
+\mathbf h_t
+&=\mathbf D(\mathbf s_{0} / \mathbf s_t) \mathbf h_{0}+
+\sum_{k=1}^t\mathbf D(\mathbf s_{k} / \mathbf s_t) \mathbf p_{k} \\
+
+\mathbf o_t^{\top}&= \mathbf q_t^\top \mathbf h_t \\
+&= \mathbf q_t^\top \left( \mathbf D(\mathbf s_{0} / \mathbf s_t) \mathbf h_{0}+
+\sum_{k=1}^t\mathbf D(\mathbf s_{k} / \mathbf s_t) \mathbf p_{k} \right)\\
+&= (\mathbf q_t/\mathbf s_t)^\top  \left( \mathbf D(\mathbf s_{0} ) \mathbf h_{0}+
+\sum_{k=1}^t\mathbf D(\mathbf s_{k}) \mathbf p_{k} \right)\\
+&\triangleq (\mathbf q_t/\mathbf s_t)^\top {\mathbf {\bar  h}}_t
+\end{aligned}
+$$
+那么：
+$$
+\begin{aligned}
+\mathbf {dq}_t &= \frac{1}{\mathbf s_t}\odot ( {\mathbf {\bar  h}}_t \mathbf {do}_t)\\
+\mathbf {dk}_t &= \sum_{j\ge t}
+(\mathbf u_j -\mathbf u_{j-1})\odot
+\sum_{k=j}^t (\mathbf q_t/\mathbf s_t)^\top \mathbf D(\mathbf s_k)\mathbf v_j^\top \mathbf {do}_t
+
+\\
+\mathbf {ds}_t &= -\frac{\mathbf q_t}{\mathbf s_t^2} \odot ( {\mathbf {\bar  h}}_t \mathbf {do}_t)
++ (\mathbf p_t \mathbf {do}_t)\odot \sum_{j\ge t} \frac{\mathbf q_j}{\mathbf s_j}   \\
+&= -\frac{\mathbf q_t \odot \mathbf {dq}_t}{\mathbf s_t}+ (\mathbf p_t \mathbf {do}_t)\odot \sum_{j\ge t} \frac{\mathbf q_j}{\mathbf s_j}  \\
+
+\end{aligned}
+$$
+另一方面：
+$$
+\begin{aligned}
+\frac{\mathbf {do}_t}{\mathbf {dk}_j}
+&= \sum_{k=j}^t  \mathbf {do}_t^\top \mathbf v_j \mathbf D(\mathbf s_k)(\mathbf q_t/\mathbf s_t) \odot (\mathbf u_j - \mathbf u_{j-1}) \\
+
+
+
+\mathbf {dk}_j
+&= \sum_{t\ge j}\frac{\mathbf {do}_t}{\mathbf {dk}_j} \\
+& =\sum_{t\ge j}\sum_{k=j}^t  \mathbf {do}_t^\top \mathbf v_j \mathbf D(\mathbf s_k)(\mathbf q_t/\mathbf s_t) \odot (\mathbf u_j - \mathbf u_{j-1})   \\
+
+\frac{\partial \mathbf{do}_t}{\partial (\mathbf u_j - \mathbf u_{j-1})}
+&= \sum_{k=j}^t  \mathbf {do}_t^\top \mathbf v_j \frac{\partial\left( (\mathbf q_t/ \mathbf s_t)^\top \mathbf D(\mathbf s_k) \left((\mathbf u_j - \mathbf u_{j-1}) \odot \mathbf k_j \right)  \right)}{\partial (\mathbf u_j - \mathbf u_{j-1})}
+ \\
+&=\sum_{k=j}^t  (\mathbf {do}_t^\top \mathbf v_j)
+\mathbf D(\mathbf s_k)\mathbf q_t/ \mathbf s_t\odot \mathbf k_j   \\
+
+
+\mathbf {d}(\mathbf u_j - \mathbf u_{j-1} ) &=\sum_{k\ge j}\frac{\partial \mathbf{do}_k}{\partial (\mathbf u_j - \mathbf u_{j-1})}  \\
+&=  \frac{\mathbf {dk}_j \odot \mathbf k_j}{\mathbf u_j - \mathbf u_{j-1}}  \\
+
+\mathbf {d}\mathbf u_j  &=
+\sum_{k=1}^j\frac{\mathbf {dk}_k \odot \mathbf k_k}{\mathbf u_k - \mathbf u_{k-1}}
+\end{aligned}
+$$
+
+
+
+
+
+
+
+
+
+#### Multiplicative(no read, need check, update later)
 
 $$
 \mathbf  s_{t} =\mathbf s_{t-1}\mathbf r_{t}=\mathbf s_{t-1}(\mathbf u_{t} +\mathbf r_0),
@@ -346,8 +516,8 @@ $$
 
 在$t$时刻：
 $$
-d \bar k_j=\sum_{k=1}^t  \bar q_t^\top f(k) v_j^\top do_t, \\
-d k_j=(u_j-u_{j-1})\odot \sum_{k=1}^t \bar q_t^\top f(k) v_j^\top do_t
+d \bar k_j=\sum_{k=j}^t  \bar q_t^\top f(k) v_j^\top do_t, \\
+d k_j=(u_j-u_{j-1})\odot \sum_{k=j}^t \bar q_t^\top f(k) v_j^\top do_t
 $$
 累加全部时刻可得：
 $$
