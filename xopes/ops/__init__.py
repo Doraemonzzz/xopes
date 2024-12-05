@@ -31,7 +31,6 @@ from .multinomial import (
 )
 from .normalize import srmsnorm_fn
 from .page_flip import (
-    page_flip_naive_torch,
-    page_flip_recurrence_torch,
-    page_flip_recurrence_triton,
+    page_flip_additive_naive_torch,
+    page_flip_additive_recurrence_torch,
 )

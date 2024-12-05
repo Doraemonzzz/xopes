@@ -1,3 +1,4 @@
-from .page_flip_naive_torch import page_flip_naive_torch
-from .page_flip_recurrence_torch import page_flip_recurrence_torch
-from .page_flip_recurrence_triton import page_flip_recurrence_triton
+from .additive import (
+    page_flip_additive_naive_torch,
+    page_flip_additive_recurrence_torch,
+)
