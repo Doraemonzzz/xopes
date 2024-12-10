@@ -1,12 +1,9 @@
 import pytest
 import torch
 import torch.nn.functional as F
-
-from xopes.ops.page_flip.additive import (
-    page_flip_additive_naive_torch,
-    page_flip_additive_recurrence_torch,
-    page_flip_additive_recurrence_triton,
-)
+from xopes.ops.page_flip.additive import (page_flip_additive_naive_torch,
+                                          page_flip_additive_recurrence_torch,
+                                          page_flip_additive_recurrence_triton)
 from xopes.utils import get_threshold
 
 
