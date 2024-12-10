@@ -1,7 +1,6 @@
 import torch
 import triton
 import triton.language as tl
-
 from xopes.utils import contiguous, next_power_of_two
 
 
@@ -196,7 +195,7 @@ def _page_flip_additive_recrurrence_fwd(
             k_block_ptr += H * D
 
         state0 = decay_state0[:, None] * state0 + state
-        state1 = decay_state1[:, None] * state1 + state0
+        state1 = decay_state1[:, None] * state1 + (1 - decay_state1[:, None]) * state0
         # d, d e -> e
         o = tl.sum(q[:, None] * state1, axis=0)
 
