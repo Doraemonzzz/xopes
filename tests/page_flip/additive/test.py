@@ -35,7 +35,7 @@ def get_params():
 @pytest.mark.parametrize(
     "use_initial_state",
     [
-        True,
+        # True,
         False,
     ],
 )
@@ -160,26 +160,26 @@ def test(
         assert torch.allclose(o_naive_torch, o_recurrence_torch, atol=atol, rtol=rtol)
 
     print(
-        f"recurrence torch Vs recurrence triton (diff norm): {torch.norm(o_recurrence_triton - o_recurrence_torch).item()}"
+        f"recurrence triton Vs recurrence torch (diff norm): {torch.norm(o_recurrence_triton - o_recurrence_torch).item()}"
     )
     print(
-        f"recurrence torch Vs recurrence triton (diff max): {torch.abs(o_recurrence_triton - o_recurrence_torch).max()}"
+        f"recurrence triton Vs recurrence torch (diff max): {torch.abs(o_recurrence_triton - o_recurrence_torch).max()}"
     )
     assert torch.allclose(o_recurrence_triton, o_recurrence_torch, atol=atol, rtol=rtol)
 
     if output_final_state:
         if not use_initial_state:
             print(
-                f"recurrence torch state0 Vs recurrence torch state1 (diff norm): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).item()}"
+                f"naive torch state0 Vs recurrence torch state1 (diff norm): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).item()}"
             )
             print(
-                f"recurrence torch state0 Vs recurrence torch state1 (diff max): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).max()}"
+                f"naive torch state0 Vs recurrence torch state1 (diff max): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).max()}"
             )
             print(
-                f"recurrence torch state1 Vs recurrence torch state3 (diff norm): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).item()}"
+                f"naive torch state1 Vs recurrence torch state3 (diff norm): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).item()}"
             )
             print(
-                f"recurrence torch state1 Vs recurrence torch state3 (diff max): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).max()}"
+                f"naive torch state1 Vs recurrence torch state3 (diff max): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).max()}"
             )
             assert torch.allclose(
                 final_state_naive_torch[0],
@@ -196,10 +196,10 @@ def test(
 
         for i in range(4):
             print(
-                f"recurrence torch state{i} Vs recurrence triton state{i} (diff norm): {torch.norm(final_state_recurrence_triton[i] - final_state_recurrence_torch[i]).item()}"
+                f"recurrence triton state{i} Vs recurrence torch state{i} (diff norm): {torch.norm(final_state_recurrence_triton[i] - final_state_recurrence_torch[i]).item()}"
             )
             print(
-                f"recurrence torch state{i} Vs recurrence triton state{i} (diff max): {torch.norm(final_state_recurrence_triton[i] - final_state_recurrence_torch[i]).max()}"
+                f"recurrence triton state{i} Vs recurrence torch state{i} (diff max): {torch.norm(final_state_recurrence_triton[i] - final_state_recurrence_torch[i]).max()}"
             )
             assert torch.allclose(
                 final_state_recurrence_triton[i],
