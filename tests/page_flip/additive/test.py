@@ -34,6 +34,7 @@ def get_params():
 @pytest.mark.parametrize(
     "use_initial_state",
     [
+        True,
         False,
     ],
 )
@@ -45,29 +46,56 @@ def get_params():
 )
 @pytest.mark.parametrize(
     "use_normalize",
-    [
-        True,
-    ],
+    [True, False],
+)
+@pytest.mark.parametrize(
+    "use_k",
+    [True, False],
+)
+@pytest.mark.parametrize(
+    "b_state",
+    [True, False],
 )
 def test_lightning2(
-    b, n, h, d, e, dtype, use_initial_state, output_final_state, use_normalize
+    b,
+    n,
+    h,
+    d,
+    e,
+    dtype,
+    use_initial_state,
+    output_final_state,
+    use_normalize,
+    use_k,
+    b_state,
 ):
+    if (not use_k) and (not use_normalize):
+        return
+
     torch.manual_seed(2024)
     device = torch.device("cuda")
     torch.cuda.empty_cache()
     f = F.softplus
     q = (torch.randn((b, n, h, d), dtype=dtype, device=device)).requires_grad_()
-    k = (torch.randn((b, n, h, d), dtype=dtype, device=device)).requires_grad_()
-    # k = None
+    if use_k:
+        k = (torch.randn((b, n, h, d), dtype=dtype, device=device)).requires_grad_()
+    else:
+        k = None
     v = (torch.randn((b, n, h, e), dtype=dtype, device=device)).requires_grad_()
     w = (f(torch.randn((b, n, h, d), dtype=dtype, device=device))).requires_grad_()
     # do = torch.randn((b, n, h, e), dtype=dtype, device=device)
 
     if use_initial_state:
-        state1 = f(torch.randn((b, h, d), dtype=dtype, device=device))
-        state2 = f(torch.randn((b, h, d), dtype=dtype, device=device))
-        state3 = torch.randn((b, h, d, e), dtype=dtype, device=device)
-        state4 = torch.randn((b, h, d, e), dtype=dtype, device=device)
+        if b_state:
+            state1 = f(torch.randn((b, h, d), dtype=dtype, device=device))
+            state2 = f(torch.randn((b, h, d), dtype=dtype, device=device))
+            state3 = torch.randn((b, h, d, e), dtype=dtype, device=device)
+            state4 = torch.randn((b, h, d, e), dtype=dtype, device=device)
+        else:
+            state1 = f(torch.randn((h, d), dtype=dtype, device=device))
+            state2 = f(torch.randn((bh, d), dtype=dtype, device=device))
+            state3 = torch.randn((h, d, e), dtype=dtype, device=device)
+            state4 = torch.randn((h, d, e), dtype=dtype, device=device)
         initial_state = [state1, state2, state3, state4]
     else:
         initial_state = None
@@ -81,7 +109,7 @@ def test_lightning2(
 
     # forward
     # naive torch
-    if (not use_initial_state) and use_normalize:
+    if not use_initial_state:
         o_naive_torch, final_state_naive_torch = page_flip_additive_naive_torch(
             q,
             v,
@@ -109,11 +137,17 @@ def test_lightning2(
         o_recurrence_triton,
         final_state_recurrence_triton,
     ) = page_flip_additive_recurrence_triton(
-        q, v, w, k=k, initial_state=initial_state, output_final_state=output_final_state
+        q,
+        v,
+        w,
+        k=k,
+        initial_state=initial_state,
+        output_final_state=output_final_state,
+        use_normalize=use_normalize,
     )
 
     print(f"{'==' * 10} Output test {'==' * 10}")
-    if (not use_initial_state) and use_normalize:
+    if not use_initial_state:
         print(
             f"naive torch Vs recurrence torch (diff norm): {torch.norm(o_naive_torch - o_recurrence_torch).item()}"
         )
@@ -130,12 +164,13 @@ def test_lightning2(
 
     if output_final_state:
         if not use_initial_state:
-            print(
-                f"recurrence torch state0 Vs recurrence torch state1 (diff norm): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).item()}"
-            )
-            print(
-                f"recurrence torch state0 Vs recurrence torch state1 (diff max): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).max()}"
-            )
+            if not use_initial_state:
+                print(
+                    f"recurrence torch state0 Vs recurrence torch state1 (diff norm): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).item()}"
+                )
+                print(
+                    f"recurrence torch state0 Vs recurrence torch state1 (diff max): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).max()}"
+                )
             print(
                 f"recurrence torch state1 Vs recurrence torch state3 (diff norm): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).item()}"
             )
