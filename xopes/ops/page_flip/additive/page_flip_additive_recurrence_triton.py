@@ -41,6 +41,7 @@ def _page_flip_additive_prepare(
             offset_state = off_b * H * D + off_h * D
         else:
             offset_state = off_h * D
+
         state0_block_ptr = INIT_STATE0 + offset_state + tl.arange(0, BLOCK)
         state1_block_ptr = INIT_STATE1 + offset_state + tl.arange(0, BLOCK)
 
@@ -131,7 +132,7 @@ def _page_flip_additive_recrurrence_fwd(
     u_block_ptr = U + offset_us + tl.arange(0, BLOCK_D)
     s_block_ptr = S + offset_us + tl.arange(0, BLOCK_D)
     o_block_ptr = O + offset_vo + tl.arange(0, BLOCK_E)
-    if USE_K:
+    if USE_K or (not USE_NORMALIZE):
         k_block_ptr = K + offset_qk + tl.arange(0, BLOCK_D)
     if USE_O_GATE:
         o_gate_block_ptr = O_GATE + offset_vo + tl.arange(0, BLOCK_E)
@@ -305,7 +306,7 @@ class PageFlipAdditiveRecurrenceTriton(torch.autograd.Function):
 
         # whether use batch init state
         b_state = False
-        if USE_INIT_STATE and len(state0.shape) == 3:
+        if use_init_state and len(state0.shape) == 3:
             b_state = True
 
         _page_flip_additive_prepare[grid](
@@ -356,7 +357,7 @@ class PageFlipAdditiveRecurrenceTriton(torch.autograd.Function):
 
         final_state = [o_state0, o_state1, o_state2, o_state3]
 
-        ctx.save_for_backward(q, v, w, k, o_gate, initial_state, final_state, u, s)
+        # ctx.save_for_backward(q, v, w, k, o_gate, initial_state, final_state, u, s)
         ctx.output_final_state = output_final_state
         ctx.use_normalize = use_normalize
 
