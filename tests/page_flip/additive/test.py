@@ -99,13 +99,6 @@ def test(
     else:
         initial_state = None
 
-    if dtype in [torch.float32]:
-        pass
-    elif dtype in [torch.float16]:
-        pass
-    else:
-        pass
-
     # forward
     # naive torch
     if not use_initial_state:
