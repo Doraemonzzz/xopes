@@ -63,18 +63,13 @@ def page_flip_additive_recurrence_torch(
 
         if use_normalize:
             if ki is not None:
-                state2 = decay_state2.unsqueeze(-1) * state2 + (
-                    (1 - decay_state2) * ki
-                ).unsqueeze(-1) * vi.unsqueeze(-2)
+                state = ((1 - decay_state2) * ki).unsqueeze(-1) * vi.unsqueeze(-2)
             else:
-                state2 = decay_state2.unsqueeze(-1) * state2 + (
-                    1 - decay_state2
-                ).unsqueeze(-1) * vi.unsqueeze(-2)
+                state = (1 - decay_state2).unsqueeze(-1) * vi.unsqueeze(-2)
         else:
-            state2 = decay_state2.unsqueeze(-1) * state2 + ki.unsqueeze(
-                -1
-            ) * vi.unsqueeze(-2)
+            state = ki.unsqueeze(-1) * vi.unsqueeze(-2)
 
+        state2 = decay_state2.unsqueeze(-1) * state2 + state
         state3 = (
             decay_state3.unsqueeze(-1) * state3
             + (1 - decay_state3).unsqueeze(-1) * state2
