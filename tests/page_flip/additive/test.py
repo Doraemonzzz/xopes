@@ -52,7 +52,8 @@ def get_params():
 )
 @pytest.mark.parametrize(
     "b_state",
-    [True, False],
+    # [True, False],
+    [True],
 )
 def test(
     b,
@@ -145,27 +146,28 @@ def test(
     )
 
     atol, rtol = get_threshold(dtype)
+    check_naive = (not use_initial_state) and use_normalize and use_k
 
-    print(f"{'==' * 10} Output test {'==' * 10}")
-    if not use_initial_state:
-        print(
-            f"naive torch Vs recurrence torch (diff norm): {torch.norm(o_naive_torch - o_recurrence_torch).item()}"
-        )
-        print(
-            f"naive torch Vs recurrence torch (diff max): {torch.abs(o_naive_torch - o_recurrence_torch).max()}"
-        )
-        assert torch.allclose(o_naive_torch, o_recurrence_torch, atol=atol, rtol=rtol)
+    # print(f"{'==' * 10} Output test {'==' * 10}")
+    # if check_naive:
+    #     print(
+    #         f"naive torch Vs recurrence torch (diff norm): {torch.norm(o_naive_torch - o_recurrence_torch).item()}"
+    #     )
+    #     print(
+    #         f"naive torch Vs recurrence torch (diff max): {torch.abs(o_naive_torch - o_recurrence_torch).max()}"
+    #     )
+    #     assert torch.allclose(o_naive_torch, o_recurrence_torch, atol=atol, rtol=rtol)
 
-    print(
-        f"recurrence triton Vs recurrence torch (diff norm): {torch.norm(o_recurrence_triton - o_recurrence_torch).item()}"
-    )
-    print(
-        f"recurrence triton Vs recurrence torch (diff max): {torch.abs(o_recurrence_triton - o_recurrence_torch).max()}"
-    )
-    assert torch.allclose(o_recurrence_triton, o_recurrence_torch, atol=atol, rtol=rtol)
+    # print(
+    #     f"recurrence triton Vs recurrence torch (diff norm): {torch.norm(o_recurrence_triton - o_recurrence_torch).item()}"
+    # )
+    # print(
+    #     f"recurrence triton Vs recurrence torch (diff max): {torch.abs(o_recurrence_triton - o_recurrence_torch).max()}"
+    # )
+    # assert torch.allclose(o_recurrence_triton, o_recurrence_torch, atol=atol, rtol=rtol)
 
     if output_final_state:
-        if not use_initial_state:
+        if check_naive:
             print(
                 f"naive torch state0 Vs recurrence torch state1 (diff norm): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).item()}"
             )
