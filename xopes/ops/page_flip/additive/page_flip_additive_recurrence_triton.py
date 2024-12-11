@@ -1,7 +1,6 @@
 import torch
 import triton
 import triton.language as tl
-
 from xopes.utils import contiguous, next_power_of_two
 
 
@@ -163,6 +162,7 @@ def _page_flip_additive_recrurrence_fwd(
         state1 = tl.load(
             state1_block_ptr, mask=d_mask[:, None] & e_mask[None, :], other=0.0
         ).to(tl.float32)
+        # tl.device_print("aaa", state0)
     else:
         state0 = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
         state1 = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
@@ -308,7 +308,7 @@ class PageFlipAdditiveRecurrenceTriton(torch.autograd.Function):
         b_state = False
         if use_init_state and len(state0.shape) == 3:
             b_state = True
-
+        print("aaa", use_init_state, b_state)
         _page_flip_additive_prepare[grid](
             W=w,
             INIT_STATE0=state0,
@@ -355,7 +355,7 @@ class PageFlipAdditiveRecurrenceTriton(torch.autograd.Function):
             OUTPUT_FINAL_STATE=output_final_state,
         )
 
-        final_state = [o_state0, o_state1, o_state2, o_state3]
+        final_state = [u, s, o_state2, o_state3]
 
         # ctx.save_for_backward(q, v, w, k, o_gate, initial_state, final_state, u, s)
         ctx.output_final_state = output_final_state
