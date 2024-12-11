@@ -1,5 +1,4 @@
 import torch
-from einops import repeat
 
 
 def page_flip_additive_weight_preprocess_torch(w, initial_state=[None, None]):
@@ -37,6 +36,7 @@ def page_flip_additive_recurrence_torch(
     initial_state=None,
     output_final_state=False,
     use_normalize=False,
+    output_hidden_state=False,
 ):
     if initial_state is None:
         initial_state = [None, None, None, None]
@@ -60,6 +60,8 @@ def page_flip_additive_recurrence_torch(
         state3 = torch.zeros((b, h, d, e), dtype=torch.float32, device=q.device)
 
     o = []
+    p = [state2.unsqueeze(1)]
+    l = [state3.unsqueeze(1)]
     for i in range(n):
         decay_state2 = u[:, i].to(torch.float32) / u[:, i + 1].to(torch.float32)
         decay_state3 = s[:, i].to(torch.float32) / s[:, i + 1].to(torch.float32)
@@ -85,14 +87,18 @@ def page_flip_additive_recurrence_torch(
         )
         oi = torch.einsum("... d, ... d e -> ... e", qi, state3)
         o.append(oi.unsqueeze(1))
+        p.append(state2.unsqueeze(1))
+        l.append(state3.unsqueeze(1))
 
     o = torch.cat(o, dim=1)
+    p = torch.cat(p, dim=1)
+    l = torch.cat(l, dim=1)
 
     if o_gate is not None:
         o = o * o_gate
 
     if output_final_state:
-        final_state = [u, s, state2, state3]
+        final_state = [u, s, p, l]
     else:
         final_state = None
 
@@ -111,7 +117,14 @@ if __name__ == "__main__":
     o_gate = torch.randn((b, n, h, e), dtype=dtype).cuda()
     k = None
     use_normalize = True
+    output_hidden_state = True
     o, final_state = page_flip_additive_recurrence_torch(
-        q, v, w, k=k, o_gate=o_gate, use_normalize=use_normalize
+        q,
+        v,
+        w,
+        k=k,
+        o_gate=o_gate,
+        use_normalize=use_normalize,
+        output_hidden_state=output_hidden_state,
     )
     print(o.shape)

@@ -98,6 +98,8 @@ def _page_flip_additive_recrurrence_fwd(
     INIT_STATE0,  # B H D E
     INIT_STATE1,  # B H D E
     O,  # B N H E
+    P,  # B (N + 1) H D E
+    L,  # B (N + 1) H D E
     FINAL_STATE0,  # B H D E
     FINAL_STATE1,  # B H D E
     B: tl.constexpr,
@@ -113,6 +115,7 @@ def _page_flip_additive_recrurrence_fwd(
     USE_O_GATE: tl.constexpr,
     USE_INIT_STATE: tl.constexpr,
     OUTPUT_FINAL_STATE: tl.constexpr,
+    OUTPUT_HIDDEN_STATE: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -131,6 +134,20 @@ def _page_flip_additive_recrurrence_fwd(
     u_block_ptr = U + offset_us + tl.arange(0, BLOCK_D)
     s_block_ptr = S + offset_us + tl.arange(0, BLOCK_D)
     o_block_ptr = O + offset_vo + tl.arange(0, BLOCK_E)
+    if OUTPUT_HIDDEN_STATE:
+        offset_pl = off_b * (N + 1) * H * D * E + off_h * D * E
+        p_block_ptr = (
+            P
+            + offset_pl
+            + tl.arange(0, BLOCK_D)[:, None] * E
+            + tl.arange(0, BLOCK_E)[None, :]
+        )
+        l_block_ptr = (
+            L
+            + offset_pl
+            + tl.arange(0, BLOCK_D)[:, None] * E
+            + tl.arange(0, BLOCK_E)[None, :]
+        )
     if USE_K or (not USE_NORMALIZE):
         k_block_ptr = K + offset_qk + tl.arange(0, BLOCK_D)
     if USE_O_GATE:
@@ -172,6 +189,20 @@ def _page_flip_additive_recrurrence_fwd(
     u_block_ptr += H * D
     s_block_ptr += H * D
 
+    if OUTPUT_HIDDEN_STATE:
+        tl.store(
+            p_block_ptr,
+            state0.to(p_block_ptr.dtype.element_ty),
+            mask=d_mask[:, None] & e_mask[None, :],
+        )
+        tl.store(
+            l_block_ptr,
+            state1.to(l_block_ptr.dtype.element_ty),
+            mask=d_mask[:, None] & e_mask[None, :],
+        )
+        p_block_ptr += H * D * E
+        l_block_ptr += H * D * E
+
     for i in range(N):
         q = tl.load(q_block_ptr, mask=d_mask, other=0.0).to(tl.float32)
         v = tl.load(v_block_ptr, mask=e_mask, other=0.0).to(tl.float32)
@@ -206,6 +237,19 @@ def _page_flip_additive_recrurrence_fwd(
             o_gate_block_ptr += H * E
 
         tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=e_mask)
+        if OUTPUT_HIDDEN_STATE:
+            tl.store(
+                p_block_ptr,
+                state0.to(p_block_ptr.dtype.element_ty),
+                mask=d_mask[:, None] & e_mask[None, :],
+            )
+            tl.store(
+                l_block_ptr,
+                state1.to(l_block_ptr.dtype.element_ty),
+                mask=d_mask[:, None] & e_mask[None, :],
+            )
+            p_block_ptr += H * D * E
+            l_block_ptr += H * D * E
 
         q_block_ptr += H * D
         v_block_ptr += H * E
@@ -256,6 +300,7 @@ class PageFlipAdditiveRecurrenceTriton(torch.autograd.Function):
         initial_state=None,
         output_final_state=False,
         use_normalize=False,
+        output_hidden_state=False,
     ):
         use_k = k is not None
         use_o_gate = o_gate is not None
@@ -300,6 +345,21 @@ class PageFlipAdditiveRecurrenceTriton(torch.autograd.Function):
             o_state2 = None
             o_state3 = None
 
+        if output_hidden_state:
+            p = torch.empty(
+                (b, n + 1, h, d, e),
+                dtype=torch.float32,
+                device=torch.cuda.current_device(),
+            )
+            l = torch.empty(
+                (b, n + 1, h, d, e),
+                dtype=torch.float32,
+                device=torch.cuda.current_device(),
+            )
+        else:
+            p = None
+            l = None
+
         grid = (b, h)
         BLOCK_D = max(next_power_of_two(d), 16)
         BLOCK_E = max(next_power_of_two(e), 16)
@@ -308,7 +368,7 @@ class PageFlipAdditiveRecurrenceTriton(torch.autograd.Function):
         b_state = False
         if use_init_state and len(state0.shape) == 3:
             b_state = True
-        print("aaa", use_init_state, b_state)
+
         _page_flip_additive_prepare[grid](
             W=w,
             INIT_STATE0=state0,
@@ -338,6 +398,8 @@ class PageFlipAdditiveRecurrenceTriton(torch.autograd.Function):
             INIT_STATE0=state2,
             INIT_STATE1=state3,
             O=o,
+            P=p,
+            L=l,
             FINAL_STATE0=o_state2,
             FINAL_STATE1=o_state3,
             B=b,
@@ -353,9 +415,11 @@ class PageFlipAdditiveRecurrenceTriton(torch.autograd.Function):
             USE_O_GATE=use_o_gate,
             USE_INIT_STATE=use_init_state,
             OUTPUT_FINAL_STATE=output_final_state,
+            OUTPUT_HIDDEN_STATE=output_hidden_state,
         )
 
-        final_state = [u, s, o_state2, o_state3]
+        # final_state = [o_state0, o_state1, o_state2, o_state3]
+        final_state = [u, s, p, l]
 
         # ctx.save_for_backward(q, v, w, k, o_gate, initial_state, final_state, u, s)
         ctx.output_final_state = output_final_state
@@ -440,9 +504,18 @@ def page_flip_additive_recurrence_triton(
     initial_state=None,
     output_final_state=False,
     use_normalize=False,
+    output_hidden_state=False,
 ):
     o, o_state = PageFlipAdditiveRecurrenceTriton.apply(
-        q, v, w, k, o_gate, initial_state, output_final_state, use_normalize
+        q,
+        v,
+        w,
+        k,
+        o_gate,
+        initial_state,
+        output_final_state,
+        use_normalize,
+        output_hidden_state,
     )
 
     return o, o_state
@@ -458,7 +531,14 @@ if __name__ == "__main__":
     o_gate = torch.randn((b, n, h, e), dtype=dtype).cuda()
     k = None
     use_normalize = True
+    output_hidden_state = True
     o, final_state = page_flip_additive_recurrence_triton(
-        q, v, w, k=k, o_gate=o_gate, use_normalize=use_normalize
+        q,
+        v,
+        w,
+        k=k,
+        o_gate=o_gate,
+        use_normalize=use_normalize,
+        output_hidden_state=output_hidden_state,
     )
     print(o.shape)
