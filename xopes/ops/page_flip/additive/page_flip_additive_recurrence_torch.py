@@ -10,11 +10,11 @@ def page_flip_additive_weight_preprocess_torch(w, initial_state=[None, None]):
 
     u = w.cumsum(dim=1)
     if initial_state[1] is not None:
-        u = torch.cat([initial_state[1].unsqueeze(1), u[:, 1:]], dim=1)
+        u_ = torch.cat([initial_state[1].unsqueeze(1), u[:, 1:]], dim=1)
     else:
-        u = torch.cat([torch.zeros((b, 1, h, d), device=w.device), u[:, 1:]], dim=1)
+        u_ = torch.cat([torch.zeros((b, 1, h, d), device=w.device), u[:, 1:]], dim=1)
 
-    s = u.cumsum(dim=1)
+    s = u_.cumsum(dim=1)
 
     return u, s
 
