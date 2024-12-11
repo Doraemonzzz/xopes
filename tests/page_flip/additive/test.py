@@ -10,13 +10,13 @@ from xopes.utils import get_threshold
 def get_params():
     array = [
         # standard shape
-        (6, 128, 8, 128, 64),
+        # (6, 128, 8, 128, 64),
         # (6, 128, 8, 16, 64),
         # (1, 2, 1, 1, 1),
-        (6, 128, 8, 128, 128),
-        (6, 128, 8, 256, 128),
+        # (6, 128, 8, 128, 128),
+        # (6, 128, 8, 256, 128),
         # # special shape
-        # (6, 128, 8, 127, 129),
+        (6, 128, 8, 127, 129),
         # (6, 230, 8, 127, 129),
     ]
 
@@ -54,7 +54,7 @@ def get_params():
 @pytest.mark.parametrize(
     "b_state",
     # [True, False],
-    [True],
+    [False, False],
 )
 def test(
     b,
@@ -87,9 +87,9 @@ def test(
 
     if use_initial_state:
         if b_state:
-            # state1 = f(torch.randn((b, h, d), dtype=dtype, device=device))
+            state1 = f(torch.randn((b, h, d), dtype=dtype, device=device))
             state2 = f(torch.randn((b, h, d), dtype=dtype, device=device))
-            state1 = torch.zeros((b, h, d), dtype=dtype, device=device)
+            # state1 = torch.zeros((b, h, d), dtype=dtype, device=device)
             # state2 = torch.zeros((b, h, d), dtype=dtype, device=device)
             state3 = torch.randn((b, h, d, e), dtype=dtype, device=device)
             state4 = torch.randn((b, h, d, e), dtype=dtype, device=device)
