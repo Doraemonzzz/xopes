@@ -58,6 +58,12 @@ def get_params():
     # [True, False],
     [True],
 )
+@pytest.mark.parametrize(
+    "output_hidden_state",
+    [
+        True,
+    ],
+)
 def test(
     b,
     n,
@@ -70,6 +76,7 @@ def test(
     use_normalize,
     use_k,
     b_state,
+    output_hidden_state,
 ):
     if (not use_k) and (not use_normalize):
         return
@@ -165,26 +172,26 @@ def test(
     if output_final_state:
         if check_naive:
             print(
-                f"naive torch state0 Vs recurrence torch state1 (diff norm): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).item()}"
+                f"naive torch state0 Vs recurrence torch state1 (diff norm): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1][:,-1]).item()}"
             )
             print(
-                f"naive torch state0 Vs recurrence torch state1 (diff max): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1]).max()}"
+                f"naive torch state0 Vs recurrence torch state1 (diff max): {torch.norm(final_state_naive_torch[0] - final_state_recurrence_torch[1][:,-1]).max()}"
             )
             print(
-                f"naive torch state1 Vs recurrence torch state3 (diff norm): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).item()}"
+                f"naive torch state1 Vs recurrence torch state3 (diff norm): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3][:,-1]).item()}"
             )
             print(
-                f"naive torch state1 Vs recurrence torch state3 (diff max): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3]).max()}"
+                f"naive torch state1 Vs recurrence torch state3 (diff max): {torch.norm(final_state_naive_torch[1] - final_state_recurrence_torch[3][:,-1]).max()}"
             )
             assert torch.allclose(
                 final_state_naive_torch[0],
-                final_state_recurrence_torch[1],
+                final_state_recurrence_torch[1][:, -1],
                 atol=atol,
                 rtol=rtol,
             )
             assert torch.allclose(
                 final_state_naive_torch[1],
-                final_state_recurrence_torch[3],
+                final_state_recurrence_torch[3][:, -1],
                 atol=atol,
                 rtol=rtol,
             )
