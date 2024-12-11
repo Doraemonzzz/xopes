@@ -4,13 +4,21 @@ import torch
 def page_flip_additive_weight_preprocess_torch(w, initial_state=[None, None]):
     b, n, h, d = w.shape
     if initial_state[0] is not None:
-        w = torch.cat([initial_state[0].unsqueeze(1), w], dim=1)
+        if len(initial_state[0].shape) == 3:  # b h d
+            state0 = initial_state[0].unsqueeze(1)
+        else:
+            state0 = repeat(initial_state[0], "h d -> b n h d", b=b, n=1)
+        w = torch.cat([state0, w], dim=1)
     else:
         w = torch.cat([torch.zeros((b, 1, h, d), device=w.device), w], dim=1)
 
     u = w.cumsum(dim=1)
     if initial_state[1] is not None:
-        u_ = torch.cat([initial_state[1].unsqueeze(1), u[:, 1:]], dim=1)
+        if len(initial_state[1].shape) == 3:  # b h d
+            state1 = initial_state[1].unsqueeze(1)
+        else:
+            state1 = repeat(initial_state[1], "h d -> b n h d", b=b, n=1)
+        u_ = torch.cat([state1, u[:, 1:]], dim=1)
     else:
         u_ = torch.cat([torch.zeros((b, 1, h, d), device=w.device), u[:, 1:]], dim=1)
 
