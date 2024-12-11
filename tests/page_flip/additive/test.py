@@ -18,8 +18,8 @@ def get_params():
         # (6, 128, 8, 128, 128),
         # (6, 128, 8, 256, 128),
         # # special shape
-        # (6, 128, 8, 127, 129),
-        # (6, 230, 8, 127, 129),
+        (6, 128, 8, 127, 129),
+        (3, 230, 8, 127, 129),
     ]
 
     return array
@@ -55,8 +55,8 @@ def get_params():
 )
 @pytest.mark.parametrize(
     "b_state",
-    # [True, False],
-    [True],
+    [True, False],
+    # [True],
 )
 @pytest.mark.parametrize(
     "output_hidden_state",
@@ -133,6 +133,7 @@ def test(
         initial_state=initial_state,
         output_final_state=output_final_state,
         use_normalize=use_normalize,
+        output_hidden_state=output_hidden_state,
     )
     # recurrence triton
     (
@@ -146,6 +147,7 @@ def test(
         initial_state=initial_state,
         output_final_state=output_final_state,
         use_normalize=use_normalize,
+        output_hidden_state=output_hidden_state,
     )
 
     atol, rtol = get_threshold(dtype)

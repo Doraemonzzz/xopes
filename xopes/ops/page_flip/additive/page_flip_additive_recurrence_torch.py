@@ -36,6 +36,7 @@ def page_flip_additive_recurrence_torch(
     initial_state=None,
     output_final_state=False,
     use_normalize=False,
+    output_hidden_state=False,
 ):
     if initial_state is None:
         initial_state = [None, None, None, None]
@@ -60,7 +61,7 @@ def page_flip_additive_recurrence_torch(
 
     o = []
     p = [state2.unsqueeze(1)]
-    h = [state3.unsqueeze(1)]
+    l = [state3.unsqueeze(1)]
     for i in range(n):
         decay_state2 = u[:, i].to(torch.float32) / u[:, i + 1].to(torch.float32)
         decay_state3 = s[:, i].to(torch.float32) / s[:, i + 1].to(torch.float32)
@@ -87,15 +88,17 @@ def page_flip_additive_recurrence_torch(
         oi = torch.einsum("... d, ... d e -> ... e", qi, state3)
         o.append(oi.unsqueeze(1))
         p.append(state2.unsqueeze(1))
-        h.append(state3.unsqueeze(1))
+        l.append(state3.unsqueeze(1))
 
     o = torch.cat(o, dim=1)
+    p = torch.cat(p, dim=1)
+    l = torch.cat(l, dim=1)
 
     if o_gate is not None:
         o = o * o_gate
 
     if output_final_state:
-        final_state = [u, s, p, h]
+        final_state = [u, s, p, l]
     else:
         final_state = None
 
