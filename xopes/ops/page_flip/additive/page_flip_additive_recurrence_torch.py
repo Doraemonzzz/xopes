@@ -5,7 +5,7 @@ from einops import repeat
 def page_flip_additive_weight_preprocess_torch(w, initial_state=[None, None]):
     b, n, h, d = w.shape
     if initial_state[0] is not None:
-        if len(initial_state[0].shape) == 3: # b h d
+        if len(initial_state[0].shape) == 3:  # b h d
             state0 = initial_state[0].unsqueeze(1)
         else:
             state0 = repeat(initial_state[0], "h d -> b n h d", b=b, n=1)
@@ -15,7 +15,7 @@ def page_flip_additive_weight_preprocess_torch(w, initial_state=[None, None]):
 
     u = w.cumsum(dim=1)
     if initial_state[1] is not None:
-        if len(initial_state[1].shape) == 3: # b h d
+        if len(initial_state[1].shape) == 3:  # b h d
             state1 = initial_state[1].unsqueeze(1)
         else:
             state1 = repeat(initial_state[1], "h d -> b n h d", b=b, n=1)
