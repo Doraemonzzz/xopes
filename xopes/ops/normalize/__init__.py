@@ -1,5 +1,3 @@
-from .srmsnorm import srmsnorm_triton
-
-
-def srmsnorm_fn(x, eps=1e-8, scale=False):
-    return srmsnorm_triton(x, eps, scale)
+from .normalize_torch import normalize_torch
+from .normalize_triton import normalize_triton
+from .srmsnorm import srmsnorm_torch, srmsnorm_triton

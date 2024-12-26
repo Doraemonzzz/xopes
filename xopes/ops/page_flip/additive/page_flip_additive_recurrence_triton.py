@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+
 from xopes.utils import contiguous, next_power_of_two
 
 

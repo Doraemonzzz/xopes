@@ -12,9 +12,10 @@ folder=lrpe/cosine/_md
 # folder=flao/fal_non_causal
 # folder=act
 # folder=multinomial
-folder=normalize/srmsnorm
 folder=page_flip
 folder=page_flip/additive
+folder=normalize
+# folder=normalize/srmsnorm
 
 mkdir -p $folder/log
 
