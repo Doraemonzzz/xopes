@@ -26,19 +26,21 @@ def normalize_torch(
         residual = residual.float()
         x = x + residual
 
-    x = rearrange(x, "... (g d) -> ... g d", g=num_groups)
+    x_ = rearrange(x, "... (g e) -> ... g e", g=num_groups)
 
     if use_mean:
-        x = x - x.mean(dim=-1, keepdim=True)
+        x_ = x_ - x_.mean(dim=-1, keepdim=True)
 
-    sigma = torch.sqrt(
-        torch.einsum("... g d, ... g d -> ... g", x, x) / num_groups + eps
-    )
-    x = c * x / sigma
+    sigma = torch.sqrt(torch.sum(x_ * x_, dim=-1, keepdim=True) + eps)
+    o = c * x_ / sigma
 
     if weight is not None:
-        x = x * weight
+        weight = rearrange(weight, "... (g e) -> ... g e", g=num_groups)
+        o = o * weight
     if bias is not None:
-        x = x + bias
+        bias = rearrange(bias, "... (g e) -> ... g e", g=num_groups)
+        o = o + bias
 
-    return x.to(dtype)
+    o = o.reshape_as(x).to(dtype)
+
+    return o

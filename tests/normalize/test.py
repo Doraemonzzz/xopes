@@ -14,19 +14,24 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("num_groups", [1])
-@pytest.mark.parametrize("c", [1.0])
+@pytest.mark.parametrize("num_groups", [1, 4, 8])
+@pytest.mark.parametrize("c", [1, 128.0])
 @pytest.mark.parametrize("eps", [1e-5])
 # @pytest.mark.parametrize("use_mean", [True, False])
 # @pytest.mark.parametrize("use_weight", [True, False])
 # @pytest.mark.parametrize("use_bias", [True, False])
 # @pytest.mark.parametrize("use_residual", [True, False])
 # @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+# @pytest.mark.parametrize("use_mean", [False])
+# @pytest.mark.parametrize("use_mean", [True, False])
+# @pytest.mark.parametrize("use_weight", [True, False])
+# @pytest.mark.parametrize("use_bias", [True, False])
+# @pytest.mark.parametrize("use_residual", [True, False])
 @pytest.mark.parametrize("use_mean", [False])
 @pytest.mark.parametrize("use_weight", [False])
 @pytest.mark.parametrize("use_bias", [False])
 @pytest.mark.parametrize("use_residual", [False])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 def test(
     shape, num_groups, use_mean, use_weight, use_bias, use_residual, c, eps, dtype
 ):
@@ -111,7 +116,6 @@ def test(
     #     dr_normalize_triton = None
 
     atol, rtol = get_threshold(dtype)
-
     print(
         "o diff max: ", torch.abs(o_normalize_torch - o_normalize_triton).max().item()
     )

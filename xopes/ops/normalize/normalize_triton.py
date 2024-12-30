@@ -160,7 +160,7 @@ def _normalize_bwd(
     if USE_WEIGHT:
         w_block_ptr = WEIGHT + offset_wb + tl.arange(0, BLOCK_E)
         dw_block_ptr = DW + offset_xr + tl.arange(0, BLOCK_E)
-        dw = do * c * x
+        dw = do * C * x
         tl.store(dw_block_ptr, dw.to(dw_block_ptr.dtype.element_ty), mask=mask_e)
         weight = tl.load(w_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         dx_ = dx * weight
@@ -196,12 +196,12 @@ class NormalizeTriton(torch.autograd.Function):
             eps = max(eps, 1.6e-5)
 
         # allocate output
-        o = torch.empty_like(x)
+        o = torch.empty_like(x).contiguous()
 
         # reshape input data into 2D tensor
         x_ = x.reshape(-1, x.shape[-1])
         b, d = x_.shape
-        x_ = rearrange(x_, "... (g e) -> ... g e", g=num_groups)
+        x_ = rearrange(x_, "... (g e) -> ... g e", g=num_groups).contiguous()
         e = x_.shape[-1]
         # Less than 64KB per feature: enqueue fused kernel
         MAX_FUSED_SIZE = 65536 // x.element_size()
@@ -218,7 +218,6 @@ class NormalizeTriton(torch.autograd.Function):
             mean = None
 
         grid = (b, num_groups)
-
         _normalize_fwd[grid](
             X=x_,
             WEIGHT=weight,
