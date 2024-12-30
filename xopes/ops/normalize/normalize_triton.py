@@ -130,42 +130,42 @@ def _normalize_bwd(
     mask_e = array_e < E
     # compute block ptr
     x_block_ptr = X + offset_xr + tl.arange(0, BLOCK_E)
-    mean_block_ptr = MEAN + offset_ms
     sigma_block_ptr = SIGMA + offset_ms
     do_block_ptr = DO + offset_xr + tl.arange(0, BLOCK_E)
     dx_block_ptr = DX + offset_xr + tl.arange(0, BLOCK_E)
 
     # load and compute
-    x = tl.load(x_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
-    do = tl.load(do_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+    x = tl.load(x_block_ptr, mask=mask_e, other=0.0)
+    do = tl.load(do_block_ptr, mask=mask_e, other=0.0)
 
     if USE_RESIDUAL:
         r_block_ptr = RESIDUAL + offset_xr + tl.arange(0, BLOCK_E)
-        r = tl.load(r_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        r = tl.load(r_block_ptr, mask=mask_e, other=0.0)
         x = x + r
 
     if USE_MEAN:
-        mean = tl.load(mean_block_ptr).to(tl.float32)
+        mean_block_ptr = MEAN + offset_ms
+        mean = tl.load(mean_block_ptr)
         x = x - mean
 
-    sigma = tl.load(sigma_block_ptr).to(tl.float32)
-    x = C * x / sigma
-    dx_ = do * C
-
-    if USE_BIAS:
-        db_block_ptr = DB + offset_xr + tl.arange(0, BLOCK_E)
-        db = do
-        tl.store(db_block_ptr, db.to(db_block_ptr.dtype.element_ty), mask=mask_e)
+    sigma = tl.load(sigma_block_ptr)
+    r = x / sigma
+    dr = do * C
 
     if USE_WEIGHT:
         w_block_ptr = WEIGHT + offset_wb + tl.arange(0, BLOCK_E)
         dw_block_ptr = DW + offset_xr + tl.arange(0, BLOCK_E)
-        dw = do * C * x
+        dw = do * C * r
         tl.store(dw_block_ptr, dw.to(dw_block_ptr.dtype.element_ty), mask=mask_e)
-        weight = tl.load(w_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
-        dx_ = dx * weight
+        weight = tl.load(w_block_ptr, mask=mask_e, other=0.0)
+        dr = dr * weight
 
-    dx = dx_ / sigma * (1 - sigma * sigma)
+    # if USE_BIAS:
+    #     db_block_ptr = DB + offset_xr + tl.arange(0, BLOCK_E)
+    #     db = do
+    #     tl.store(db_block_ptr, db.to(db_block_ptr.dtype.element_ty), mask=mask_e)
+
+    dx = 1 / sigma * (dr - r * tl.sum(r * dr, axis=0))
 
     if USE_MEAN:
         dx = dx - tl.sum(dx, axis=0) / E
@@ -279,19 +279,20 @@ class NormalizeTriton(torch.autograd.Function):
 
         # reshape input data into 2D tensor
         x_ = x.reshape(-1, x.shape[-1])
+        do = do.reshape(-1, do.shape[-1]).contiguous()
         b, d = x_.shape
-        x_ = rearrange(x_, "... (g e) -> ... g e", g=num_groups)
+        x_ = rearrange(x_, "... (g e) -> ... g e", g=num_groups).contiguous()
         e = x_.shape[-1]
 
-        dx = torch.empty_like(x)
+        dx = torch.empty_like(x).contiguous()
 
         if use_weight:
-            dw = torch.empty((b, d), dtype=torch.float32, device=x.device)
+            dw = torch.empty((b, d), dtype=torch.float32, device=x.device).contiguous()
         else:
             dw = None
 
         if use_bias:
-            db = torch.empty((b, d), dtype=torch.float32, device=x.device)
+            db = torch.empty((b, d), dtype=torch.float32, device=x.device).contiguous()
         else:
             db = None
 
@@ -330,7 +331,7 @@ class NormalizeTriton(torch.autograd.Function):
             dw = dw.sum(0)
 
         if use_bias:
-            db = db.sum(0)
+            db = do.sum(0)
 
         return dx, dw, db, dr, None, None, None, None
 
