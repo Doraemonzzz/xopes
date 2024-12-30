@@ -40,11 +40,17 @@ $$
 \mathbf {db}&= \mathbf {do},\\
 \mathbf {dw}&= \mathbf {do} \odot (c\times \mathbf r),  \\
 \mathbf {d r}&= \mathbf {do} \odot (c\times \mathbf w),\\
-\mathbf {dq}&= \mathbf {dr}\odot \left(1/\sigma- \mathbf q/\sigma^2 \odot \frac{\partial \sigma}{\partial \mathbf q}  \right)\\
-&=  \mathbf {dr}\odot \left(1/\sigma- \mathbf q/\sigma^2 \odot \left(1/2 \times  (\mathbf q^\top \mathbf q)^{-1/2}\times 2\mathbf q \right)  \right) \\
-&=  \mathbf {dr}\odot \left(1/\sigma- \mathbf q/\sigma^2 \odot \left( \mathbf q /\sigma \right)  \right) \\
-&=  \mathbf {dr}\odot \left(1/\sigma- \mathbf r^2 /\sigma  \right) \\
-&= (\mathbf {dr}/\sigma)\odot (1-\mathbf r^2), \\
+\frac{\partial r_i}{\partial q_j}
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \frac{\partial \sigma}{\partial q_j}  \\
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \left(1/2 \times  (\mathbf q^\top \mathbf q)^{-1/2}\times 2 q_j \right)   \\
+&= 1_{i=j}/\sigma - q_iq_j /\sigma^3   \\
+&=1/\sigma  (1_{i=j}-r_i r_j)   \\
+\frac{\partial \mathbf r}{\partial \mathbf q}
+&= 1/\sigma (\mathbf I- \mathbf r \mathbf r^\top) \\
+
+
+\mathbf {dq}&=1/\sigma (\mathbf I- \mathbf r \mathbf r^\top) \mathbf {dr}  \\
+&=1/\sigma  \left( \mathbf {dr}  - (\mathbf r^\top \mathbf {dr})\mathbf r    \right)\\
 \mathbf {dp} &= \mathbf {dq}, \mathrm{or}, \\
 \mathbf {d}p_k& = \sum_{i=1}^d \mathbf {d}q_i \frac{\partial q_i }{\partial p_k} \\
 & = \sum_{i=1}^d \mathbf {d}q_i (\mathbf 1_{i=k}-1/d) \\
