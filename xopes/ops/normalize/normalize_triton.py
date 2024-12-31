@@ -9,7 +9,7 @@ from xopes.utils import contiguous, generate_configs
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [1, 2, 4, 8, 16],
+            "num_warps": [1, 2, 4, 8],
         }
     ),
     key=["G", "E"],
