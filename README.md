@@ -3,7 +3,8 @@
 Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 # Plan
-
+- 241231
+  - [x] add normalize;
 - 240910
   - [x] add fwd_fn, bwd_fn for lrpe, md_lrpe;
   - [x] add test, benchmark for flao_fal;
