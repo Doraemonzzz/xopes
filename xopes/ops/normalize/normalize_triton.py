@@ -252,13 +252,6 @@ class NormalizeTriton(torch.autograd.Function):
     def backward(
         ctx,
         do,
-        weight=None,
-        bias=None,
-        residual=None,
-        c=1.0,
-        eps=1e-5,
-        use_mean=False,
-        num_groups=1,
     ):
         x, weight, bias, residual, mean, sigma = ctx.saved_tensors
         c = ctx.c

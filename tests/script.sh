@@ -16,12 +16,12 @@ folder=page_flip
 folder=page_flip/additive
 
 ##### normalize 241231
-# folder=normalize/normalize
+folder=normalize/normalize
 # folder=normalize/srmsnorm
 # folder=normalize/rmsnorm
 
-##### householder 250101
-folder=householder
+# ##### householder 250101
+# folder=householder
 
 mkdir -p $folder/log
 
