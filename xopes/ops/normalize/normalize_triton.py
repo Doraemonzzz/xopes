@@ -50,7 +50,6 @@ def _normalize_fwd(
     # compute block ptr
     x_block_ptr = X + offset_xro + tl.arange(0, BLOCK_E)
     o_block_ptr = O + offset_xro + tl.arange(0, BLOCK_E)
-
     sigma_block_ptr = SIGMA + offset_ms
 
     # load and compute

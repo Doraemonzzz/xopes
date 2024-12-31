@@ -15,10 +15,13 @@ folder=lrpe/cosine/_md
 folder=page_flip
 folder=page_flip/additive
 
-
-folder=normalize/normalize
-folder=normalize/srmsnorm
+##### normalize 241231
+# folder=normalize/normalize
+# folder=normalize/srmsnorm
 # folder=normalize/rmsnorm
+
+##### householder 250101
+folder=householder
 
 mkdir -p $folder/log
 
