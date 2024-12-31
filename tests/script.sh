@@ -14,8 +14,11 @@ folder=lrpe/cosine/_md
 # folder=multinomial
 folder=page_flip
 folder=page_flip/additive
-folder=normalize
-# folder=normalize/srmsnorm
+
+
+folder=normalize/normalize
+folder=normalize/srmsnorm
+# folder=normalize/rmsnorm
 
 mkdir -p $folder/log
 

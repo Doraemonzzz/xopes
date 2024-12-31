@@ -84,8 +84,6 @@ def test(
     else:
         dr_normalize_torch = None
 
-    x.grad = None
-
     o_normalize_triton.backward(do, retain_graph=True)
     dx_normalize_triton, x.grad = x.grad.clone(), None
     if use_weight:
