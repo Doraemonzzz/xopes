@@ -58,8 +58,8 @@ def _normalize_fwd(
 
     if USE_RESIDUAL:
         r_block_ptr = RESIDUAL + offset_xro + tl.arange(0, BLOCK_E)
-        r = tl.load(r_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
-        x = x + r
+        residual = tl.load(r_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        x = x + residual
 
     if USE_MEAN:
         mean_block_ptr = MEAN + offset_ms
@@ -140,8 +140,8 @@ def _normalize_bwd(
 
     if USE_RESIDUAL:
         r_block_ptr = RESIDUAL + offset_xr + tl.arange(0, BLOCK_E)
-        r = tl.load(r_block_ptr, mask=mask_e, other=0.0)
-        x = x + r
+        residual = tl.load(r_block_ptr, mask=mask_e, other=0.0)
+        x = x + residual
 
     if USE_MEAN:
         mean_block_ptr = MEAN + offset_ms
@@ -159,11 +159,6 @@ def _normalize_bwd(
         tl.store(dw_block_ptr, dw.to(dw_block_ptr.dtype.element_ty), mask=mask_e)
         weight = tl.load(w_block_ptr, mask=mask_e, other=0.0)
         dr = dr * weight
-
-    # if USE_BIAS:
-    #     db_block_ptr = DB + offset_xr + tl.arange(0, BLOCK_E)
-    #     db = do
-    #     tl.store(db_block_ptr, db.to(db_block_ptr.dtype.element_ty), mask=mask_e)
 
     dx = 1 / sigma * (dr - r * tl.sum(r * dr, axis=0))
 
