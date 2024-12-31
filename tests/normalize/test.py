@@ -6,59 +6,41 @@ from xopes.utils import get_threshold
 
 
 def get_params():
-    shape = [
-        (6, 128),
-    ]
+    shape = [(6, 128), (4, 8, 256)]
 
     return shape
 
 
 @pytest.mark.parametrize("shape", get_params())
-# @pytest.mark.parametrize("num_groups", [1, 4, 8])
-# @pytest.mark.parametrize("c", [1, 128.0])
 @pytest.mark.parametrize("num_groups", [1, 4])
-@pytest.mark.parametrize("c", [1, 16])
-@pytest.mark.parametrize("eps", [1e-5])
-# @pytest.mark.parametrize("use_mean", [True, False])
-# @pytest.mark.parametrize("use_weight", [True, False])
-# @pytest.mark.parametrize("use_bias", [True, False])
-# @pytest.mark.parametrize("use_residual", [True, False])
-# @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-# @pytest.mark.parametrize("use_mean", [False])
 @pytest.mark.parametrize("use_mean", [True, False])
 @pytest.mark.parametrize("use_weight", [True, False])
 @pytest.mark.parametrize("use_bias", [True, False])
 @pytest.mark.parametrize("use_residual", [True, False])
-# @pytest.mark.parametrize("use_mean", [False])
-# @pytest.mark.parametrize("use_weight", [False])
-# @pytest.mark.parametrize("use_bias", [False])
-# @pytest.mark.parametrize("use_residual", [False])
-# @pytest.mark.parametrize("use_mean", [True])
-# @pytest.mark.parametrize("use_weight", [True])
-# @pytest.mark.parametrize("use_bias", [True])
-# @pytest.mark.parametrize("use_residual", [True])
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("c", [1, 16])
+@pytest.mark.parametrize("eps", [1e-5])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test(
     shape, num_groups, use_mean, use_weight, use_bias, use_residual, c, eps, dtype
 ):
     torch.manual_seed(2024)
     device = torch.device("cuda")
-    b, d = shape
-    x = torch.randn((b, d), dtype=dtype, device=device).requires_grad_()
-    do = torch.randn((b, d), dtype=dtype, device=device)
+    d = shape[-1]
+    x = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
+    do = torch.randn(shape, dtype=dtype, device=device)
 
     if use_weight:
-        weight = torch.randn((d), dtype=dtype, device=device).requires_grad_()
+        weight = torch.randn((d,), dtype=dtype, device=device).requires_grad_()
     else:
         weight = None
 
     if use_bias:
-        bias = torch.randn((d), dtype=dtype, device=device).requires_grad_()
+        bias = torch.randn((d,), dtype=dtype, device=device).requires_grad_()
     else:
         bias = None
 
     if use_residual:
-        residual = torch.randn((b, d), dtype=dtype, device=device).requires_grad_()
+        residual = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     else:
         residual = None
 
