@@ -114,17 +114,17 @@ class HouseholderTriton(torch.autograd.Function):
     @contiguous
     def forward(ctx, x, y, eps=1e-5):
         # allocate output
-        o = torch.empty_like(x)
-        sigma = torch.empty((x.shape[0]), dtype=torch.float32, device=x.device)
+        o = torch.empty_like(x).contiguous()
 
         # catch eps being too small if the tensors are fp16
         if x.dtype == torch.float16:
             eps = max(eps, 1.6e-5)
 
         # reshape input data into 2D tensor
-        x_ = x.reshape(-1, x.shape[-1])
-        y_ = y.reshape(-1, y.shape[-1])
+        x_ = x.reshape(-1, x.shape[-1]).contiguous()
+        y_ = y.reshape(-1, y.shape[-1]).contiguous()
         b, d = x_.shape
+        sigma = torch.empty((b,), dtype=torch.float32, device=x.device).contiguous()
 
         # Less than 64KB per feature
         MAX_FUSED_SIZE = 65536 // x.element_size()
@@ -160,9 +160,9 @@ class HouseholderTriton(torch.autograd.Function):
         dy = torch.empty_like(y)
 
         # reshape tensors
-        do_ = do.reshape(-1, do.shape[-1])
-        x_ = x.reshape(-1, x.shape[-1])
-        y_ = y.reshape(-1, y.shape[-1])
+        do_ = do.reshape(-1, do.shape[-1]).contiguous()
+        x_ = x.reshape(-1, x.shape[-1]).contiguous()
+        y_ = y.reshape(-1, y.shape[-1]).contiguous()
         b, d = x_.shape
 
         # Less than 64KB per feature
