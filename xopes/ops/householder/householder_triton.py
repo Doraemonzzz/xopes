@@ -19,6 +19,7 @@ def _householder_fwd(
     Y,  # B D
     O,  # B D
     SIGMA,  # B
+    EPS: tl.constexpr,
     BLOCK_D: tl.constexpr,
     B: tl.constexpr,
     D: tl.constexpr,
@@ -43,12 +44,12 @@ def _householder_fwd(
     y = tl.load(y_block_ptr, mask=mask, other=0.0).to(tl.float32)
 
     # normalize y
-    sigma = tl.sqrt(tl.sum(y * y, axis=0))
+    sigma = tl.sqrt(tl.sum(y * y, axis=0) + EPS)
     y_ = y / sigma
 
     # compute o = x - 2 * c * y
     c = tl.sum(x * y_, axis=0)
-    o = x - 2.0 * c * y
+    o = x - 2.0 * c * y_
 
     # store
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
@@ -63,6 +64,7 @@ def _householder_bwd(
     DO,  # B D
     DX,  # B D
     DY,  # B D
+    EPS: tl.constexpr,
     BLOCK_D: tl.constexpr,
     B: tl.constexpr,
     D: tl.constexpr,
@@ -85,10 +87,10 @@ def _householder_bwd(
     dy_block_ptr = DY + offset + array_d
 
     # load
-    x = tl.load(x_block_ptr, mask=mask, other=0.0)
-    y = tl.load(y_block_ptr, mask=mask, other=0.0)
+    x = tl.load(x_block_ptr, mask=mask, other=0.0).to(tl.float32)
+    y = tl.load(y_block_ptr, mask=mask, other=0.0).to(tl.float32)
     sigma = tl.load(sigma_block_ptr)
-    do = tl.load(do_block_ptr, mask=mask, other=0.0)
+    do = tl.load(do_block_ptr, mask=mask, other=0.0).to(tl.float32)
 
     # normalize y
     y_ = y / sigma
@@ -97,8 +99,9 @@ def _householder_bwd(
     c1 = tl.sum(do * y_, axis=0)
     dx = do - 2 * c1 * y_
 
-    c2 = tl.sum(do * x, axis=0)
-    dy_ = -2 * c2 * y_ - 2 * c1 * do
+    c2 = tl.sum(do * y_, axis=0)
+    c3 = tl.sum(x * y_, axis=0)
+    dy_ = -2 * c2 * x - 2 * c3 * do
     dy = 1 / sigma * (dy_ - tl.sum(dy_ * y_, axis=0) * y_)
 
     # store
@@ -109,10 +112,14 @@ def _householder_bwd(
 class HouseholderTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
-    def forward(ctx, x, y):
+    def forward(ctx, x, y, eps=1e-5):
         # allocate output
         o = torch.empty_like(x)
         sigma = torch.empty((x.shape[0]), dtype=torch.float32, device=x.device)
+
+        # catch eps being too small if the tensors are fp16
+        if x.dtype == torch.float16:
+            eps = max(eps, 1.6e-5)
 
         # reshape input data into 2D tensor
         x_ = x.reshape(-1, x.shape[-1])
@@ -131,12 +138,14 @@ class HouseholderTriton(torch.autograd.Function):
             Y=y_,
             O=o,
             SIGMA=sigma,
+            EPS=eps,
             BLOCK_D=BLOCK_D,
             B=b,
             D=d,
         )
 
         ctx.save_for_backward(x, y, sigma)
+        ctx.eps = eps
 
         return o.reshape_as(x)
 
@@ -144,6 +153,7 @@ class HouseholderTriton(torch.autograd.Function):
     @contiguous
     def backward(ctx, do):
         x, y, sigma = ctx.saved_tensors
+        eps = ctx.eps
 
         # allocate gradient tensors
         dx = torch.empty_like(x)
@@ -169,15 +179,16 @@ class HouseholderTriton(torch.autograd.Function):
             DO=do_,
             DX=dx,
             DY=dy,
+            EPS=eps,
             BLOCK_D=BLOCK_D,
             B=b,
             D=d,
         )
 
-        return dx.reshape_as(x), dy.reshape_as(y)
+        return dx.reshape_as(x), dy.reshape_as(y), None
 
 
-def householder_triton(x, y):
+def householder_triton(x, y, eps=1e-5):
     """
     Applies Householder transformation using Triton.
 
@@ -188,7 +199,7 @@ def householder_triton(x, y):
     Returns:
         Transformed tensor
     """
-    return HouseholderTriton.apply(x, y)
+    return HouseholderTriton.apply(x, y, eps)
 
 
 if __name__ == "__main__":
