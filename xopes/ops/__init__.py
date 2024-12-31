@@ -11,6 +11,7 @@ from .grpe import (
     grpe_recurrence_torch,
     grpe_recurrence_triton,
 )
+from .householder import householder_fn
 from .logcumsumexp import (
     logcumsumexp_block_parallel_triton,
     logcumsumexp_block_recurrence_triton,

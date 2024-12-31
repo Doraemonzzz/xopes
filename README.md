@@ -3,6 +3,8 @@
 Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 # Plan
+- 250101
+  - [x] add householder;
 - 241231
   - [x] add normalize;
 - 240910
