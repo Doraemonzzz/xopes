@@ -4,12 +4,18 @@ file=benchmark
 folder=logcumsumexp
 folder=grpe
 folder=lrpe/cosine/_1d
-folder=lrpe/cosine/_md
+# folder=lrpe/cosine/_md
 # folder=md_lrpe_cosine
 # folder=flao/non_causal
 # folder=flao/fal_non_causal
 # folder=act
-folder=multinomial
+# folder=multinomial
+
+# normalize
+folder=normalize/srmsnorm
+folder=normalize/rmsnorm
+# folder=normalize/groupnorm
+folder=normalize/layernorm
 
 mkdir -p $folder/log
 
