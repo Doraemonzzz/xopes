@@ -34,25 +34,30 @@ $$
 **Computation**:
 $$
 \begin{aligned}
-\mathbf{db} & = \mathbf{do}, \\
-\mathbf{dw} & = \mathbf{do} \odot (c \times \mathbf{r}), \\
-\mathbf{dr} & = \mathbf{do} \odot (c \times \mathbf{w}), \\
+\mathbf {db}&= \mathbf {do},\\
+\mathbf {dw}&= \mathbf {do} \odot (c\times \mathbf r),  \\
+\mathbf {d r}&= \mathbf {do} \odot (c\times \mathbf w),\\
 \frac{\partial r_i}{\partial q_j}
-& = 1_{i=j}/\sigma - q_i/\sigma^2 \frac{\partial \sigma}{\partial q_j}, \\
-& = 1_{i=j}/\sigma - q_i/\sigma^2 \left(1/2 \times (\mathbf{q}^\top \mathbf{q})^{-1/2} \times 2 q_j\right), \\
-& = 1_{i=j}/\sigma - q_i q_j/\sigma^3, \\
-& = 1/\sigma \cdot (1_{i=j} - r_i r_j), \\
-\frac{\partial \mathbf{r}}{\partial \mathbf{q}}
-& = 1/\sigma \cdot (\mathbf{I} - \mathbf{r} \mathbf{r}^\top), \\
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \frac{\partial \sigma}{\partial q_j}  \\
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \left(1/2 \times  (\mathbf q^\top \mathbf q)^{-1/2}\times 2 q_j \right)   \\
+&= 1_{i=j}/\sigma - q_iq_j /\sigma^3   \\
+&=1/\sigma  (1_{i=j}-r_i r_j)   \\
 
-\mathbf{dq} & = 1/\sigma \cdot (\mathbf{I} - \mathbf{r} \mathbf{r}^\top) \mathbf{dr}, \\
-& = 1/\sigma \cdot \left(\mathbf{dr} - (\mathbf{r}^\top \mathbf{dr}) \mathbf{r}\right), \\
-\mathbf{dp} & = \mathbf{dq}, \mathrm{or}, \\
-\mathbf{dp}_k & = \sum_{i=1}^d \mathbf{dq}_i \frac{\partial q_i}{\partial p_k}, \\
-& = \sum_{i=1}^d \mathbf{dq}_i (\mathbf{1}_{i=k} - 1/d), \\
-& = \mathbf{dq}_k - 1/d \left(\sum_{i=1}^d \mathbf{dq}_i\right), \\
-\mathbf{dp} & = \mathbf{dq} - \bar{\mathbf{dq}}, \\
-\mathbf{dx} & = \mathbf{dp}, \\
-\mathbf{dy} & = \mathbf{dp}.
+\frac{\partial \mathbf r}{\partial \mathbf q}
+&= 1/\sigma (\mathbf I- \mathbf r \mathbf r^\top) \\
+
+
+\mathbf {dq}
+&= \left(\frac{\partial \mathbf r}{\partial \mathbf q} \right)^\top \mathbf {dr}  \\
+&=1/\sigma (\mathbf I- \mathbf r \mathbf r^\top) \mathbf {dr}  \\
+&=1/\sigma  \left( \mathbf {dr}  - (\mathbf r^\top \mathbf {dr})\mathbf r    \right)\\
+\mathbf {dp} &= \mathbf {dq}, \mathrm{or}, \\
+\mathbf {d}p_k& = \sum_{i=1}^d \mathbf {d}q_i \frac{\partial q_i }{\partial p_k} \\
+& = \sum_{i=1}^d \mathbf {d}q_i (\mathbf 1_{i=k}-1/d) \\
+&=  \mathbf d q_k-1/d \left( \sum_{i=1}^d \mathbf {d}q_i  \right)\\
+\mathbf {dp}&=\mathbf {dq}-\bar{\mathbf {dq}},\\
+\mathbf {dx}& = \mathbf {dp},\\
+\mathbf {dy}& = \mathbf {dp}.
+
 \end{aligned}
 $$

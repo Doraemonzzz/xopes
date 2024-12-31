@@ -37,8 +37,8 @@ $$
 \frac{\partial \mathbf {o}}{\partial \mathbf {x}}
 
 &=\mathbf I - 2 \mathbf {\bar y}\mathbf {\bar y} ^\top ,  \\
-\mathbf {dx}&= \frac{\partial \mathbf {o}}{\partial \mathbf {x}}\mathbf {do}\\
-&= (\mathbf I - 2 \mathbf {\bar y}\mathbf {\bar y} ^\top)\mathbf {do}\\
+\mathbf {dx}&= \left(\frac{\partial \mathbf {o}}{\partial \mathbf {x}} \right)^\top \mathbf {do}\\
+&= (\mathbf I - 2 \mathbf {\bar y}\mathbf {\bar y} ^\top)^\top\mathbf {do}\\
 &= \mathbf {do} -2 (\mathbf {\bar y} ^\top \mathbf {do})\mathbf {\bar y}.
 \end{aligned}
 $$
@@ -52,9 +52,9 @@ $$
 \frac{\partial \mathbf {o}}{\partial \mathbf {\bar y}}
 &=-2 \mathbf {\bar y}\mathbf x^\top - 2\mathbf {\bar y}^\top \mathbf x \mathbf I ,\\
 
-\mathbf {d{\bar y}}&= \frac{\partial \mathbf {o}}{\partial \mathbf {\bar y}} \mathbf {do} \\
-&= \left( -2 \mathbf {\bar y}\mathbf x^\top - 2\mathbf {\bar y}^\top \mathbf x \mathbf I  \right) \mathbf {do}\\
-&= -2 (\mathbf x^\top \mathbf{do}) \mathbf {\bar y} - 2(\mathbf {\bar y}^\top \mathbf x)  \mathbf {do}.
+\mathbf {d{\bar y}}&= \left(\frac{\partial \mathbf {o}}{\partial \mathbf {\bar y}}\right)^\top \mathbf {do} \\
+&= \left( -2 \mathbf {\bar y}\mathbf x^\top - 2\mathbf {\bar y}^\top \mathbf x \mathbf I  \right)^\top  \mathbf {do}\\
+&= -2 (\mathbf{do}^\top \mathbf {\bar y})\mathbf x   - 2(\mathbf {\bar y}^\top \mathbf x)  \mathbf {do}.
 \end{aligned}
 $$
 根据normalize部分的推导可得：
@@ -62,7 +62,7 @@ $$
 \begin{aligned}
 \frac{\partial {\mathbf {\bar y}}}{\partial \mathbf y}
 &= 1/\sigma(\mathbf I -\mathbf {\bar y}\mathbf {\bar y}^\top ),  \\
-\mathbf {dy}&=\frac{\partial {\mathbf {\bar y}}}{\partial \mathbf y} \mathbf {d \bar y}\\
+\mathbf {dy}&=\left(\frac{\partial {\mathbf {\bar y}}}{\partial \mathbf y} \right)^\top\mathbf {d \bar y}\\
 &=  1/\sigma(\mathbf I -\mathbf {\bar y}\mathbf {\bar y}^\top )\mathbf {d \bar y} \\
 &= 1/\sigma (\mathbf {d \bar y}- (\mathbf {\bar y}^\top \mathbf {d \bar y})\mathbf {\bar y}).
 \end{aligned}

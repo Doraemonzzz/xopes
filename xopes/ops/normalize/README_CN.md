@@ -45,11 +45,14 @@ $$
 &= 1_{i=j}/\sigma - q_i /\sigma^2 \left(1/2 \times  (\mathbf q^\top \mathbf q)^{-1/2}\times 2 q_j \right)   \\
 &= 1_{i=j}/\sigma - q_iq_j /\sigma^3   \\
 &=1/\sigma  (1_{i=j}-r_i r_j)   \\
+
 \frac{\partial \mathbf r}{\partial \mathbf q}
 &= 1/\sigma (\mathbf I- \mathbf r \mathbf r^\top) \\
 
 
-\mathbf {dq}&=1/\sigma (\mathbf I- \mathbf r \mathbf r^\top) \mathbf {dr}  \\
+\mathbf {dq}
+&= \left(\frac{\partial \mathbf r}{\partial \mathbf q} \right)^\top \mathbf {dr}  \\
+&=1/\sigma (\mathbf I- \mathbf r \mathbf r^\top) \mathbf {dr}  \\
 &=1/\sigma  \left( \mathbf {dr}  - (\mathbf r^\top \mathbf {dr})\mathbf r    \right)\\
 \mathbf {dp} &= \mathbf {dq}, \mathrm{or}, \\
 \mathbf {d}p_k& = \sum_{i=1}^d \mathbf {d}q_i \frac{\partial q_i }{\partial p_k} \\
