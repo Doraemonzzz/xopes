@@ -8,4 +8,4 @@ def rmsnorm_torch(x, weight, dim, eps=1e-6, residual=None):
         x = x + residual.float()
 
     o = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps) * weight
-    return o.to(dtype)
+    return o.to(dtype), x.to(dtype)

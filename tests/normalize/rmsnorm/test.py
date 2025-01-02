@@ -30,21 +30,25 @@ def test(shape, use_residual, c, eps, dtype):
         residual = None
 
     # forward
-    o_rmsnorm_torch = rmsnorm_torch(
+    o_rmsnorm_torch, o_update_residual_torch = rmsnorm_torch(
         x,
         weight=weight,
         dim=d,
         eps=eps,
         residual=residual,
     )
+    if use_residual:
+        o_rmsnorm_torch = o_rmsnorm_torch + o_update_residual_torch
 
-    o_rmsnorm_triton = rmsnorm_triton(
+    o_rmsnorm_triton, o_update_residual_triton = rmsnorm_triton(
         x,
         weight=weight,
         dim=d,
         eps=eps,
         residual=residual,
     )
+    if use_residual:
+        o_rmsnorm_triton = o_rmsnorm_triton + o_update_residual_triton
 
     # backward
     o_rmsnorm_torch.backward(do, retain_graph=True)

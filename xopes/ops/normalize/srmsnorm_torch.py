@@ -10,4 +10,4 @@ def srmsnorm_torch(x, dim, eps=1e-6, residual=None):
 
     o = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps)
 
-    return o.to(dtype)
+    return o.to(dtype), x.to(dtype)

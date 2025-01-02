@@ -29,19 +29,23 @@ def test(shape, use_residual, c, eps, dtype):
         residual = None
 
     # forward
-    o_srmsnorm_torch = srmsnorm_torch(
+    o_srmsnorm_torch, o_update_residual_torch = srmsnorm_torch(
         x,
         dim=d,
         eps=eps,
         residual=residual,
     )
+    if use_residual:
+        o_srmsnorm_torch = o_srmsnorm_torch + o_update_residual_torch
 
-    o_srmsnorm_triton = srmsnorm_triton(
+    o_srmsnorm_triton, o_update_residual_triton = srmsnorm_triton(
         x,
         dim=d,
         eps=eps,
         residual=residual,
     )
+    if use_residual:
+        o_srmsnorm_triton = o_srmsnorm_triton + o_update_residual_triton
 
     # backward
     o_srmsnorm_torch.backward(do, retain_graph=True)
