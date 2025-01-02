@@ -9,10 +9,10 @@ from xopes.utils import contiguous, generate_configs
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [1, 2, 4, 8],
+            "num_warps": [1, 2, 4, 8, 16, 32],
         }
     ),
-    key=["G", "E"],
+    key=["G", "E", "USE_MEAN", "USE_WEIGHT", "USE_BIAS", "USE_RESIDUAL"],
 )
 @triton.jit
 def _normalize_fwd(
@@ -91,10 +91,10 @@ def _normalize_fwd(
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [1, 2, 4, 8, 16],
+            "num_warps": [1, 2, 4, 8, 16, 32],
         }
     ),
-    key=["G", "E"],
+    key=["G", "E", "USE_MEAN", "USE_WEIGHT", "USE_BIAS", "USE_RESIDUAL"],
 )
 @triton.jit
 def _normalize_bwd(

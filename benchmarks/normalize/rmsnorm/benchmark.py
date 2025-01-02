@@ -127,7 +127,7 @@ def benchmark(
 
     if mode == "bwd":
         try:
-            o = fn()
+            o = fn()[0]
             do = torch.randn(shape, dtype=dtype, device=device)
             fn = lambda: o.backward(do, retain_graph=True)
         except:

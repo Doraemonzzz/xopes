@@ -14,11 +14,11 @@ folder=lrpe/cosine/_1d
 ##### normalize 241231
 # folder=normalize/srmsnorm
 # folder=normalize/rmsnorm
-# folder=normalize/groupnorm
+folder=normalize/groupnorm
 # folder=normalize/layernorm
 
-##### householder 250101
-folder=householder
+# ##### householder 250101
+# folder=householder
 
 mkdir -p $folder/log
 
