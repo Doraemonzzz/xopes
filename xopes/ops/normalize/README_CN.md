@@ -147,3 +147,17 @@ $$
 \end{aligned}
 $$
 所以结论成立。
+
+### 反向传播更新
+
+注意到此时函数的输入为输出为：
+$$
+\mathbf o =\mathrm{norm}(\mathbf x+ \mathbf y), \mathbf r=\mathbf x+\mathbf y.
+$$
+所以：
+$$
+\begin{aligned}
+\mathbf {dx} & = \mathbf {dx} + \mathbf {dr}, \\
+\mathbf {dy}  &= \mathbf {dx} .
+\end{aligned}
+$$
