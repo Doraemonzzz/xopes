@@ -8,7 +8,7 @@ from xopes.utils import contiguous, generate_configs
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [1, 2, 4, 8],
+            "num_warps": [1, 2, 4, 8, 16, 32],
         }
     ),
     key=["D"],
@@ -16,18 +16,25 @@ from xopes.utils import contiguous, generate_configs
 @triton.jit
 def _householder_fwd(
     X,  # B D
-    Y,  # B D
+    Y,  # B D or 1 D
     O,  # B D
     SIGMA,  # B
     EPS: tl.constexpr,
     BLOCK_D: tl.constexpr,
     B: tl.constexpr,
+    BY: tl.constexpr,
     D: tl.constexpr,
 ):
     off_b = tl.program_id(0)
 
     # compute offset
     offset = off_b * D
+    if BY == 1:
+        offset_sigma = 0
+        offset_y = 0
+    else:
+        offset_sigma = off_b
+        offset_y = off_b * D
 
     # mask
     array_d = tl.arange(0, BLOCK_D)
@@ -35,9 +42,9 @@ def _householder_fwd(
 
     # compute block ptr
     x_block_ptr = X + offset + array_d
-    y_block_ptr = Y + offset + array_d
+    y_block_ptr = Y + offset_y + array_d
     o_block_ptr = O + offset + array_d
-    sigma_block_ptr = SIGMA + off_b
+    sigma_block_ptr = SIGMA + offset_sigma
 
     # load
     x = tl.load(x_block_ptr, mask=mask, other=0.0).to(tl.float32)
@@ -53,9 +60,22 @@ def _householder_fwd(
 
     # store
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
-    tl.store(sigma_block_ptr, sigma.to(sigma_block_ptr.dtype.element_ty))
+    if BY == 1:
+        # when y is a single vector, we store sigma once
+        if off_b == 0:
+            tl.store(sigma_block_ptr, sigma.to(sigma_block_ptr.dtype.element_ty))
+    else:
+        tl.store(sigma_block_ptr, sigma.to(sigma_block_ptr.dtype.element_ty))
 
 
+@triton.autotune(
+    generate_configs(
+        {
+            "num_warps": [1, 2, 4, 8, 16, 32],
+        }
+    ),
+    key=["D"],
+)
 @triton.jit
 def _householder_bwd(
     X,  # B D
@@ -67,12 +87,19 @@ def _householder_bwd(
     EPS: tl.constexpr,
     BLOCK_D: tl.constexpr,
     B: tl.constexpr,
+    BY: tl.constexpr,
     D: tl.constexpr,
 ):
     off_b = tl.program_id(0)
 
     # compute offset
     offset = off_b * D
+    if BY == 1:
+        offset_sigma = 0
+        offset_y = 0
+    else:
+        offset_sigma = off_b
+        offset_y = off_b * D
 
     # mask
     array_d = tl.arange(0, BLOCK_D)
@@ -81,8 +108,8 @@ def _householder_bwd(
     # compute block ptr
     do_block_ptr = DO + offset + array_d
     x_block_ptr = X + offset + array_d
-    y_block_ptr = Y + offset + array_d
-    sigma_block_ptr = SIGMA + off_b
+    y_block_ptr = Y + offset_y + array_d
+    sigma_block_ptr = SIGMA + offset_sigma
     dx_block_ptr = DX + offset + array_d
     dy_block_ptr = DY + offset + array_d
 
@@ -124,7 +151,11 @@ class HouseholderTriton(torch.autograd.Function):
         x_ = x.reshape(-1, x.shape[-1]).contiguous()
         y_ = y.reshape(-1, y.shape[-1]).contiguous()
         b, d = x_.shape
-        sigma = torch.empty((b,), dtype=torch.float32, device=x.device).contiguous()
+        by = y_.shape[0]
+        assert (
+            b == by or by == 1
+        ), "x and y must have the same batch size or y must be a single vector"
+        sigma = torch.empty((by,), dtype=torch.float32, device=x.device).contiguous()
 
         # Less than 64KB per feature
         MAX_FUSED_SIZE = 65536 // x.element_size()
@@ -141,6 +172,7 @@ class HouseholderTriton(torch.autograd.Function):
             EPS=eps,
             BLOCK_D=BLOCK_D,
             B=b,
+            BY=by,
             D=d,
         )
 
@@ -157,13 +189,14 @@ class HouseholderTriton(torch.autograd.Function):
 
         # allocate gradient tensors
         dx = torch.empty_like(x)
-        dy = torch.empty_like(y)
+        dy = torch.empty_like(x).reshape(-1, y.shape[-1]).contiguous()
 
         # reshape tensors
         do_ = do.reshape(-1, do.shape[-1]).contiguous()
         x_ = x.reshape(-1, x.shape[-1]).contiguous()
         y_ = y.reshape(-1, y.shape[-1]).contiguous()
         b, d = x_.shape
+        by = y_.shape[0]
 
         # Less than 64KB per feature
         MAX_FUSED_SIZE = 65536 // x.element_size()
@@ -182,8 +215,12 @@ class HouseholderTriton(torch.autograd.Function):
             EPS=eps,
             BLOCK_D=BLOCK_D,
             B=b,
+            BY=by,
             D=d,
         )
+
+        if by == 1:
+            dy = dy.sum(dim=0, keepdim=True)
 
         return dx.reshape_as(x), dy.reshape_as(y), None
 

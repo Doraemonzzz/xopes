@@ -11,14 +11,18 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
+@pytest.mark.parametrize("by", [-1, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test(shape, dtype):
+def test(shape, by, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
 
     # Generate input tensors
     x = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
-    y = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
+    if by == -1:
+        y = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
+    else:
+        y = torch.randn((shape[-1]), dtype=dtype, device=device).requires_grad_()
     do = torch.randn(shape, dtype=dtype, device=device)
 
     # forward
