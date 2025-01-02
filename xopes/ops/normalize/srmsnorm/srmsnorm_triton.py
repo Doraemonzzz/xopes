@@ -1,4 +1,4 @@
-from .normalize_triton import normalize_triton
+from ..normalize import normalize_triton
 
 
 def srmsnorm_triton(x, dim, eps=1e-6, residual=None):

@@ -62,7 +62,7 @@ configs = [
     for dtype_name in ["bf16"]
     for use_mean in [True]
     for use_weight in [True]
-    for use_bias in [False]
+    for use_bias in [True]
     for num_groups in [1]
     for b in [4]
     for d in [2048]

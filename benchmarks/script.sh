@@ -14,12 +14,12 @@ folder=lrpe/cosine/_1d
 ##### normalize 241231
 # folder=normalize/srmsnorm
 # folder=normalize/rmsnorm
-folder=normalize/groupnorm
-# folder=normalize/layernorm
+# folder=normalize/groupnorm
+folder=normalize/layernorm
 
 # ##### householder 250101
 # folder=householder
 
 mkdir -p $folder/log
 
-python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
+CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
