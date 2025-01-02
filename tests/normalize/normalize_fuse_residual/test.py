@@ -5,6 +5,29 @@ from xopes.ops.normalize import normalize_torch, normalize_triton
 from xopes.utils import get_threshold
 
 
+def f(x):
+    return 0.5 * x + 1.0
+
+
+def naive_prenorm(x, l=6, weight=None, bias=None):
+    for i in range(l):
+        r = x
+        x_norm = normalize_torch(x)[0]
+        x = f(x_norm) + r
+
+    return x
+
+
+def fuse_torch_prenorm(x, l=6):
+    p = X
+    r = None
+    for i in range(l):
+        q, r = normalize_torch(p, residual=r)
+        x = f(x_norm) + residual
+
+    return x
+
+
 def get_params():
     shape = [(6, 128), (4, 8, 256)]
 
@@ -20,16 +43,6 @@ def get_params():
 @pytest.mark.parametrize("c", [1, 16])
 @pytest.mark.parametrize("eps", [1e-5])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-
-# @pytest.mark.parametrize("shape", get_params())
-# @pytest.mark.parametrize("num_groups", [1, 4])
-# @pytest.mark.parametrize("use_mean", [True,])
-# @pytest.mark.parametrize("use_weight", [True,])
-# @pytest.mark.parametrize("use_bias", [True,])
-# @pytest.mark.parametrize("use_residual", [False,])
-# @pytest.mark.parametrize("c", [1])
-# @pytest.mark.parametrize("eps", [1e-5])
-# @pytest.mark.parametrize("dtype", [torch.float32,])
 def test(
     shape, num_groups, use_mean, use_weight, use_bias, use_residual, c, eps, dtype
 ):

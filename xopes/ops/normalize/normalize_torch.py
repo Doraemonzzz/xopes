@@ -12,6 +12,22 @@ def normalize_torch(
     use_mean=False,
     num_groups=1,
 ):
+    """
+    Apply normalization to the input tensor x.
+
+    Args:
+        x: Input tensor
+        weight: Weight tensor
+        bias: Bias tensor
+        residual: Residual tensor
+        c: Normalization constant
+        eps: Epsilon value for numerical stability
+        use_mean: Whether to use mean normalization
+        num_groups: Number of groups to normalize across
+
+    Returns:
+        Normalized tensor, Updated residual tensor
+    """
     assert (
         x.shape[-1] % num_groups == 0
     ), "The last dimension of x must be divisible by num_groups"
@@ -25,6 +41,8 @@ def normalize_torch(
     if residual is not None:
         residual = residual.float()
         x = x + residual
+        # update residual
+        residual = x
 
     x_ = rearrange(x, "... (g e) -> ... g e", g=num_groups)
 
@@ -43,4 +61,4 @@ def normalize_torch(
 
     o = o.reshape_as(x).to(dtype)
 
-    return o
+    return o, residual
