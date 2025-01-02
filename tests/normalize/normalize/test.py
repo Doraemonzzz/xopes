@@ -20,16 +20,6 @@ def get_params():
 @pytest.mark.parametrize("c", [1, 16])
 @pytest.mark.parametrize("eps", [1e-5])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-
-# @pytest.mark.parametrize("shape", get_params())
-# @pytest.mark.parametrize("num_groups", [1, 4])
-# @pytest.mark.parametrize("use_mean", [True,])
-# @pytest.mark.parametrize("use_weight", [True,])
-# @pytest.mark.parametrize("use_bias", [True,])
-# @pytest.mark.parametrize("use_residual", [False,])
-# @pytest.mark.parametrize("c", [1])
-# @pytest.mark.parametrize("eps", [1e-5])
-# @pytest.mark.parametrize("dtype", [torch.float32,])
 def test(
     shape, num_groups, use_mean, use_weight, use_bias, use_residual, c, eps, dtype
 ):

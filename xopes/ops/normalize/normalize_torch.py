@@ -60,5 +60,7 @@ def normalize_torch(
         o = o + bias
 
     o = o.reshape_as(x).to(dtype)
+    if residual is not None:
+        residual = residual.to(dtype)
 
     return o, residual

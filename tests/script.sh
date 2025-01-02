@@ -17,6 +17,7 @@ folder=page_flip/additive
 
 ##### normalize 241231
 folder=normalize/normalize
+folder=normalize/normalize_fuse_residual
 # folder=normalize/srmsnorm
 # folder=normalize/rmsnorm
 

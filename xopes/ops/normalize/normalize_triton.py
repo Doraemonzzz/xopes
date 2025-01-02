@@ -218,7 +218,7 @@ class NormalizeTriton(torch.autograd.Function):
         # allocate sigma, they'll be used in the backward pass
         sigma = torch.empty((b, num_groups), dtype=torch.float32, device=x.device)
         if use_residual:
-            update_residual = torch.empty((b, d), dtype=torch.float32, device=x.device)
+            update_residual = torch.empty((b, d), dtype=x.dtype, device=x.device)
         else:
             update_residual = None
 
