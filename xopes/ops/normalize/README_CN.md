@@ -64,3 +64,86 @@ $$
 
 \end{aligned}
 $$
+
+## Fuse Normalize and Residual
+
+下面考虑对于Transformer layer，Fuse Normalize and Residual应该如何实现。
+
+Naive实现，假设输入为$\mathbf x$：
+$$
+\begin{aligned}
+\mathbf x_0& = \mathbf x, \\
+\mathbf y_k &= \mathrm{norm}(\mathbf x_{k-1}), \\
+\mathbf x_k &= f_k(\mathbf y_k) +\mathbf x_{k-1},  \\
+\mathbf o&= \mathbf x_n, \\
+k&=1,\ldots, n,
+\end{aligned}
+$$
+注意到：
+$$
+\begin{aligned}
+\mathbf y_k &= \mathrm{norm}(\mathbf x_{k-1}) \\
+&= \mathrm{norm}(\mathbf x_{k-2}+ \mathbf z_{k-1}), \\
+ \mathbf z_k &\triangleq f_k(\mathbf y_k), \\
+ \mathbf x_k &= \mathbf x_{k-1}+\mathbf z_k. \\
+
+
+\end{aligned}
+$$
+根据上述观察，我们得到Fuse实现：
+$$
+\begin{aligned}
+\mathbf p_0& = \mathbf x, \\
+\mathbf r_0& = \mathbf 0, \\
+\mathbf r_{k}&= \mathbf p_{k-1}+ \mathbf r_{k-1} , \\
+\mathbf q_k &=   \mathrm{norm}( \mathbf r_k), \\
+\mathbf p_k &= f_k(\mathbf q_k), \\
+
+\mathbf o&= \mathbf p_n + \mathbf r_n, \\
+k&=1,\ldots, n,
+\end{aligned}
+$$
+下面用数学归纳法证明两种计算方法的结果相同。
+
+当$n=1$时，
+$$
+\begin{aligned}
+\mathbf o_{\mathrm{naive}}&= \mathbf x_1 \\
+&= f_1(\mathbf y_1) +\mathbf x_{0}\\
+&=  f_1(\mathrm{norm}(\mathbf x_0)) +\mathbf x_{0}\\
+&=  f_1(\mathrm{norm}(\mathbf x)) +\mathbf x  \\
+
+\mathbf o_{\mathrm{fuse}}&= \mathbf p_1 +\mathbf r_1 \\
+&=f_1(\mathbf q_1)+\mathbf r_1\\
+&= f_1(\mathrm{norm}(\mathbf p_0 + \mathbf r_0))+\mathbf p_0 \\
+&= f_1(\mathrm{norm}(\mathbf x))+\mathbf x.
+\end{aligned}
+$$
+假设$n-1$时结论成立，那么$n$时：
+$$
+\begin{aligned}
+\mathbf o_{\mathrm{naive}}&= \mathbf x_n \\
+&= f_n(\mathbf y_n) +\mathbf x_{n-1}\\
+&=  f_n(\mathrm{norm}(\mathbf x_{n-1})) +\mathbf x_{n-1}\\
+
+
+\mathbf o_{\mathrm{fuse}}&= \mathbf p_n +\mathbf r_n \\
+&=f_n(\mathbf q_n)+\mathbf p_{n-1} + \mathbf r_{n-1}\\
+&=f_n(\mathrm{norm}(\mathbf p_{n-1} + \mathbf r_{n-1}))+\mathbf p_{n-1} + \mathbf r_{n-1}.
+\end{aligned}
+$$
+根据归纳假设，我们有：
+$$
+\mathbf x_{n-1}=\mathbf p_{n-1} + \mathbf r_{n-1}.
+$$
+所以：
+$$
+\begin{aligned}
+
+\mathbf o_{\mathrm{fuse}}
+&=f_n(\mathrm{norm}(\mathbf p_{n-1} + \mathbf r_{n-1}))+\mathbf p_{n-1} + \mathbf r_{n-1}\\
+&=  f_n(\mathrm{norm}(\mathbf x_{n-1})) +\mathbf x_{n-1} \\
+&= \mathbf o_{\mathrm{naive}}.
+\end{aligned}
+$$
+所以结论成立。
