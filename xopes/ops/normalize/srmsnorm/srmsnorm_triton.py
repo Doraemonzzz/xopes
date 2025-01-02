@@ -1,7 +1,7 @@
 from ..normalize import normalize_triton
 
 
-def srmsnorm_triton(x, dim, eps=1e-6, residual=None):
+def srmsnorm_triton(x, dim, eps=1e-6, residual=None, return_residual=False):
     return normalize_triton(
         x=x,
         weight=None,
@@ -11,4 +11,5 @@ def srmsnorm_triton(x, dim, eps=1e-6, residual=None):
         eps=eps,
         use_mean=False,
         num_groups=1,
+        return_residual=return_residual,
     )

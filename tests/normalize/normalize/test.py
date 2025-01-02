@@ -11,17 +11,40 @@ def get_params():
     return shape
 
 
+##### return_residual = False
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("num_groups", [1, 4])
 @pytest.mark.parametrize("use_mean", [True, False])
 @pytest.mark.parametrize("use_weight", [True, False])
 @pytest.mark.parametrize("use_bias", [True, False])
 @pytest.mark.parametrize("use_residual", [True, False])
+@pytest.mark.parametrize("return_residual", [False])
 @pytest.mark.parametrize("c", [1, 16])
 @pytest.mark.parametrize("eps", [1e-5])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+
+# ##### return_residual = True
+# @pytest.mark.parametrize("shape", get_params())
+# @pytest.mark.parametrize("num_groups", [1, 4])
+# @pytest.mark.parametrize("use_mean", [True, False])
+# @pytest.mark.parametrize("use_weight", [True, False])
+# @pytest.mark.parametrize("use_bias", [True, False])
+# @pytest.mark.parametrize("use_residual", [False])
+# @pytest.mark.parametrize("return_residual", [True])
+# @pytest.mark.parametrize("c", [1, 16])
+# @pytest.mark.parametrize("eps", [1e-5])
+# @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test(
-    shape, num_groups, use_mean, use_weight, use_bias, use_residual, c, eps, dtype
+    shape,
+    num_groups,
+    use_mean,
+    use_weight,
+    use_bias,
+    use_residual,
+    return_residual,
+    c,
+    eps,
+    dtype,
 ):
     torch.manual_seed(2024)
     device = torch.device("cuda")
@@ -54,8 +77,9 @@ def test(
         eps=eps,
         use_mean=use_mean,
         num_groups=num_groups,
+        return_residual=return_residual,
     )
-    if use_residual:
+    if use_residual or return_residual:
         o_normalize_torch = o_normalize_torch + o_update_residual_torch
 
     o_normalize_triton, o_update_residual_triton = normalize_triton(
@@ -67,8 +91,9 @@ def test(
         eps=eps,
         use_mean=use_mean,
         num_groups=num_groups,
+        return_residual=return_residual,
     )
-    if use_residual:
+    if use_residual or return_residual:
         o_normalize_triton = o_normalize_triton + o_update_residual_triton
 
     # backward

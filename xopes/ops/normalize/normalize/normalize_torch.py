@@ -11,6 +11,7 @@ def normalize_torch(
     eps=1e-5,
     use_mean=False,
     num_groups=1,
+    return_residual=False,
 ):
     """
     Apply normalization to the input tensor x.
@@ -60,7 +61,11 @@ def normalize_torch(
         o = o + bias
 
     o = o.reshape_as(x).to(dtype)
+    # if residual is not None, update it; if residual is None and return_residual is True, set residual to x
     if residual is not None:
         residual = residual.to(dtype)
+    else:
+        if return_residual:
+            residual = x.to(dtype)
 
     return o, residual

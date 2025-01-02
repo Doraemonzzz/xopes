@@ -13,10 +13,11 @@ def get_params():
 
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("use_residual", [True, False])
+@pytest.mark.parametrize("return_residual", [True, False])
 @pytest.mark.parametrize("c", [1, 16])
 @pytest.mark.parametrize("eps", [1e-5])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test(shape, use_residual, c, eps, dtype):
+def test(shape, use_residual, return_residual, c, eps, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     d = shape[-1]
@@ -38,8 +39,9 @@ def test(shape, use_residual, c, eps, dtype):
         dim=d,
         eps=eps,
         residual=residual,
+        return_residual=return_residual,
     )
-    if use_residual:
+    if use_residual and return_residual:
         o_layernorm_torch = o_layernorm_torch + o_update_residual_torch
 
     o_layernorm_triton, o_update_residual_triton = layernorm_triton(
@@ -49,8 +51,9 @@ def test(shape, use_residual, c, eps, dtype):
         dim=d,
         eps=eps,
         residual=residual,
+        return_residual=return_residual,
     )
-    if use_residual:
+    if use_residual and return_residual:
         o_layernorm_triton = o_layernorm_triton + o_update_residual_triton
 
     # backward

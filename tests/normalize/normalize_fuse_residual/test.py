@@ -25,8 +25,8 @@ def naive_prenorm(
             eps=eps,
             use_mean=use_mean,
             num_groups=num_groups,
+            return_residual=False,
         )
-        print(x.dtype, x_norm.dtype)
         x = f(x_norm) + r
 
     return x.to(dtype)
@@ -48,9 +48,8 @@ def fuse_torch_prenorm(
             eps=eps,
             use_mean=use_mean,
             num_groups=num_groups,
+            return_residual=True,
         )
-        if i == 0:
-            r = p
         p = f(q)
 
     o = p.float() + r.float()
@@ -74,9 +73,8 @@ def fuse_triton_prenorm(
             eps=eps,
             use_mean=use_mean,
             num_groups=num_groups,
+            return_residual=True,
         )
-        if i == 0:
-            r = p
         p = f(q)
 
     o = p.float() + r.float()

@@ -66,6 +66,7 @@ layernorm-speed-fwd-batch4-dim2048-use_residual_False-bf16:
 3   8192.0  0.148340  1.878389  0.142192
 4  16384.0  0.185676  3.677489  0.274431
 5  32768.0  0.360767  7.273176  0.541279
+
 layernorm-speed-bwd-batch4-dim2048-use_residual_False-bf16:
          n        tr         to       toc
 0   1024.0  0.669279   0.982024  1.082426

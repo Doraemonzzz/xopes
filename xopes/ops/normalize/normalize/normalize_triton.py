@@ -23,7 +23,8 @@ def _normalize_fwd(
     MEAN,  # B G
     SIGMA,  # B G
     O,  # B G E
-    UPDATE_RESIDUAL,  # B G E
+    UPDATED_RESIDUAL,  # B G E
+    RETURN_RESIDUAL: tl.constexpr,
     C: tl.constexpr,
     EPS: tl.constexpr,
     USE_WEIGHT: tl.constexpr,
@@ -58,11 +59,16 @@ def _normalize_fwd(
 
     if USE_RESIDUAL:
         r_block_ptr = RESIDUAL + offset_xro + tl.arange(0, BLOCK_E)
-        update_r_block_ptr = UPDATE_RESIDUAL + offset_xro + tl.arange(0, BLOCK_E)
+        updated_r_block_ptr = UPDATED_RESIDUAL + offset_xro + tl.arange(0, BLOCK_E)
         residual = tl.load(r_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         x = x + residual
         tl.store(
-            update_r_block_ptr, x.to(update_r_block_ptr.dtype.element_ty), mask=mask_e
+            updated_r_block_ptr, x.to(updated_r_block_ptr.dtype.element_ty), mask=mask_e
+        )
+    elif RETURN_RESIDUAL:
+        updated_r_block_ptr = UPDATED_RESIDUAL + offset_xro + tl.arange(0, BLOCK_E)
+        tl.store(
+            updated_r_block_ptr, x.to(updated_r_block_ptr.dtype.element_ty), mask=mask_e
         )
 
     if USE_MEAN:
@@ -114,6 +120,7 @@ def _normalize_bwd(
     USE_WEIGHT: tl.constexpr,
     USE_BIAS: tl.constexpr,
     USE_RESIDUAL: tl.constexpr,
+    RETURN_RESIDUAL: tl.constexpr,
     USE_MEAN: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
@@ -170,9 +177,9 @@ def _normalize_bwd(
     if USE_MEAN:
         dx = dx - tl.sum(dx, axis=0) / E
 
-    if USE_RESIDUAL:
-        update_r_block_ptr = DUR + offset_xr + tl.arange(0, BLOCK_E)
-        dur = tl.load(update_r_block_ptr, mask=mask_e, other=0.0)
+    if USE_RESIDUAL or RETURN_RESIDUAL:
+        updated_r_block_ptr = DUR + offset_xr + tl.arange(0, BLOCK_E)
+        dur = tl.load(updated_r_block_ptr, mask=mask_e, other=0.0)
         dx = dx + dur
 
     tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask_e)
@@ -191,6 +198,7 @@ class NormalizeTriton(torch.autograd.Function):
         eps=1e-5,
         use_mean=False,
         num_groups=1,
+        return_residual=False,
     ):
         use_weight = weight is not None
         use_bias = bias is not None
@@ -217,10 +225,10 @@ class NormalizeTriton(torch.autograd.Function):
 
         # allocate sigma, they'll be used in the backward pass
         sigma = torch.empty((b, num_groups), dtype=torch.float32, device=x.device)
-        if use_residual:
-            update_residual = torch.empty((b, d), dtype=x.dtype, device=x.device)
+        if use_residual or return_residual:
+            updated_residual = torch.empty((b, d), dtype=x.dtype, device=x.device)
         else:
-            update_residual = None
+            updated_residual = None
 
         if use_mean:
             mean = torch.empty((b, num_groups), dtype=torch.float32, device=x.device)
@@ -236,7 +244,8 @@ class NormalizeTriton(torch.autograd.Function):
             MEAN=mean,
             SIGMA=sigma,
             O=o,
-            UPDATE_RESIDUAL=update_residual,
+            UPDATED_RESIDUAL=updated_residual,
+            RETURN_RESIDUAL=return_residual,
             C=c,
             EPS=eps,
             USE_WEIGHT=use_weight,
@@ -258,15 +267,16 @@ class NormalizeTriton(torch.autograd.Function):
         ctx.USE_WEIGHT = use_weight
         ctx.USE_BIAS = use_bias
         ctx.USE_RESIDUAL = use_residual
+        ctx.RETURN_RESIDUAL = return_residual
         ctx.BLOCK_E = BLOCK_E
         ctx.BLOCK_D = BLOCK_D
         ctx.num_groups = num_groups
 
         o = o.reshape_as(x)
-        if use_residual:
-            update_residual = update_residual.reshape_as(x)
+        if use_residual or return_residual:
+            updated_residual = updated_residual.reshape_as(x)
 
-        return o, update_residual
+        return o, updated_residual
 
     @staticmethod
     @contiguous
@@ -282,6 +292,7 @@ class NormalizeTriton(torch.autograd.Function):
         use_weight = ctx.USE_WEIGHT
         use_bias = ctx.USE_BIAS
         use_residual = ctx.USE_RESIDUAL
+        return_residual = ctx.RETURN_RESIDUAL
         BLOCK_E = ctx.BLOCK_E
         BLOCK_D = ctx.BLOCK_D
         num_groups = ctx.num_groups
@@ -325,6 +336,7 @@ class NormalizeTriton(torch.autograd.Function):
             USE_WEIGHT=use_weight,
             USE_BIAS=use_bias,
             USE_RESIDUAL=use_residual,
+            RETURN_RESIDUAL=return_residual,
             USE_MEAN=use_mean,
             BLOCK_D=BLOCK_D,
             BLOCK_E=BLOCK_E,
@@ -345,7 +357,7 @@ class NormalizeTriton(torch.autograd.Function):
         if use_bias:
             db = do.sum(0)
 
-        return dx, dw, db, dr, None, None, None, None
+        return dx, dw, db, dr, None, None, None, None, None
 
 
 def normalize_triton(
@@ -357,6 +369,7 @@ def normalize_triton(
     eps=1e-5,
     use_mean=False,
     num_groups=1,
+    return_residual=False,
 ):
     """
     Apply normalization to the input tensor x.
@@ -370,6 +383,7 @@ def normalize_triton(
         eps: Epsilon value for numerical stability
         use_mean: Whether to use mean normalization
         num_groups: Number of groups to normalize across
+        return_residual: Whether to return the residual tensor when residual is None
 
     Returns:
         Normalized tensor, Updated residual tensor
@@ -378,7 +392,7 @@ def normalize_triton(
         x.shape[-1] % num_groups == 0
     ), "The last dimension of x must be divisible by num_groups"
     return NormalizeTriton.apply(
-        x, weight, bias, residual, c, eps, use_mean, num_groups
+        x, weight, bias, residual, c, eps, use_mean, num_groups, return_residual
     )
 
 
