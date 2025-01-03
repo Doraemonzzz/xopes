@@ -93,7 +93,7 @@ def _lse_bwd(
     tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask_n)
 
 
-class LSETriton(torch.autograd.Function):
+class LseRecurrenceTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x: torch.Tensor, dim: int, keepdim: bool = False):
@@ -160,7 +160,9 @@ class LSETriton(torch.autograd.Function):
         return dx, None, None
 
 
-def lse_triton(x: torch.Tensor, dim: int, keepdim: bool = False) -> torch.Tensor:
+def lse_recurrence_triton(
+    x: torch.Tensor, dim: int, keepdim: bool = False
+) -> torch.Tensor:
     """
     Compute log(sum(exp(x))) along a dimension using Triton.
 
@@ -172,11 +174,11 @@ def lse_triton(x: torch.Tensor, dim: int, keepdim: bool = False) -> torch.Tensor
     Returns:
         Result of log(sum(exp(x)))
     """
-    return LSETriton.apply(x, dim, keepdim)
+    return LseRecurrenceTriton.apply(x, dim, keepdim)
 
 
 if __name__ == "__main__":
     # Test code
     x = torch.randn(2, 512, device="cuda")
-    result = lse_triton(x, dim=-1)
+    result = lse_recurrence_triton(x, dim=-1)
     print(result.shape)
