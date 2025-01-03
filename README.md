@@ -3,6 +3,8 @@
 Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 # Plan
+- 250103
+  - [x] add logsumexp;
 - 250101
   - [x] add householder;
 - 241231
