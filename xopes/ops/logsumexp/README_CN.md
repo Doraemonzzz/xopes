@@ -107,12 +107,12 @@ $$
 
 ### 递推版本
 
-- 记$ m=0,  {sse}=0$；
+- 记$m=0,  {sse}=0$；
 - for $i=1,\ldots ,k$：
-  - $ m_i =\max(\mathbf x_i)$；
+  - $m_i =\max(\mathbf x_i)$；
   - ${m}'=\max({m_i},  m)$；
-  - ${sse}_i= \sum_{j=1}^d \exp(x_{i,j}-{m}_i)$；
-  - ${sse}= \exp(m-m') sse + \exp(m_i-m') sse_i$；
+  - ${sse}_i= \sum_{j=1}^d \exp(x_{i,j}-{m}')$；
+  - ${sse}= \exp(m-m') sse +  sse_i$；
   - $m=m'$；
 - return $m, sse$；
 
@@ -120,9 +120,9 @@ $$
 
 ### 并行版本
 
-- 记$ m=0,  {sse}=0$；
+- 记$m=0,  {sse}=0$；
 - for $i=1,\ldots ,k$，并行计算出：
-  - $ m_i =\max(\mathbf x_i)$；
+  - $m_i =\max(\mathbf x_i)$；
   - ${sse}_i= \sum_{j=1}^d \exp(x_{i,j}-{m}_i)$；
 - for $i=1,\ldots, k$：
   - ${m}'=\max({m_i},  m)$；
@@ -147,7 +147,8 @@ $$
 \begin{aligned}
 p_{i}&= \exp(x_i - \mathbf o) ,\\
 \frac{\partial o}{\partial x_i}
-&= p_i.
+&= p_i, \\
+\mathbf{dx}&= \mathbf{do} \odot \mathbf p. \\
 
 \end{aligned}
 $$
