@@ -140,7 +140,7 @@ $$
 
 ## Backward
 
-输入：$\mathbf {do}$。
+输入：$\mathbf {do}\in \mathbb R$。
 
 计算：
 $$
