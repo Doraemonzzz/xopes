@@ -26,7 +26,7 @@ $$
 
 ## Backward
 
-输入：$\mathbf {do}$。
+输入：$\mathbf {do}\in \mathbb R^d$。
 
 计算：
 $$
