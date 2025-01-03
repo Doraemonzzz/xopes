@@ -1,7 +1,9 @@
 import torch
 
 
-def householder_torch(x, y, eps=1e-5):
+def householder_torch(
+    x: torch.Tensor, y: torch.Tensor, eps: float = 1e-5
+) -> torch.Tensor:
     """
     Applies Householder transformation using PyTorch.
 

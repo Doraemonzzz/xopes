@@ -1,7 +1,18 @@
+from typing import Optional, Tuple
+
+import torch
+
 from ..normalize import normalize_triton
 
 
-def rmsnorm_triton(x, weight, dim, eps=1e-6, residual=None, return_residual=False):
+def rmsnorm_triton(
+    x: torch.Tensor,
+    weight: torch.Tensor,
+    dim: int,
+    eps: float = 1e-6,
+    residual: Optional[torch.Tensor] = None,
+    return_residual: bool = False,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     return normalize_triton(
         x=x,
         weight=weight,
