@@ -42,7 +42,7 @@ def _lse_parallel(
     m = tl.full([1], -float("inf"), dtype=tl.float32)
     sse = tl.full([1], 0, dtype=tl.float32)
 
-    mask_n = array_n < N
+    mask_n = (off_n * BLOCK_N + array_n) < N
     x = tl.load(x_block_ptr, mask=mask_n, other=-float("inf"))
     m = tl.max(x)
     sse = tl.sum(tl.exp(x - m))
@@ -86,8 +86,8 @@ def _lse_reduce(
         sse = tl.exp(m - m_) * sse + tl.exp(mi - m_) * sse_i
         m = m_
         # update ptr
-        max_block_ptr += G
-        sse_block_ptr += G
+        max_block_ptr += 1
+        sse_block_ptr += 1
 
     o = tl.log(sse) + m
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty))
