@@ -55,14 +55,16 @@ def _lse_fwd(
             "BLOCK_N": [128, 256, 512, 1024],
         }
     ),
-    key=["N", "BLOCK_N"],
+    key=[
+        "N",
+    ],
 )
 @triton.jit
 def _lse_bwd(
     X,  # ... N
     O,  # ... 1
     DX,  # ... N
-    DO,  # ... N
+    DO,  # ... 1
     B: tl.constexpr,
     N: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -70,22 +72,23 @@ def _lse_bwd(
     off_b = tl.program_id(0)
     off_n = tl.program_id(1)
     # compute offset
-    offset_b = off_b * n
+    offset_b = off_b * N
     offset_n = off_n * BLOCK_N
-    offset = offset_b + offset_n
+    offset_x = offset_b + offset_n
+    offset_o = off_b
     # mask
     array_n = offset_n + tl.arange(0, BLOCK_N)
     mask_n = array_n < N
     # compute block ptr
-    x_block_ptr = X + offset + array_n
-    o_block_ptr = O + offset + tl.arange(0, 1)
-    dx_block_ptr = DX + offset + array_n
-    do_block_ptr = DO + offset + array_n
+    x_block_ptr = X + offset_x + tl.arange(0, BLOCK_N)
+    o_block_ptr = O + offset_o + tl.arange(0, 1)
+    dx_block_ptr = DX + offset_x + tl.arange(0, BLOCK_N)
+    do_block_ptr = DO + offset_o + tl.arange(0, 1)
 
     # load
-    x = tl.load(x_block_ptr, mask=mask_n, other=0).to(tl.float32)
-    o = tl.load(o_block_ptr, mask=mask_n, other=1).to(tl.float32)
-    do = tl.load(do_block_ptr, mask=mask_n, other=0).to(tl.float32)
+    x = tl.load(x_block_ptr, mask=mask_n, other=-float("inf")).to(tl.float32)
+    o = tl.load(o_block_ptr).to(tl.float32)
+    do = tl.load(do_block_ptr)
 
     p = tl.exp(x - o)
     dx = do * p
@@ -97,15 +100,18 @@ class LseRecurrenceTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x: torch.Tensor, dim: int, keepdim: bool = False):
-        # Prepare output tensor and compute LSE
+        # update dim to be in the range of -x.ndim + 1 to 0
+        if dim >= 0:
+            dim = dim - x.ndim
 
+        shape_origin = x.shape
         if dim != -1:
             x = x.transpose(dim, -1).contiguous()
 
         o = torch.empty(list(x.shape[:-1]) + [1], dtype=x.dtype, device=x.device)
 
         shape = x.shape
-        b = torch.prod(torch.tensor(shape[:-1])).item()
+        b = int(torch.prod(torch.tensor(shape[:-1])).item())
         n = shape[-1]
 
         grid = (b,)
@@ -114,6 +120,7 @@ class LseRecurrenceTriton(torch.autograd.Function):
         ctx.save_for_backward(x, o)
         ctx.b = b
         ctx.n = n
+        ctx.shape_origin = shape_origin
         ctx.dim = dim
         ctx.keepdim = keepdim
 
@@ -130,12 +137,16 @@ class LseRecurrenceTriton(torch.autograd.Function):
     def backward(ctx, do):
         x, o = ctx.saved_tensors
         dim = ctx.dim
-        ctx.keepdim
+        keepdim = ctx.keepdim
         b = ctx.b
         n = ctx.n
+        shape_origin = ctx.shape_origin
+
+        if not keepdim:
+            do = do.unsqueeze(dim)
 
         if dim != -1:
-            do_ = do.transpose(dim, -1).contiguous()
+            do = do.transpose(dim, -1).contiguous()
 
         # ..., n
         dx = torch.empty_like(x)
@@ -144,7 +155,7 @@ class LseRecurrenceTriton(torch.autograd.Function):
             return (b, triton.cdiv(n, meta["BLOCK_N"]))
 
         _lse_bwd[grid](
-            DO=do_,
+            DO=do,
             X=x,
             O=o,
             DX=dx,
@@ -155,7 +166,7 @@ class LseRecurrenceTriton(torch.autograd.Function):
         if dim != -1:
             dx = dx.transpose(dim, -1)
 
-        dx = dx.reshape_as(do)
+        dx = dx.reshape(shape_origin).contiguous()
 
         return dx, None, None
 

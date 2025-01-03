@@ -25,6 +25,9 @@ folder=page_flip/additive
 ##### householder 250101
 folder=householder
 
+##### logsumexp 250103
+folder=logsumexp
+
 mkdir -p $folder/log
 
 
