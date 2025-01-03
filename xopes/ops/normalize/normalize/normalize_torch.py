@@ -1,18 +1,20 @@
+from typing import Optional, Tuple
+
 import torch
 from einops import rearrange
 
 
 def normalize_torch(
-    x,
-    weight=None,
-    bias=None,
-    residual=None,
-    c=1.0,
-    eps=1e-5,
-    use_mean=False,
-    num_groups=1,
-    return_residual=False,
-):
+    x: torch.Tensor,
+    weight: Optional[torch.Tensor] = None,
+    bias: Optional[torch.Tensor] = None,
+    residual: Optional[torch.Tensor] = None,
+    c: float = 1.0,
+    eps: float = 1e-5,
+    use_mean: bool = False,
+    num_groups: int = 1,
+    return_residual: bool = False,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     """
     Apply normalization to the input tensor x.
 

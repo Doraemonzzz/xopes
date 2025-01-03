@@ -225,7 +225,9 @@ class HouseholderTriton(torch.autograd.Function):
         return dx.reshape_as(x), dy.reshape_as(y), None
 
 
-def householder_triton(x, y, eps=1e-5):
+def householder_triton(
+    x: torch.Tensor, y: torch.Tensor, eps: float = 1e-5
+) -> torch.Tensor:
     """
     Applies Householder transformation using Triton.
 

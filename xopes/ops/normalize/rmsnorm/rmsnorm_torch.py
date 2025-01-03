@@ -1,7 +1,16 @@
+from typing import Optional, Tuple
+
 import torch
 
 
-def rmsnorm_torch(x, weight, dim, eps=1e-6, residual=None, return_residual=False):
+def rmsnorm_torch(
+    x: torch.Tensor,
+    weight: torch.Tensor,
+    dim: int,
+    eps: float = 1e-6,
+    residual: Optional[torch.Tensor] = None,
+    return_residual: bool = False,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     dtype = x.dtype
     x = x.float()
 

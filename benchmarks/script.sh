@@ -20,6 +20,9 @@ folder=normalize/layernorm
 ##### householder 250101
 folder=householder
 
+##### logsumexp 250103
+folder=logsumexp
+
 mkdir -p $folder/log
 
 CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
