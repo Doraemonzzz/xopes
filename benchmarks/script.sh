@@ -23,6 +23,10 @@ folder=householder
 ##### logsumexp 250103
 folder=logsumexp
 
+##### linear_cross_entropy 250104
+folder=linear_cross_entropy/vocab_size
+folder=linear_cross_entropy/hidden_dim
+
 mkdir -p $folder/log
 
 CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log

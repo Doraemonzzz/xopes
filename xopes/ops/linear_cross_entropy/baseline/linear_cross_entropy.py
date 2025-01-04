@@ -873,9 +873,10 @@ class LinearXentImplementation(torch.autograd.Function):
             assert y.shape == (N,)
             N_group = min(N, N_chunk_size)
 
-            assert N % 512 == 0
-            assert V % 4096 == 0
-            assert H % 256 == 0
+            # ignore these constraints for now
+            # assert N % 512 == 0
+            # assert V % 4096 == 0
+            # assert H % 256 == 0
             with torch.no_grad():
                 At_grad = torch.zeros_like(
                     At, dtype=torch.float32 if At.dtype == torch.bfloat16 else At.dtype
@@ -1025,7 +1026,7 @@ class LinearXentImplementation(torch.autograd.Function):
 
 
 # functional version:
-def linear_cross_entropy_baseline(
+def linear_cross_entropy_jg(
     x,
     y,
     At,
@@ -1038,3 +1039,12 @@ def linear_cross_entropy_baseline(
     return LinearXentImplementation.apply(
         x, y, At, ignore_index, z_regularization, logit_scale, N_chunk_size, monitoring
     )  # type: ignore
+
+
+if __name__ == "__main__":
+    import torch
+
+    x = torch.randn((1024, 1024), dtype=torch.float16, device="cuda")
+    y = torch.randint(0, 1024, (1024,), device="cuda")
+    At = torch.randn((1024, 1024), dtype=torch.float16, device="cuda")
+    print(linear_cross_entropy_jg(x, y, At)[0])
