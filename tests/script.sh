@@ -28,6 +28,9 @@ folder=normalize/normalize
 ##### logsumexp 250103
 # folder=logsumexp
 
+##### linear_cross_entropy 250105
+folder=linear_cross_entropy
+
 mkdir -p $folder/log
 
 
