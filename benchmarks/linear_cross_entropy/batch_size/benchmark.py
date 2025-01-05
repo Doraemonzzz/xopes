@@ -4,7 +4,10 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops.linear_cross_entropy import linear_cross_entropy_torch
+from xopes.ops.linear_cross_entropy import (
+    linear_cross_entropy_split_torch,
+    linear_cross_entropy_torch,
+)
 from xopes.ops.linear_cross_entropy.baseline import (
     linear_cross_entropy_cut_wrapper,
     linear_cross_entropy_fla_wrapper,
@@ -28,6 +31,8 @@ module_map = {
     "triton_fla": linear_cross_entropy_fla_wrapper,
     "torch": linear_cross_entropy_torch,
     "torch_compile": torch.compile(linear_cross_entropy_torch),
+    "torch_split": linear_cross_entropy_split_torch,
+    "torch_split_compile": torch.compile(linear_cross_entropy_split_torch),
 }
 
 configs = [
@@ -44,8 +49,10 @@ configs = [
             "triton_fla",
             "torch",
             "torch_compile",
+            "torch_split",  # too slow
+            "torch_split_compile",  # too slow
         ],
-        line_names=["tr_jg", "tr_cut", "tr_liger", "tr_fla", "to", "toc"],
+        line_names=["tr_jg", "tr_cut", "tr_liger", "tr_fla", "to", "toc", "ts", "tsc"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -53,6 +60,8 @@ configs = [
             ("blue", "-"),
             ("purple", "-"),
             ("yellow", "-"),
+            ("pink", "-"),
+            ("brown", "-"),
         ],
         plot_name=f"lce-{bench_type}-{mode}-dim{d}-v{v}-{dtype_name}",
         args={
