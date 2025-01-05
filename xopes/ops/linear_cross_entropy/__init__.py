@@ -1,1 +1,2 @@
+from .lce_split_torch import linear_cross_entropy_split_torch
 from .lce_torch import linear_cross_entropy_torch
