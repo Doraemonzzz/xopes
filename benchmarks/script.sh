@@ -25,7 +25,8 @@ folder=logsumexp
 
 ##### linear_cross_entropy 250104
 folder=linear_cross_entropy/vocab_size
-folder=linear_cross_entropy/hidden_dim
+# folder=linear_cross_entropy/hidden_dim
+folder=linear_cross_entropy/batch_size
 
 mkdir -p $folder/log
 
