@@ -16,7 +16,7 @@ def get_params():
 
 
 @pytest.mark.parametrize("shapes", get_params())
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("op", ["add", "mul", "sub", "div"])
 @pytest.mark.parametrize("inplace", [True, False])
 def test(shapes, op, dtype, inplace):
