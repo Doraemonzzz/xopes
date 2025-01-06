@@ -52,7 +52,7 @@ def _ewbo_fwd(
         o = x / y
 
     # Store result
-    tl.store(o_block_ptr, o.to(O.dtype.element_ty))
+    tl.store(o_block_ptr, o.to(X.dtype.element_ty))
 
 
 @triton.autotune(
@@ -133,7 +133,10 @@ def ewbo_triton_fwd(x, y, op="add", inplace=False):
         B2=b2,
     )
 
-    return o
+    if inplace:
+        return x
+    else:
+        return o
 
 
 class EWBOTriton(torch.autograd.Function):
@@ -206,10 +209,11 @@ def ewbo_triton_fwd_fn(x, y, op="add", inplace=False):
         y: Input tensor, (n1, ... , nk)
         op: Binary operation to apply ("add", "mul", "sub", "div")
         inplace: Whether to perform the operation in place, if inplace is True, the output pointer will be the same as the input x
+
     Returns:
         Result of the binary operation
     """
-    return ewbo_triton_fwd_fn(x, y, op, inplace)
+    return ewbo_triton_fwd(x, y, op, inplace)
 
 
 if __name__ == "__main__":
@@ -219,4 +223,6 @@ if __name__ == "__main__":
     x = torch.randn((b, n), dtype=dtype).cuda()
     y = torch.randn((b,), dtype=dtype).cuda()
     o = ewbo_triton(x, y, "mul")
+    print(o.shape)
+    o = ewbo_triton_fwd_fn(x, y, "mul")
     print(o.shape)
