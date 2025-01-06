@@ -27,9 +27,9 @@ except:
 
 
 def linear_cross_entropy_fla_wrapper(
-    x: torch.Tensor,  # (n d)
-    y: torch.Tensor,  # (n)
-    W: torch.Tensor,  # (e d)
+    x: torch.Tensor,  # (b d)
+    y: torch.Tensor,  # (b)
+    W: torch.Tensor,  # (v d)
     weight: Optional[torch.Tensor] = None,
     ignore_index: int = -100,
     reduction: str = "mean",
@@ -44,9 +44,9 @@ def linear_cross_entropy_fla_wrapper(
 
 
 def linear_cross_entropy_liger_wrapper(
-    x: torch.Tensor,  # (n d)
-    y: torch.Tensor,  # (n)
-    W: torch.Tensor,  # (e d)
+    x: torch.Tensor,  # (b d)
+    y: torch.Tensor,  # (b)
+    W: torch.Tensor,  # (v d)
     weight: Optional[torch.Tensor] = None,
     ignore_index: int = -100,
     reduction: str = "mean",
@@ -61,9 +61,9 @@ def linear_cross_entropy_liger_wrapper(
 
 
 def linear_cross_entropy_cut_wrapper(
-    x: torch.Tensor,  # (n d)
-    y: torch.Tensor,  # (n)
-    W: torch.Tensor,  # (e d)
+    x: torch.Tensor,  # (b d)
+    y: torch.Tensor,  # (b)
+    W: torch.Tensor,  # (v d)
     weight: Optional[torch.Tensor] = None,
     ignore_index: int = -100,
     reduction: str = "mean",
@@ -78,9 +78,9 @@ def linear_cross_entropy_cut_wrapper(
 
 
 def linear_cross_entropy_jg_wrapper(
-    x: torch.Tensor,  # (n d)
-    y: torch.Tensor,  # (n)
-    W: torch.Tensor,  # (e d)
+    x: torch.Tensor,  # (b d)
+    y: torch.Tensor,  # (b)
+    W: torch.Tensor,  # (v d)
     weight: Optional[torch.Tensor] = None,
     ignore_index: int = -100,
     reduction: str = "mean",

@@ -5,9 +5,9 @@ import torch.nn.functional as F
 
 
 def linear_cross_entropy_torch(
-    x: torch.Tensor,  # (n d)
-    y: torch.Tensor,  # (n)
-    W: torch.Tensor,  # (e d)
+    x: torch.Tensor,  # (b d)
+    y: torch.Tensor,  # (b)
+    W: torch.Tensor,  # (v d)
     weight: Optional[torch.Tensor] = None,
     ignore_index: int = -100,
     reduction: str = "mean",
