@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -11,15 +11,15 @@ class LinearCrossEntropySplitFunction(torch.autograd.Function):
     @contiguous
     def forward(
         ctx,
-        x: torch.Tensor,  # (b d)
-        y: torch.Tensor,  # (b)
-        W: torch.Tensor,  # (v d)
-        weight: Optional[torch.Tensor] = None,
-        ignore_index: int = -100,
-        reduction: str = "mean",
-        label_smoothing: float = 0.0,
-        chunk_size: int = 1024,
-    ) -> torch.Tensor:
+        x,
+        y,
+        W,
+        weight,
+        ignore_index,
+        reduction,
+        label_smoothing,
+        chunk_size,
+    ):
         b, d = x.shape
         v = W.shape[0]
         if reduction == "mean":
@@ -134,9 +134,7 @@ class LinearCrossEntropySplitFunction(torch.autograd.Function):
 
     @staticmethod
     @contiguous
-    def backward(
-        ctx, do: torch.Tensor
-    ) -> Tuple[torch.Tensor, None, torch.Tensor, None, None, None, None, None]:
+    def backward(ctx, do):
         dx, dW = ctx.saved_tensors
         dx = do * dx
         dW = do * dW
