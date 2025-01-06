@@ -9,6 +9,7 @@ from xopes.utils import contiguous, generate_configs, is_dim_valid, is_op_valid
     generate_configs(
         {
             "num_warps": [1, 2, 4, 8, 16, 32],
+            "BLOCK_B1": [128, 256, 512, 1024, 2048, 4096],
         }
     ),
     key=["B1", "B2"],
@@ -18,28 +19,38 @@ def _ewbo_fwd(
     X,  # Shape: (B1, B2)
     Y,  # Shape: (B1)
     O,  # Output tensor
-    OP: tl.constexpr,  # Operation type (0:add, 1:mul, 2:sub, 3:div)
+    OP: tl.constexpr,  # Operation type
     INPLACE: tl.constexpr,
     B1: tl.constexpr,
     B2: tl.constexpr,
+    BLOCK_B1: tl.constexpr,
+    BLOCK_B2: tl.constexpr,
 ):
     off_b1 = tl.program_id(0)
-    off_b2 = tl.program_id(1)
 
     # compute offset
-    offset_xo = off_b1 * B2 + off_b2
-    offset_y = off_b1
+    array_b1 = tl.arange(0, BLOCK_B1)
+    array_b2 = tl.arange(0, BLOCK_B2)
+    offset_b1 = off_b1 * BLOCK_B1
+    offset_xo = offset_b1 * B2
+    offset_y = offset_b1
+
     # compute block ptr
-    x_block_ptr = X + offset_xo
-    y_block_ptr = Y + offset_y
+    x_block_ptr = X + offset_xo + array_b1[:, None] * B2 + array_b2[None, :]
+    y_block_ptr = Y + offset_y + array_b1[:, None]
     if INPLACE:
         o_block_ptr = x_block_ptr
     else:
-        o_block_ptr = O + offset_xo
+        o_block_ptr = O + offset_xo + array_b1[:, None] * B2 + array_b2[None, :]
+
+    # mask
+    mask_b1 = (off_b1 * BLOCK_B1 + array_b1) < B1
+    mask_b2 = array_b2 < B2
+    mask = mask_b1[:, None] & mask_b2[None, :]
 
     # Load data
-    x = tl.load(x_block_ptr)
-    y = tl.load(y_block_ptr)
+    x = tl.load(x_block_ptr, mask=mask, other=0)
+    y = tl.load(y_block_ptr, mask=mask_b1[:, None], other=0)
 
     # Perform operation
     if OP == "add":  # add
@@ -52,13 +63,14 @@ def _ewbo_fwd(
         o = x / y
 
     # Store result
-    tl.store(o_block_ptr, o.to(X.dtype.element_ty))
+    tl.store(o_block_ptr, o.to(X.dtype.element_ty), mask=mask)
 
 
 @triton.autotune(
     generate_configs(
         {
             "num_warps": [1, 2, 4, 8, 16, 32],
+            "BLOCK_B1": [128, 256, 512, 1024, 2048],
         }
     ),
     key=["B1", "B2"],
@@ -68,48 +80,58 @@ def _ewbo_bwd(
     X,  # Shape: (B1, B2)
     Y,  # Shape: (B1)
     DX,  # Shape: (B1, B2)
-    DY,  # Shape: (B1, B2)
+    DY,  # Shape: (B1, )
     DO,  # Shape: (B1, B2)
-    OP: tl.constexpr,  # Operation type (0:add, 1:mul, 2:sub, 3:div)
+    OP: tl.constexpr,  # Operation type
     B1: tl.constexpr,
     B2: tl.constexpr,
+    BLOCK_B1: tl.constexpr,
+    BLOCK_B2: tl.constexpr,
 ):
     off_b1 = tl.program_id(0)
-    off_b2 = tl.program_id(1)
 
     # compute offset
-    offset_xo = off_b1 * B2 + off_b2
-    offset_y = off_b1
+    array_b1 = tl.arange(0, BLOCK_B1)
+    array_b2 = tl.arange(0, BLOCK_B2)
+    offset_b1 = off_b1 * BLOCK_B1
+    offset_xo = offset_b1 * B2
+    offset_y = offset_b1
+
     # compute block ptr
-    dx_block_ptr = DX + offset_xo
-    dy_block_ptr = DY + offset_xo
-    do_block_ptr = DO + offset_xo
+    dx_block_ptr = DX + offset_xo + array_b1[:, None] * B2 + array_b2[None, :]
+    dy_block_ptr = DY + offset_y + array_b1[:, None]
+    do_block_ptr = DO + offset_xo + array_b1[:, None] * B2 + array_b2[None, :]
+
+    # mask
+    mask_b1 = (off_b1 * BLOCK_B1 + array_b1) < B1
+    mask_b2 = array_b2 < B2
+    mask = mask_b1[:, None] & mask_b2[None, :]
 
     # Load data
-    do = tl.load(do_block_ptr)
+    do = tl.load(do_block_ptr, mask=mask, other=0)
 
     # Perform operation
     if OP == "add":  # add
         dx = do
-        dy = do
+        dy = tl.sum(do, axis=1, keep_dims=True)
     elif OP == "sub":  # sub
         dx = do
-        dy = -do
+        dy = -tl.sum(do, axis=1, keep_dims=True)
     else:
-        x_block_ptr = X + offset_xo
-        y_block_ptr = Y + offset_y
-        x = tl.load(x_block_ptr)
-        y = tl.load(y_block_ptr)
+        x_block_ptr = X + offset_xo + array_b1[:, None] * B2 + array_b2[None, :]
+        y_block_ptr = Y + offset_y + array_b1[:, None]
+        x = tl.load(x_block_ptr, mask=mask, other=0)
+        y = tl.load(y_block_ptr, mask=mask_b1[:, None], other=0)
         if OP == "mul":  # mul
             dx = do * y
-            dy = do * x
+            dy = tl.sum(do * x, axis=1, keep_dims=True)
         elif OP == "div":  # div
             dx = do / y
-            dy = -do * x / (y * y)
+            dy = -tl.sum(do * x / (y * y), axis=1, keep_dims=True)
 
     # Store result
-    tl.store(dx_block_ptr, dx.to(DX.dtype.element_ty))
-    tl.store(dy_block_ptr, dy.to(DY.dtype.element_ty))
+    tl.store(dx_block_ptr, dx.to(DX.dtype.element_ty), mask=mask)
+    tl.store(dy_block_ptr, dy.to(DY.dtype.element_ty), mask=mask_b1[:, None])
 
 
 def ewbo_triton_fwd(x, y, op="add", inplace=False):
@@ -121,7 +143,11 @@ def ewbo_triton_fwd(x, y, op="add", inplace=False):
     else:
         o = torch.empty_like(x).contiguous()
 
-    grid = (b1, b2)
+    def grid(meta):
+        return (triton.cdiv(b1, meta["BLOCK_B1"]),)
+
+    BLOCK_B2 = triton.next_power_of_2(b2)
+
     _ewbo_fwd[grid](
         X=x,
         Y=y,
@@ -130,6 +156,7 @@ def ewbo_triton_fwd(x, y, op="add", inplace=False):
         INPLACE=inplace,
         B1=b1,
         B2=b2,
+        BLOCK_B2=BLOCK_B2,
     )
 
     if inplace:
@@ -169,12 +196,13 @@ class EWBOTriton(torch.autograd.Function):
         op = ctx.op
 
         dx = torch.empty(x_shape, dtype=do.dtype, device=do.device)
-        dy_shape = list(y_shape)
-        if b2 != 1:
-            dy_shape += [b2]
-        dy = torch.empty(dy_shape, dtype=do.dtype, device=do.device)
+        dy = torch.empty(y_shape, dtype=do.dtype, device=do.device)
 
-        grid = (b1, b2)
+        def grid(meta):
+            return (triton.cdiv(b1, meta["BLOCK_B1"]),)
+
+        BLOCK_B2 = triton.next_power_of_2(b2)
+
         _ewbo_bwd[grid](
             X=x,
             Y=y,
@@ -184,9 +212,10 @@ class EWBOTriton(torch.autograd.Function):
             OP=op,
             B1=b1,
             B2=b2,
+            BLOCK_B2=BLOCK_B2,
         )
 
-        return dx, dy.sum(dim=-1) if b2 != 1 else dy, None, None
+        return dx, dy, None, None
 
 
 def ewbo_triton(x: torch.Tensor, y: torch.Tensor, op="add") -> torch.Tensor:

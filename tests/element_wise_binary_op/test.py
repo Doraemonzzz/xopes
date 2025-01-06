@@ -18,6 +18,9 @@ def get_params():
 @pytest.mark.parametrize("shapes", get_params())
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("op", ["add", "mul", "sub", "div"])
+
+# @pytest.mark.parametrize("dtype", [torch.float32,])
+# @pytest.mark.parametrize("op", ["add"])
 def test(shapes, op, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
