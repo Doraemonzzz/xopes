@@ -4,12 +4,14 @@ import triton.language as tl
 
 from xopes.utils import contiguous, generate_configs
 
+MAX_BLOCK_SIZE = 64 * 1024
+
 
 @triton.autotune(
     generate_configs(
         {
             "num_warps": [1, 2, 4, 8, 16, 32],
-            "BLOCK_V": [1024, 2048, 4096, 8192],
+            # "BLOCK_V": [4096, 8192, 16384, 32768, 65536],
         }
     ),
     key=["V"],
@@ -114,28 +116,30 @@ class CrossEntropyTriton(torch.autograd.Function):
             n = 1
 
         o = torch.empty((b,), dtype=torch.float32, device=z.device)
-        dz = torch.empty_like(z)
 
-        def grid(meta):
-            return (b, meta["BLOCK_V"])
+        MAX_BLOCK_SIZE = 64 * 1024
+        BLOCK_V = min(triton.next_power_of_2(v), MAX_BLOCK_SIZE)
+
+        grid = (b,)
 
         _ce_fwd[grid](
             Z=z,
             Y=y,
             O=o,
-            DZ=dz,
+            DZ=z,  # use inplace operation
             IGNORE_INDEX=ignore_index,
             LABEL_SMOOTHING=label_smoothing,
             USE_LABEL_SMOOTHING=label_smoothing > 0,
             N=n,
             B=b,
             V=v,
+            BLOCK_V=BLOCK_V,
         )
 
         if reduction in ["mean", "sum"]:
             o = o.sum()
 
-        ctx.save_for_backward(dz)
+        ctx.save_for_backward(z)
 
         return o
 
