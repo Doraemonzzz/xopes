@@ -122,3 +122,17 @@ def identity_bwd(x, do, **kwargs):
 
 def is_act_valid(act):
     assert act in ACT_SET, f"act {act} not supported"
+
+
+def is_op_valid(op):
+    assert op in ["add", "mul", "sub", "div"], f"op {op} not supported"
+
+
+def is_dim_valid(shape1, shape2):
+    assert len(shape1) >= len(
+        shape2
+    ), "shape1 must have more dimensions or equal to shape2"
+    for i in range(len(shape2)):
+        if shape1[i] != shape2[i]:
+            return False
+    return True
