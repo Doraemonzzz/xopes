@@ -19,12 +19,11 @@ def _ce_fwd(
     Z,  # B V
     Y,  # B
     O,  # B
-    N,  # B
     DZ,  # B V
     IGNORE_INDEX: tl.constexpr,
     LABEL_SMOOTHING: tl.constexpr,
     USE_LABEL_SMOOTHING: tl.constexpr,
-    USE_CNT: tl.constexpr,
+    N: tl.constexpr,
     B: tl.constexpr,
     V: tl.constexpr,
     BLOCK_V: tl.constexpr,
@@ -40,18 +39,12 @@ def _ce_fwd(
         Y + offset_oyn
     )  # since we need to use y as a scalar, we don't need to use block_ptr
     o_block_ptr = O + offset_oyn + tl.arange(0, 1)
-    n_block_ptr = N + offset_oyn + tl.arange(0, 1)
     dz_block_ptr = DZ + offset_z + tl.arange(0, BLOCK_V)
     array = tl.arange(0, BLOCK_V)
     NUM_BLOCKS = tl.cdiv(V, BLOCK_V)
 
     # get label
     y = tl.load(y_block_ptr)
-
-    # update cnt
-    if USE_CNT:
-        n = tl.where(y == IGNORE_INDEX, 0, 1)
-        tl.store(n_block_ptr, n.to(N.dtype.element_ty))
 
     if y == IGNORE_INDEX:
         o = tl.full([1], 0, dtype=tl.float32)
@@ -80,25 +73,31 @@ def _ce_fwd(
             if USE_LABEL_SMOOTHING:
                 if i == NUM_BLOCKS - 1:
                     # update the masked value to 0
-                    z = tl.where(mask, z, 0)
-                s += tl.sum(z)
+                    z_ = tl.where(mask, z, 0.0).to(z.dtype)
+                else:
+                    z_ = z
+                s += tl.sum(z_)
 
             z_block_ptr += BLOCK_V
             array += BLOCK_V
 
         lse = tl.log(sse) + m
-        o = -(1 - LABEL_SMOOTHING) * zk + lse - (LABEL_SMOOTHING / V) * s
+        o = (-(1 - LABEL_SMOOTHING) * zk + lse - (LABEL_SMOOTHING / V) * s) / N
         tl.store(o_block_ptr, o.to(O.dtype.element_ty))
 
         # compute gradient
+        # refresh
+        z_block_ptr = zy_block_ptr + tl.arange(0, BLOCK_V)
         array = tl.arange(0, BLOCK_V)
         for i in range(NUM_BLOCKS):
             mask = array < V
-            z = tl.load(z_block_ptr + array, mask=mask, other=0)
-            p = tl.exp(z - lse) - LABEL_SMOOTHING / V
-            dz = tl.where(array == y, p - 1 + LABEL_SMOOTHING, p)
+            z = tl.load(z_block_ptr, mask=mask, other=-float("inf"))
+            p = tl.exp(z - lse)
+            c = -LABEL_SMOOTHING / V
+            dz = tl.where(array == y, -1 + LABEL_SMOOTHING + p + c, p + c) / N
             tl.store(dz_block_ptr, dz.to(DZ.dtype.element_ty), mask=mask)
 
+            z_block_ptr += BLOCK_V
             dz_block_ptr += BLOCK_V
             array += BLOCK_V
 
@@ -110,11 +109,9 @@ class CrossEntropyTriton(torch.autograd.Function):
         b, v = z.shape
 
         if reduction == "mean":
-            use_cnt = True
-            n = torch.empty((b,), dtype=torch.int64, device=z.device)
+            n = y.ne(ignore_index).sum().item()
         else:
-            use_cnt = False
-            n = None
+            n = 1
 
         o = torch.empty((b,), dtype=torch.float32, device=z.device)
         dz = torch.empty_like(z)
@@ -126,30 +123,27 @@ class CrossEntropyTriton(torch.autograd.Function):
             Z=z,
             Y=y,
             O=o,
-            N=n,
             DZ=dz,
             IGNORE_INDEX=ignore_index,
             LABEL_SMOOTHING=label_smoothing,
             USE_LABEL_SMOOTHING=label_smoothing > 0,
-            USE_CNT=use_cnt,
+            N=n,
             B=b,
             V=v,
         )
 
-        ctx.save_for_backward(dz)
-
         if reduction in ["mean", "sum"]:
             o = o.sum()
-            if reduction == "mean":
-                return o / n.sum()
-        else:
-            return o
+
+        ctx.save_for_backward(dz)
+
+        return o
 
     @staticmethod
     @contiguous
     def backward(ctx, do):
-        dz = ctx.saved_tensors
-        dz *= do
+        dz = ctx.saved_tensors[0]
+        dz = do.unsqueeze(-1) * dz
 
         return dz, None, None, None, None
 
