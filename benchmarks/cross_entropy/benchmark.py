@@ -4,7 +4,11 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops.cross_entropy import cross_entropy_torch, cross_entropy_triton
+from xopes.ops.cross_entropy import (
+    cross_entropy_fla_wrapper,
+    cross_entropy_torch,
+    cross_entropy_triton,
+)
 from xopes.utils import get_memory
 
 device = torch.device("cuda")
@@ -17,6 +21,7 @@ dtype_map = {
 
 module_map = {
     "triton": cross_entropy_triton,
+    "fla": cross_entropy_fla_wrapper,
     "torch": cross_entropy_torch,
     "torch_compile": torch.compile(cross_entropy_torch),
 }
@@ -24,20 +29,22 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["v"],  # vocabulary size
-        x_vals=[2**i for i in range(10, 18)],  # from 1024 to 131072
+        x_vals=[2**i for i in range(10, 12)],
         xlabel="Vocabulary Size",
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
             "triton",
+            "fla",
             "torch",
             "torch_compile",
         ],
-        line_names=["tr", "to", "toc"],
+        line_names=["tr", "fla", "to", "toc"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
             ("green", "-"),
+            ("blue", "-"),
         ],
         plot_name=f"cross_entropy-{bench_type}-{mode}-batch{b}-{dtype_name}-ls{label_smoothing}-{reduction}",
         args={
@@ -53,7 +60,7 @@ configs = [
     for bench_type in ["speed", "memory"]
     for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
-    for b in [512]
+    for b in [4096]
     for label_smoothing in [0.0]
     for reduction in ["mean"]
 ]
