@@ -81,8 +81,6 @@ def _ewbo_bwd(
     offset_xo = off_b1 * B2 + off_b2
     offset_y = off_b1
     # compute block ptr
-    x_block_ptr = X + offset_xo
-    y_block_ptr = Y + offset_y
     dx_block_ptr = DX + offset_xo
     dy_block_ptr = DY + offset_xo
     do_block_ptr = DO + offset_xo
@@ -97,16 +95,17 @@ def _ewbo_bwd(
     elif OP == "sub":  # sub
         dx = do
         dy = -do
-    elif OP == "mul":  # mul
+    else:
+        x_block_ptr = X + offset_xo
+        y_block_ptr = Y + offset_y
         x = tl.load(x_block_ptr)
         y = tl.load(y_block_ptr)
-        dx = do * y
-        dy = do * x
-    elif OP == "div":  # div
-        x = tl.load(x_block_ptr)
-        y = tl.load(y_block_ptr)
-        dx = do / y
-        dy = -do * x / (y * y)
+        if OP == "mul":  # mul
+            dx = do * y
+            dy = do * x
+        elif OP == "div":  # div
+            dx = do / y
+            dy = -do * x / (y * y)
 
     # Store result
     tl.store(dx_block_ptr, dx.to(DX.dtype.element_ty))
@@ -145,7 +144,15 @@ class EWBOTriton(torch.autograd.Function):
     def forward(ctx, x, y, op="add"):
         o = ewbo_triton_fwd(x, y, op)
 
-        ctx.save_for_backward(x, y)
+        if op in ["mul", "div"]:
+            ctx.save_for_backward(x, y)
+        else:
+            ctx.save_for_backward(None, None)
+
+        b1 = y.numel()
+        b2 = x.numel() // b1
+        ctx.b1 = b1
+        ctx.b2 = b2
         ctx.x_shape = x.shape
         ctx.y_shape = y.shape
         ctx.op = op
@@ -155,17 +162,17 @@ class EWBOTriton(torch.autograd.Function):
     @staticmethod
     def backward(ctx, do):
         x, y = ctx.saved_tensors
-        ctx.x_shape
-        ctx.y_shape
+        b1 = ctx.b1
+        b2 = ctx.b2
+        x_shape = ctx.x_shape
+        y_shape = ctx.y_shape
         op = ctx.op
-        b1 = y.numel()
-        b2 = x.numel() // b1
 
-        dx = torch.empty_like(x)
-        dy_shape = list(y.shape)
+        dx = torch.empty(x_shape, dtype=do.dtype, device=do.device)
+        dy_shape = list(y_shape)
         if b2 != 1:
             dy_shape += [b2]
-        dy = torch.empty(dy_shape, dtype=x.dtype, device=x.device)
+        dy = torch.empty(dy_shape, dtype=do.dtype, device=do.device)
 
         grid = (b1, b2)
         _ewbo_bwd[grid](

@@ -31,6 +31,9 @@ folder=linear_cross_entropy/batch_size
 ##### cross_entropy 250105
 folder=cross_entropy
 
+##### element_wise_binary_op 250106
+folder=element_wise_binary_op
+
 mkdir -p $folder/log
 
 CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
