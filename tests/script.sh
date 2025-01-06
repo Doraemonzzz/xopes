@@ -31,6 +31,9 @@ folder=normalize/normalize
 ##### linear_cross_entropy 250105
 folder=linear_cross_entropy
 
+##### cross_entropy 250106
+folder=cross_entropy
+
 mkdir -p $folder/log
 
 
