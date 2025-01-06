@@ -41,7 +41,7 @@ s&= \sum_{j=1}^v z_j,\\
 o&= -(1-\lambda) z_k +r -\lambda /vs.
 \end{aligned}
 $$
-其中$c$是在多个样本时进行reduce所需要量（例如mean-reduce时候返回$o/c$）。
+其中$c$是在多个样本时进行reduce所需要的量（例如mean-reduce时候返回$o/c$）。
 
 
 
