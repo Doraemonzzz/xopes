@@ -9,7 +9,7 @@ from xopes.utils import contiguous, generate_configs, is_dim_valid, is_op_valid
     generate_configs(
         {
             "num_warps": [1, 2, 4, 8, 16, 32],
-            "BLOCK_B1": [128, 256, 512, 1024, 2048, 4096],
+            "BLOCK_B1": [16, 32, 64, 128],
         }
     ),
     key=["B1", "B2"],
@@ -70,7 +70,7 @@ def _ewbo_fwd(
     generate_configs(
         {
             "num_warps": [1, 2, 4, 8, 16, 32],
-            "BLOCK_B1": [128, 256, 512, 1024, 2048],
+            "BLOCK_B1": [16, 32, 64, 128],
         }
     ),
     key=["B1", "B2"],
@@ -130,7 +130,8 @@ def _ewbo_bwd(
             dy = -tl.sum(do * x / (y * y), axis=1, keep_dims=True)
 
     # Store result
-    tl.store(dx_block_ptr, dx.to(DX.dtype.element_ty), mask=mask)
+    if OP == "mul" or OP == "div":
+        tl.store(dx_block_ptr, dx.to(DX.dtype.element_ty), mask=mask)
     tl.store(dy_block_ptr, dy.to(DY.dtype.element_ty), mask=mask_b1[:, None])
 
 
@@ -195,7 +196,10 @@ class EWBOTriton(torch.autograd.Function):
         y_shape = ctx.y_shape
         op = ctx.op
 
-        dx = torch.empty(x_shape, dtype=do.dtype, device=do.device)
+        if op in ["mul", "div"]:
+            dx = torch.empty(x_shape, dtype=do.dtype, device=do.device)
+        else:
+            dx = do
         dy = torch.empty(y_shape, dtype=do.dtype, device=do.device)
 
         def grid(meta):
