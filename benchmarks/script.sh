@@ -28,6 +28,9 @@ folder=linear_cross_entropy/vocab_size
 # folder=linear_cross_entropy/hidden_dim
 folder=linear_cross_entropy/batch_size
 
+##### cross_entropy 250105
+folder=cross_entropy
+
 mkdir -p $folder/log
 
 CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
