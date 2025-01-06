@@ -27,8 +27,8 @@ def _ewbo_fwd(
     off_b2 = tl.program_id(1)
 
     # compute offset
-    offset_xo = off_b1 * B2
-    offset_y = off_b2
+    offset_xo = off_b1 * B2 + off_b2
+    offset_y = off_b1
     # compute block ptr
     x_block_ptr = X + offset_xo
     y_block_ptr = Y + offset_y
@@ -42,13 +42,13 @@ def _ewbo_fwd(
     y = tl.load(y_block_ptr)
 
     # Perform operation
-    if OP == 0:  # add
+    if OP == "add":  # add
         o = x + y
-    elif OP == 1:  # mul
+    elif OP == "mul":  # mul
         o = x * y
-    elif OP == 2:  # sub
+    elif OP == "sub":  # sub
         o = x - y
-    else:  # div
+    elif OP == "div":  # div
         o = x / y
 
     # Store result
@@ -68,7 +68,7 @@ def _ewbo_bwd(
     X,  # Shape: (B1, B2)
     Y,  # Shape: (B1)
     DX,  # Shape: (B1, B2)
-    DY,  # Shape: (B1)
+    DY,  # Shape: (B1, B2)
     DO,  # Shape: (B1, B2)
     OP: tl.constexpr,  # Operation type (0:add, 1:mul, 2:sub, 3:div)
     B1: tl.constexpr,
@@ -78,41 +78,41 @@ def _ewbo_bwd(
     off_b2 = tl.program_id(1)
 
     # compute offset
-    offset_xo = off_b1 * B2
-    offset_y = off_b2
+    offset_xo = off_b1 * B2 + off_b2
+    offset_y = off_b1
     # compute block ptr
     x_block_ptr = X + offset_xo
     y_block_ptr = Y + offset_y
     dx_block_ptr = DX + offset_xo
-    dy_block_ptr = DY + offset_y
+    dy_block_ptr = DY + offset_xo
     do_block_ptr = DO + offset_xo
 
     # Load data
-    x = tl.load(x_block_ptr)
-    y = tl.load(y_block_ptr)
     do = tl.load(do_block_ptr)
 
     # Perform operation
-    if OP == 0:  # add
+    if OP == "add":  # add
         dx = do
         dy = do
-    elif OP == 1:  # mul
-        dx = do * y
-        dy = do * x
-    elif OP == 2:  # sub
+    elif OP == "sub":  # sub
         dx = do
         dy = -do
-    else:  # div
+    elif OP == "mul":  # mul
+        x = tl.load(x_block_ptr)
+        y = tl.load(y_block_ptr)
+        dx = do * y
+        dy = do * x
+    elif OP == "div":  # div
+        x = tl.load(x_block_ptr)
+        y = tl.load(y_block_ptr)
         dx = do / y
-        dy = -do * x / y**2
+        dy = -do * x / (y * y)
 
     # Store result
     tl.store(dx_block_ptr, dx.to(DX.dtype.element_ty))
-    if off_b2 == 0:
-        tl.store(dy_block_ptr, dy.to(DY.dtype.element_ty))
+    tl.store(dy_block_ptr, dy.to(DY.dtype.element_ty))
 
 
-@contiguous
 def ewbo_triton_fwd(x, y, op="add", inplace=False):
     b1 = y.numel()
     b2 = x.numel() // b1
@@ -142,26 +142,27 @@ class EWBOTriton(torch.autograd.Function):
     def forward(ctx, x, y, op="add"):
         o = ewbo_triton_fwd(x, y, op)
 
-        b1 = y.numel()
-        b2 = x.numel() // b1
+        ctx.save_for_backward(x, y)
         ctx.x_shape = x.shape
         ctx.y_shape = y.shape
         ctx.op = op
-        ctx.b1 = b1
-        ctx.b2 = b2
 
         return o
 
     @staticmethod
     def backward(ctx, do):
-        x_shape = ctx.x_shape
-        y_shape = ctx.y_shape
+        x, y = ctx.saved_tensors
+        ctx.x_shape
+        ctx.y_shape
         op = ctx.op
-        b1 = ctx.b1
-        b2 = ctx.b2
+        b1 = y.numel()
+        b2 = x.numel() // b1
 
-        dx = torch.empty_like(x_shape)
-        dy = torch.empty_like(y_shape)
+        dx = torch.empty_like(x)
+        dy_shape = list(y.shape)
+        if b2 != 1:
+            dy_shape += [b2]
+        dy = torch.empty(dy_shape, dtype=x.dtype, device=x.device)
 
         grid = (b1, b2)
         _ewbo_bwd[grid](
@@ -175,12 +176,10 @@ class EWBOTriton(torch.autograd.Function):
             B2=b2,
         )
 
-        return dx, dy, None, None
+        return dx, dy.sum(dim=-1) if b2 != 1 else dy, None, None
 
 
-def ewbo_triton(
-    x: torch.Tensor, y: torch.Tensor, op="add", inplace=False
-) -> torch.Tensor:
+def ewbo_triton(x: torch.Tensor, y: torch.Tensor, op="add") -> torch.Tensor:
     """
     Element-wise binary operation using Triton.
 
@@ -194,7 +193,23 @@ def ewbo_triton(
     """
     is_op_valid(op)
     is_dim_valid(x.shape, y.shape)
-    return EWBOTriton.apply(x, y, op, inplace)
+    return EWBOTriton.apply(x, y, op)
+
+
+@contiguous
+def ewbo_triton_fwd_fn(x, y, op="add", inplace=False):
+    """
+    Element-wise binary operation using Triton.
+
+    Args:
+        x: Input tensor, (n1, ... , nk, n(k+1), ... , n(k+m), m >= 0)
+        y: Input tensor, (n1, ... , nk)
+        op: Binary operation to apply ("add", "mul", "sub", "div")
+        inplace: Whether to perform the operation in place, if inplace is True, the output pointer will be the same as the input x
+    Returns:
+        Result of the binary operation
+    """
+    return ewbo_triton_fwd_fn(x, y, op, inplace)
 
 
 if __name__ == "__main__":

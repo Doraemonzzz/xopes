@@ -1,3 +1,5 @@
+import torch
+
 from xopes.utils import is_dim_valid, is_op_valid
 
 
