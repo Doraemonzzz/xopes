@@ -28,6 +28,7 @@ o &= - \sum_{i=1}^v \bar y_i \left(z_i -r \right) \\
 $$
 
 
+
 ## Forward
 
 输入：$\mathbf z\in \mathbb R^v$，以及one hot label $\mathbf y\in \mathbb R^v,y_k =1$，smooth参数$\lambda\in[0, 1]$，ignore index $ig$。
@@ -41,7 +42,7 @@ s&= \sum_{j=1}^v z_j,\\
 o&= -(1-\lambda) z_k +r -\lambda /vs.
 \end{aligned}
 $$
-其中$c$是在多个样本时进行reduce所需要的量（例如mean-reduce时候返回$o/n$）。
+其中$n$是在多个样本时进行reduce所需要的量（例如mean-reduce时候返回$o/n$）。
 
 
 
@@ -70,4 +71,10 @@ $$
 
 \end{aligned}
 $$
-根据上式，我们可以在前向中直接计算出$\frac{\partial \mathbf o}{\partial \mathbf  Z}$，并缓存下来即可，然后在Backward时，根据输入$\mathbf {dO}$计算元素乘法$\mathbf{dO} \odot \frac{\partial \mathbf o}{\partial \mathbf  Z}$即可。
+根据上式，我们可以在前向中直接计算出$\frac{\partial \mathbf o}{\partial \mathbf  Z}$，并缓存下来即可，然后在Backward时，根据输入$\mathbf {dO}$计算元素乘法$\mathbf{dO} \odot \frac{\partial \mathbf o}{\partial \mathbf  Z}$即可。
+
+
+
+## 补充说明
+
+根据是否拆分词表，我们分别实现了两个版本，其中`ce_triton`不考虑拆分词表，并且在前向的时候即计算出$\frac{\partial \mathbf o}{\partial \mathbf  Z}$，反向的时候进行元素乘法。`ce_parallel_triton`考虑词表拆分，在前向计算中缓存lse，并且在反向中使用。
