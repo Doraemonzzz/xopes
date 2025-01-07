@@ -14,7 +14,7 @@ def oplr_fn(
     xv: torch.Tensor,  # b n e
     log_decay: Optional[torch.Tensor],  # b n d
     decay_type: str = "no_decay",
-) -> torch.Tensor:
+) -> torch.Tensor: # b n d e
     """
     Applies Out Product Linear Recurrence with data-dependent decay.
 
