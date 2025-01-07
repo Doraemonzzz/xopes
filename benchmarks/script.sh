@@ -32,7 +32,7 @@ folder=linear_cross_entropy/batch_size
 folder=cross_entropy
 
 # ##### element_wise_binary_op 250106
-folder=element_wise_binary_op
+# folder=element_wise_binary_op
 
 mkdir -p $folder/log
 

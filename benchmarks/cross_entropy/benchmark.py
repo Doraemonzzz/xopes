@@ -6,6 +6,7 @@ import triton
 
 from xopes.ops.cross_entropy import (
     cross_entropy_fla_wrapper,
+    cross_entropy_parallel_triton,
     cross_entropy_torch,
     cross_entropy_triton,
 )
@@ -21,6 +22,7 @@ dtype_map = {
 
 module_map = {
     "triton": cross_entropy_triton,
+    "parallel_triton": cross_entropy_parallel_triton,
     "fla": cross_entropy_fla_wrapper,
     "torch": cross_entropy_torch,
     "torch_compile": torch.compile(cross_entropy_torch),
@@ -35,16 +37,18 @@ configs = [
         line_arg="provider",
         line_vals=[
             "triton",
+            "parallel_triton",
             "fla",
             "torch",
             "torch_compile",
         ],
-        line_names=["tr", "fla", "to", "toc"],
+        line_names=["tr", "pt", "fla", "to", "toc"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
             ("green", "-"),
             ("blue", "-"),
+            ("purple", "-"),
         ],
         plot_name=f"cross_entropy-{bench_type}-{mode}-batch{b}-{dtype_name}-ls{label_smoothing}-{reduction}",
         args={

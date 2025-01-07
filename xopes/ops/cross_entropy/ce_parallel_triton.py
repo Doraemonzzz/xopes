@@ -188,7 +188,7 @@ class CrossEntropyParallelTriton(torch.autograd.Function):
             n = 1
 
         # TODO: tune the parameters
-        MAX_BLOCK_SIZE = 2048
+        MAX_BLOCK_SIZE = 65536
         BLOCK_V = min(triton.next_power_of_2(v), MAX_BLOCK_SIZE)
 
         g = triton.cdiv(v, BLOCK_V)
@@ -239,6 +239,10 @@ class CrossEntropyParallelTriton(torch.autograd.Function):
         ctx.n = n
         ctx.MAX_BLOCK_SIZE = MAX_BLOCK_SIZE
 
+        del lse
+        if use_label_smoothing:
+            del s
+
         return zk
 
     @staticmethod
@@ -256,7 +260,6 @@ class CrossEntropyParallelTriton(torch.autograd.Function):
         g = triton.cdiv(v, BLOCK_V)
 
         # init
-        dz = torch.empty_like(z)
         use_label_smoothing = label_smoothing > 0
 
         grid = (b, g)
@@ -266,7 +269,7 @@ class CrossEntropyParallelTriton(torch.autograd.Function):
             Y=y,
             LSE=lse,
             DO=do,
-            DZ=dz,
+            DZ=z,  # use inplace operation
             IGNORE_INDEX=ignore_index,
             LABEL_SMOOTHING=label_smoothing,
             USE_LABEL_SMOOTHING=use_label_smoothing,
@@ -277,7 +280,7 @@ class CrossEntropyParallelTriton(torch.autograd.Function):
             BLOCK_V=BLOCK_V,
         )
 
-        return dz, None, None, None, None
+        return z, None, None, None, None
 
 
 def cross_entropy_parallel_triton(
