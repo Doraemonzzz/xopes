@@ -39,8 +39,8 @@ def _lse_parallel(
     sse_block_ptr = SSE + offset_sm + tl.arange(0, 1)
     max_block_ptr = MAX + offset_sm + tl.arange(0, 1)
 
-    m = tl.full([1], -float("inf"), dtype=tl.float32)
-    sse = tl.full([1], 0, dtype=tl.float32)
+    # m = tl.full([1], -float("inf"), dtype=tl.float32)
+    # sse = tl.full([1], 0, dtype=tl.float32)
 
     mask_n = (off_n * BLOCK_N + array_n) < N
     x = tl.load(x_block_ptr, mask=mask_n, other=-float("inf"))

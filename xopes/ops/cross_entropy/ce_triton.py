@@ -34,7 +34,7 @@ def _ce_fwd(
     # compute offset
     offset_z = off_b * V
     offset_oyn = off_b
-    # mask
+    # compute block ptr
     zy_block_ptr = Z + offset_z
     z_block_ptr = zy_block_ptr + tl.arange(0, BLOCK_V)
     y_block_ptr = (
@@ -63,7 +63,6 @@ def _ce_fwd(
         m = tl.full([1], -float("inf"), dtype=tl.float32)
         sse = tl.full([1], 0, dtype=tl.float32)
         s = tl.full([1], 0, dtype=tl.float32)
-        NUM_BLOCKS = tl.cdiv(V, BLOCK_V)
 
         for i in range(NUM_BLOCKS):
             mask = array < V
