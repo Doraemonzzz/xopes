@@ -23,17 +23,20 @@ folder=householder
 ##### logsumexp 250103
 folder=logsumexp
 
-# ##### linear_cross_entropy 250104
-# folder=linear_cross_entropy/vocab_size
-# # folder=linear_cross_entropy/hidden_dim
-# folder=linear_cross_entropy/batch_size
+##### linear_cross_entropy 250104
+folder=linear_cross_entropy/vocab_size
+# folder=linear_cross_entropy/hidden_dim
+folder=linear_cross_entropy/batch_size
 
-# ##### cross_entropy 250105
-# folder=cross_entropy
+##### cross_entropy 250105
+folder=cross_entropy
 
-# ##### element_wise_binary_op 250106
-# folder=element_wise_binary_op
+##### element_wise_binary_op 250106
+folder=element_wise_binary_op
 
+##### out_product_linear_recurrence 250107
+folder=oplr/no_decay
+folder=oplr/data_dependent_decay
 mkdir -p $folder/log
 
 CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log

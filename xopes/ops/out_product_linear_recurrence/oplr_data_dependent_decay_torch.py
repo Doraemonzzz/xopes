@@ -46,8 +46,9 @@ if __name__ == "__main__":
     import torch.nn.functional as F
 
     b, n, d, e = 2, 512, 128, 128
-    xv = torch.randn((b, n, e), dtype=torch.float32).cuda()
-    xk = torch.randn((b, n, d), dtype=torch.float32).cuda()
-    log_decay = F.logsigmoid(torch.randn((b, n, d), dtype=torch.float32).cuda())
+    dtype = torch.bfloat16
+    xv = torch.randn((b, n, e), dtype=dtype).cuda()
+    xk = torch.randn((b, n, d), dtype=dtype).cuda()
+    log_decay = F.logsigmoid(torch.randn((b, n, d), dtype=dtype).cuda())
     o = oplr_data_dependent_decay_torch(xk, xv, log_decay)
     print(o.shape)

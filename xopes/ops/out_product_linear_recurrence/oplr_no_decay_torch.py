@@ -22,3 +22,12 @@ def oplr_no_decay_torch(
     o = torch.cumsum(xkv, dim=1)
 
     return o
+
+
+if __name__ == "__main__":
+    b, n, d, e = 2, 512, 128, 128
+    dtype = torch.bfloat16
+    xv = torch.randn((b, n, e), dtype=dtype).cuda()
+    xk = torch.randn((b, n, d), dtype=dtype).cuda()
+    o = oplr_no_decay_torch(xk, xv)
+    print(o.shape)
