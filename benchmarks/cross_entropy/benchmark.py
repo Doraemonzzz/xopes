@@ -29,7 +29,6 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["v"],  # vocabulary size
-        # x_vals=[2**i for i in range(10, 16)],
         x_vals=[2**i for i in range(10, 18)],
         xlabel="Vocabulary Size",
         ylabel="Execution Time(ms)",

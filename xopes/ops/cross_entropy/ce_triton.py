@@ -2,6 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
+from xopes.ops.element_wise_binary_op import ewbo_fwd_fn
 from xopes.utils import contiguous, generate_configs
 
 MAX_BLOCK_SIZE = 64 * 1024
@@ -11,7 +12,6 @@ MAX_BLOCK_SIZE = 64 * 1024
     generate_configs(
         {
             "num_warps": [1, 2, 4, 8, 16, 32],
-            # "BLOCK_V": [4096, 8192, 16384, 32768, 65536],
         }
     ),
     key=["V"],
@@ -147,7 +147,7 @@ class CrossEntropyTriton(torch.autograd.Function):
     @contiguous
     def backward(ctx, do):
         dz = ctx.saved_tensors[0]
-        dz = do.unsqueeze(-1) * dz
+        dz = ewbo_fwd_fn(dz, do, op="mul")
 
         return dz, None, None, None, None
 
@@ -180,7 +180,8 @@ if __name__ == "__main__":
     # Test code
     b, v = 2, 1000
     dtype = torch.float32
-    z = torch.randn((b, v), dtype=dtype).cuda()
+    z = torch.randn((b, v), dtype=dtype).cuda().requires_grad_(True)
     y = torch.randint(0, v, (b,)).cuda()
     o = cross_entropy_triton(z, y)
     print(o.shape)
+    (o.sum()).backward()

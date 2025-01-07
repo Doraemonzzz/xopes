@@ -10,6 +10,7 @@ def get_params():
         ((6, 128), (6,)),
         ((4, 8, 256), (4, 8)),
         ((4, 1024, 1024), (4, 1024, 1024)),
+        ((512, 2000), ()),
     ]
 
     return shapes
@@ -33,14 +34,14 @@ def test(shapes, op, dtype):
     o_torch = ewbo_torch(x, y, op)
     o_triton = ewbo_triton(x, y, op)
 
-    # # backward
-    # o_torch.backward(do, retain_graph=True)
-    # dx_torch, x.grad = x.grad.clone(), None
-    # dy_torch, y.grad = y.grad.clone(), None
+    # backward
+    o_torch.backward(do, retain_graph=True)
+    dx_torch, x.grad = x.grad.clone(), None
+    dy_torch, y.grad = y.grad.clone(), None
 
-    # o_triton.backward(do, retain_graph=True)
-    # dx_triton, x.grad = x.grad.clone(), None
-    # dy_triton, y.grad = y.grad.clone(), None
+    o_triton.backward(do, retain_graph=True)
+    dx_triton, x.grad = x.grad.clone(), None
+    dy_triton, y.grad = y.grad.clone(), None
 
     atol, rtol = get_threshold(dtype)
 
@@ -49,11 +50,11 @@ def test(shapes, op, dtype):
     print(f"o diff norm: {torch.norm(o_torch - o_triton).item()}")
     assert torch.allclose(o_torch, o_triton, atol=atol, rtol=rtol)
 
-    # # backward check
-    # print(f"dx diff max: {torch.abs(dx_torch - dx_triton).max().item()}")
-    # print(f"dx diff norm: {torch.norm(dx_torch - dx_triton).item()}")
-    # assert torch.allclose(dx_torch, dx_triton, atol=atol, rtol=rtol)
+    # backward check
+    print(f"dx diff max: {torch.abs(dx_torch - dx_triton).max().item()}")
+    print(f"dx diff norm: {torch.norm(dx_torch - dx_triton).item()}")
+    assert torch.allclose(dx_torch, dx_triton, atol=atol, rtol=rtol)
 
-    # print(f"dy diff max: {torch.abs(dy_torch - dy_triton).max().item()}")
-    # print(f"dy diff norm: {torch.norm(dy_torch - dy_triton).item()}")
-    # assert torch.allclose(dy_torch, dy_triton, atol=atol, rtol=rtol)
+    print(f"dy diff max: {torch.abs(dy_torch - dy_triton).max().item()}")
+    print(f"dy diff norm: {torch.norm(dy_torch - dy_triton).item()}")
+    assert torch.allclose(dy_torch, dy_triton, atol=atol, rtol=rtol)

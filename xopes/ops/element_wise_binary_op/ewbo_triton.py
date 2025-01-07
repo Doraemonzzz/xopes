@@ -45,25 +45,33 @@ def _ewbo_fwd(
 
     # mask
     mask_b1 = (off_b1 * BLOCK_B1 + array_b1) < B1
-    mask_b2 = array_b2 < B2
-    mask = mask_b1[:, None] & mask_b2[None, :]
 
-    # Load data
-    x = tl.load(x_block_ptr, mask=mask, other=0)
     y = tl.load(y_block_ptr, mask=mask_b1[:, None], other=0)
+    NUM_BLOCKS_B2 = tl.cdiv(B2, BLOCK_B2)
+    for i in range(NUM_BLOCKS_B2):
+        # mask
+        mask_b2 = array_b2 < B2
+        mask = mask_b1[:, None] & mask_b2[None, :]
 
-    # Perform operation
-    if OP == "add":  # add
-        o = x + y
-    elif OP == "mul":  # mul
-        o = x * y
-    elif OP == "sub":  # sub
-        o = x - y
-    elif OP == "div":  # div
-        o = x / y
+        # Load data
+        x = tl.load(x_block_ptr, mask=mask, other=0)
 
-    # Store result
-    tl.store(o_block_ptr, o.to(X.dtype.element_ty), mask=mask)
+        # Perform operation
+        if OP == "add":  # add
+            o = x + y
+        elif OP == "mul":  # mul
+            o = x * y
+        elif OP == "sub":  # sub
+            o = x - y
+        elif OP == "div":  # div
+            o = x / y
+
+        # Store result
+        tl.store(o_block_ptr, o.to(X.dtype.element_ty), mask=mask)
+
+        array_b2 += BLOCK_B2
+        x_block_ptr += BLOCK_B2
+        o_block_ptr += BLOCK_B2
 
 
 @triton.autotune(
@@ -104,34 +112,49 @@ def _ewbo_bwd(
 
     # mask
     mask_b1 = (off_b1 * BLOCK_B1 + array_b1) < B1
-    mask_b2 = array_b2 < B2
-    mask = mask_b1[:, None] & mask_b2[None, :]
+    NUM_BLOCKS_B2 = tl.cdiv(B2, BLOCK_B2)
 
-    # Load data
-    do = tl.load(do_block_ptr, mask=mask, other=0)
-
-    # Perform operation
-    if OP == "add":  # add
-        dx = do
-        dy = tl.sum(do, axis=1, keep_dims=True)
-    elif OP == "sub":  # sub
-        dx = do
-        dy = -tl.sum(do, axis=1, keep_dims=True)
-    else:
-        x_block_ptr = X + offset_xo + array_b1[:, None] * B2 + array_b2[None, :]
-        y_block_ptr = Y + offset_y + array_b1[:, None]
-        x = tl.load(x_block_ptr, mask=mask, other=0)
-        y = tl.load(y_block_ptr, mask=mask_b1[:, None], other=0)
-        if OP == "mul":  # mul
-            dx = do * y
-            dy = tl.sum(do * x, axis=1, keep_dims=True)
-        elif OP == "div":  # div
-            dx = do / y
-            dy = -tl.sum(do * x / (y * y), axis=1, keep_dims=True)
-
-    # Store result
     if OP == "mul" or OP == "div":
-        tl.store(dx_block_ptr, dx.to(DX.dtype.element_ty), mask=mask)
+        y_block_ptr = Y + offset_y + array_b1[:, None]
+        y = tl.load(y_block_ptr, mask=mask_b1[:, None], other=0)
+
+    dy = tl.zeros((BLOCK_B1, 1), dtype=tl.float32)
+    for i in range(NUM_BLOCKS_B2):
+        # mask
+        mask_b2 = array_b2 < B2
+        mask = mask_b1[:, None] & mask_b2[None, :]
+
+        # Load data
+        do = tl.load(do_block_ptr, mask=mask, other=0)
+
+        # Perform operation
+        if OP == "add":  # add
+            dx = do
+            dy += tl.sum(do, axis=1, keep_dims=True)
+        elif OP == "sub":  # sub
+            dx = do
+            dy += -tl.sum(do, axis=1, keep_dims=True)
+        else:
+            x_block_ptr = X + offset_xo + array_b1[:, None] * B2 + array_b2[None, :]
+            x = tl.load(x_block_ptr, mask=mask, other=0)
+
+            if OP == "mul":  # mul
+                dx = do * y
+                dy += tl.sum(do * x, axis=1, keep_dims=True)
+            elif OP == "div":  # div
+                dx = do / y
+                dy += -tl.sum(do * x / (y * y), axis=1, keep_dims=True)
+
+            x_block_ptr += BLOCK_B2
+
+        # Store result
+        if OP == "mul" or OP == "div":
+            tl.store(dx_block_ptr, dx.to(DX.dtype.element_ty), mask=mask)
+            dx_block_ptr += BLOCK_B2
+
+        array_b2 += BLOCK_B2
+        do_block_ptr += BLOCK_B2
+
     tl.store(dy_block_ptr, dy.to(DY.dtype.element_ty), mask=mask_b1[:, None])
 
 
@@ -147,17 +170,11 @@ def ewbo_triton_fwd(x, y, op="add", inplace=False):
     def grid(meta):
         return (triton.cdiv(b1, meta["BLOCK_B1"]),)
 
-    BLOCK_B2 = triton.next_power_of_2(b2)
+    MAX_BLOCK_SIZE = 64 * 1024
+    BLOCK_B2 = min(triton.next_power_of_2(b2), MAX_BLOCK_SIZE)
 
     _ewbo_fwd[grid](
-        X=x,
-        Y=y,
-        O=o,
-        OP=op,
-        INPLACE=inplace,
-        B1=b1,
-        B2=b2,
-        BLOCK_B2=BLOCK_B2,
+        X=x, Y=y, O=o, OP=op, INPLACE=inplace, B1=b1, B2=b2, BLOCK_B2=BLOCK_B2
     )
 
     if inplace:
@@ -205,18 +222,11 @@ class EWBOTriton(torch.autograd.Function):
         def grid(meta):
             return (triton.cdiv(b1, meta["BLOCK_B1"]),)
 
-        BLOCK_B2 = triton.next_power_of_2(b2)
+        MAX_BLOCK_SIZE = 64 * 1024
+        BLOCK_B2 = min(triton.next_power_of_2(b2), MAX_BLOCK_SIZE)
 
         _ewbo_bwd[grid](
-            X=x,
-            Y=y,
-            DX=dx,
-            DY=dy,
-            DO=do,
-            OP=op,
-            B1=b1,
-            B2=b2,
-            BLOCK_B2=BLOCK_B2,
+            X=x, Y=y, DX=dx, DY=dy, DO=do, OP=op, B1=b1, B2=b2, BLOCK_B2=BLOCK_B2
         )
 
         return dx, dy, None, None
