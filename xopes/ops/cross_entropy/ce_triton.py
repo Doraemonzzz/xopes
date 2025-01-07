@@ -14,7 +14,7 @@ MAX_BLOCK_SIZE = 64 * 1024
             "num_warps": [1, 2, 4, 8, 16, 32],
         }
     ),
-    key=["V"],
+    key=["B", "V"],
 )
 @triton.jit
 def _ce_fwd(

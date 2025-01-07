@@ -4,14 +4,11 @@ import triton.language as tl
 
 from xopes.utils import contiguous, generate_configs
 
-MIN_BLOCK_SIZE = 16384
-
 
 @triton.autotune(
     generate_configs(
         {
             "num_warps": [1, 2, 4, 8, 16, 32],
-            # "BLOCK_V": [MIN_BLOCK_SIZE, MIN_BLOCK_SIZE * 2, MIN_BLOCK_SIZE * 4],
         }
     ),
     key=["B", "V"],
@@ -35,7 +32,7 @@ def _ce_fwd_parallel(
     off_g = tl.program_id(1)
     # compute offset
     offset_z = off_b * V + off_g * BLOCK_V
-    offset_sm = off_b * G + off_g
+    offset_ls = off_b * G + off_g
     offset_y = off_b
     # compute block ptr
     zy_block_ptr = Z + offset_z
@@ -43,10 +40,9 @@ def _ce_fwd_parallel(
     y_block_ptr = (
         Y + offset_y
     )  # since we need to use y as a scalar, we don't need to use block_ptr
-    # o_block_ptr = O + offset_sm + tl.arange(0, 1)
-    lse_block_ptr = LSE + offset_sm + tl.arange(0, 1)
+    lse_block_ptr = LSE + offset_ls + tl.arange(0, 1)
     if USE_LABEL_SMOOTHING:
-        s_block_ptr = S + offset_sm + tl.arange(0, 1)
+        s_block_ptr = S + offset_ls + tl.arange(0, 1)
     zk_block_ptr = ZK + off_b
     array = tl.arange(0, BLOCK_V)
     # mask
@@ -58,16 +54,15 @@ def _ce_fwd_parallel(
     s = tl.full([1], 0, dtype=tl.float32)
 
     if y == IGNORE_INDEX:
-        lse = tl.full([1], 0, dtype=tl.float32)
+        lse = tl.full([1], -float("inf"), dtype=tl.float32)
         tl.store(lse_block_ptr, lse.to(lse_block_ptr.dtype.element_ty))
 
         if USE_LABEL_SMOOTHING:
             tl.store(s_block_ptr, s.to(s_block_ptr.dtype.element_ty))
     else:
-        zk = tl.load(zy_block_ptr + y)
         z = tl.load(z_block_ptr, mask=mask, other=-float("inf"))
         m = tl.max(z)
-        lse = tl.log(tl.sum(tl.exp(z - m), keep_dims=True))
+        lse = tl.log(tl.sum(tl.exp(z - m), keep_dims=True)) + m
         if USE_LABEL_SMOOTHING:
             z_ = tl.where(mask, z, 0.0).to(z.dtype)
             s += tl.sum(z_)
@@ -76,6 +71,9 @@ def _ce_fwd_parallel(
         tl.store(lse_block_ptr, lse.to(lse_block_ptr.dtype.element_ty))
 
         if off_g == 0:
+            # !!! important: y is the index of the target, so we need to offset it by the global index
+            y_offset = y - off_g * BLOCK_V
+            zk = tl.load(zy_block_ptr + y_offset)
             tl.store(zk_block_ptr, zk.to(zk_block_ptr.dtype.element_ty))
 
 
@@ -106,15 +104,17 @@ def _ce_fwd_reduce(
     offset_zo = off_b
     # compute block ptr
     lse_block_ptr = LSE + offset_ls + tl.arange(0, G)
+    lse_output_block_ptr = LSE + offset_ls
     zk_block_ptr = ZK + offset_zo + tl.arange(0, 1)
     o_block_ptr = O + offset_zo + tl.arange(0, 1)
     # load
-    lse_ = tl.load(lse_block_ptr)
+    lse = tl.load(lse_block_ptr)
     zk = tl.load(zk_block_ptr)
 
     # compute global lse and sum
-    m = tl.max(lse_)
-    lse = tl.log(tl.sum(tl.exp(lse_ - m)))
+    m = tl.max(lse)
+    lse = tl.log(tl.sum(tl.exp(lse - m))) + m
+
     if USE_LABEL_SMOOTHING:
         s_block_ptr = S + offset_ls + tl.arange(0, G)
         s_ = tl.load(s_block_ptr)
@@ -124,6 +124,7 @@ def _ce_fwd_reduce(
 
     o = (-(1 - LABEL_SMOOTHING) * zk + lse - (LABEL_SMOOTHING / V) * s) / N
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty))
+    tl.store(lse_output_block_ptr, lse.to(lse_output_block_ptr.dtype.element_ty))
 
 
 @triton.autotune(
@@ -139,7 +140,7 @@ def _ce_bwd(
     Z,  # B V
     Y,  # B
     LSE,  # B
-    DO,  # B V
+    DO,  # B
     DZ,  # B V
     IGNORE_INDEX: tl.constexpr,
     LABEL_SMOOTHING: tl.constexpr,
@@ -153,19 +154,19 @@ def _ce_bwd(
     off_b = tl.program_id(0)
     off_g = tl.program_id(1)
     # compute offset
-    offset_oz = off_b * V + off_g * BLOCK_V
+    offset_z = off_b * V
     offset_ylse = off_b
     # compute block ptr
     array = off_g * BLOCK_V + tl.arange(0, BLOCK_V)
-    z_block_ptr = Z + offset_oz + array
+    z_block_ptr = Z + offset_z + array
     y_block_ptr = Y + offset_ylse
-    dz_block_ptr = DZ + offset_oz + array
+    dz_block_ptr = DZ + offset_z + array
     lse_block_ptr = LSE + offset_ylse
-    do_block_ptr = DO + offset_oz + array
+    do_block_ptr = DO + offset_ylse
     # mask
     mask = array < V
 
-    do = tl.load(do_block_ptr, mask=mask, other=0.0)
+    do = tl.load(do_block_ptr)
     z = tl.load(z_block_ptr, mask=mask, other=-float("inf"))
     y = tl.load(y_block_ptr)
     lse = tl.load(lse_block_ptr)
@@ -175,7 +176,7 @@ def _ce_bwd(
     tl.store(dz_block_ptr, dz.to(dz_block_ptr.dtype.element_ty), mask=mask)
 
 
-class CrossEntropyTriton(torch.autograd.Function):
+class CrossEntropyParallelTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, z, y, ignore_index=-100, reduction="mean", label_smoothing=0.0):
@@ -186,12 +187,10 @@ class CrossEntropyTriton(torch.autograd.Function):
         else:
             n = 1
 
-        # tune the parameters
-        # MAX_BLOCK_SIZE = 64 * 1024
+        # TODO: tune the parameters
         MAX_BLOCK_SIZE = 2048
         BLOCK_V = min(triton.next_power_of_2(v), MAX_BLOCK_SIZE)
 
-        # g = triton.cdiv(v, MIN_BLOCK_SIZE)
         g = triton.cdiv(v, BLOCK_V)
         lse = torch.empty((b, g), dtype=torch.float32, device=z.device)
         zk = torch.empty((b), dtype=torch.float32, device=z.device)
@@ -232,7 +231,8 @@ class CrossEntropyTriton(torch.autograd.Function):
             G=g,
         )
 
-        ctx.save_for_backward(z, y, lse[:, 0])
+        # Important!!! Should use contiguous() to save the tensor
+        ctx.save_for_backward(z, y, lse[:, 0].contiguous())
         ctx.ignore_index = ignore_index
         ctx.reduction = reduction
         ctx.label_smoothing = label_smoothing
@@ -301,10 +301,9 @@ def cross_entropy_parallel_triton(
         Loss tensor
     """
     assert reduction in ["mean", "sum", "none"], f"Unsupported reduction: {reduction}"
-    o = CrossEntropyTriton.apply(z, y, ignore_index, reduction, label_smoothing)
+    o = CrossEntropyParallelTriton.apply(z, y, ignore_index, reduction, label_smoothing)
     if reduction in ["mean", "sum"]:
         o = o.sum()
-
     return o
 
 

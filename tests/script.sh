@@ -35,7 +35,7 @@ folder=linear_cross_entropy
 folder=cross_entropy
 
 ##### element_wise_binary_op 250106
-folder=element_wise_binary_op
+# folder=element_wise_binary_op
 # folder=element_wise_binary_op/fn
 
 mkdir -p $folder/log
