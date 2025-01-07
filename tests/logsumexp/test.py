@@ -59,9 +59,9 @@ def test(shape, dim, keepdim, dtype):
     )
     assert torch.allclose(o_torch, o_parallel_triton, atol=atol, rtol=rtol)
 
-    # print("o diff max: ", torch.abs(o_torch - o_recurrence_triton).max().item())
-    # print("o diff norm: ", torch.norm(o_torch - o_recurrence_triton).item())
-    # assert torch.allclose(o_torch, o_recurrence_triton, atol=atol, rtol=rtol)
+    print("o diff max: ", torch.abs(o_torch - o_recurrence_triton).max().item())
+    print("o diff norm: ", torch.norm(o_torch - o_recurrence_triton).item())
+    assert torch.allclose(o_torch, o_recurrence_triton, atol=atol, rtol=rtol)
 
     # backward check
     print(
@@ -74,6 +74,6 @@ def test(shape, dim, keepdim, dtype):
     )
     assert torch.allclose(dx_torch, dx_parallel_triton, atol=atol, rtol=rtol)
 
-    # print("dx diff max: ", torch.abs(dx_torch - dx_recurrence_triton).max().item())
-    # print("dx diff norm: ", torch.norm(dx_torch - dx_recurrence_triton).item())
-    # assert torch.allclose(dx_torch, dx_recurrence_triton, atol=atol, rtol=rtol)
+    print("dx diff max: ", torch.abs(dx_torch - dx_recurrence_triton).max().item())
+    print("dx diff norm: ", torch.norm(dx_torch - dx_recurrence_triton).item())
+    assert torch.allclose(dx_torch, dx_recurrence_triton, atol=atol, rtol=rtol)

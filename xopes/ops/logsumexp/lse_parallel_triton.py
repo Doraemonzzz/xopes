@@ -39,9 +39,6 @@ def _lse_parallel(
     sse_block_ptr = SSE + offset_sm + tl.arange(0, 1)
     max_block_ptr = MAX + offset_sm + tl.arange(0, 1)
 
-    # m = tl.full([1], -float("inf"), dtype=tl.float32)
-    # sse = tl.full([1], 0, dtype=tl.float32)
-
     mask_n = (off_n * BLOCK_N + array_n) < N
     x = tl.load(x_block_ptr, mask=mask_n, other=-float("inf"))
     m = tl.max(x)
@@ -158,8 +155,11 @@ class LseParallelTriton(torch.autograd.Function):
         n = shape[-1]
 
         g = triton.cdiv(n, MIN_BLOCK_N)
-        sse = torch.empty(list(x.shape[:-1]) + [g], dtype=x.dtype, device=x.device)
-        m = torch.empty(list(x.shape[:-1]) + [g], dtype=x.dtype, device=x.device)
+        # Important: initialize sse and m with 0 and -inf
+        sse = torch.full(list(x.shape[:-1]) + [g], 0, dtype=x.dtype, device=x.device)
+        m = torch.full(
+            list(x.shape[:-1]) + [g], -float("inf"), dtype=x.dtype, device=x.device
+        )
         o = torch.empty(list(x.shape[:-1]) + [1], dtype=x.dtype, device=x.device)
 
         def grid(meta):
