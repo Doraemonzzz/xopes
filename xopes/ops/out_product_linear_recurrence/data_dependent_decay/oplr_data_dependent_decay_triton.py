@@ -95,7 +95,7 @@ def _oplr_data_dependent_decay_bwd(
     off_b = tl.program_id(0)
     # compute offset
     offset_xk = off_b * N * D
-    offset_xv = off_b * N * E + N * E
+    offset_xv = off_b * N * E
     offset_do = off_b * N * D * E + N * D * E
     # compute block ptr
     array_d = tl.arange(0, BLOCK_D) + N * D
@@ -105,7 +105,6 @@ def _oplr_data_dependent_decay_bwd(
     do_block_ptr = (
         DO
         + offset_do
-        + N * D * E
         + tl.arange(0, BLOCK_D)[:, None] * E
         + tl.arange(0, BLOCK_E)[None, :]
     )
@@ -132,14 +131,17 @@ def _oplr_data_dependent_decay_bwd(
         xv = tl.load(xv_block_ptr, mask=mask_e, other=0)
         do = tl.load(do_block_ptr, mask=mask_d[:, None] & mask_e[None, :], other=0)
 
-        if HAS_LOG_DECAY:
-            log_decay_block_ptr -= D
-            log_decay = tl.load(log_decay_block_ptr, mask=mask_d, other=0).to(
-                tl.float32
-            )
-            decay = tl.exp(log_decay)
+        if i == 0:
+            decay = tl.zeros([BLOCK_D], dtype=tl.float32)
         else:
-            decay = 1 - xk
+            if HAS_LOG_DECAY:
+                log_decay_block_ptr -= D
+                log_decay = tl.load(log_decay_block_ptr, mask=mask_d, other=0).to(
+                    tl.float32
+                )
+                decay = tl.exp(log_decay)
+            else:
+                decay = 1 - xk
 
         dkv = decay[:, None] * dkv + do
         dxk = tl.sum(dkv * xv[None, :], axis=1)
@@ -216,7 +218,7 @@ class OPLRDataDependentDecayTriton(torch.autograd.Function):
         MAX_BLOCK_SIZE = 65536
         BLOCK_D = min(triton.next_power_of_2(d), MAX_BLOCK_SIZE)
         BLOCK_E = min(triton.next_power_of_2(e), MAX_BLOCK_SIZE)
-
+        print("aaa", do.shape)
         grid = (b,)
         _oplr_data_dependent_decay_bwd[grid](
             XK=xk,

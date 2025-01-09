@@ -2,8 +2,11 @@ from typing import Optional
 
 import torch
 
-from .oplr_data_dependent_decay_torch import oplr_data_dependent_decay_torch
-from .oplr_data_dependent_decay_triton import oplr_data_dependent_decay_triton
+from .data_dependent_decay import (
+    oplr_data_dependent_decay_auto_grad_torch,
+    oplr_data_dependent_decay_torch,
+    oplr_data_dependent_decay_triton,
+)
 from .oplr_no_decay_torch import oplr_no_decay_torch
 
 oplr_data_dependent_decay_fn = torch.compile(oplr_data_dependent_decay_torch)
