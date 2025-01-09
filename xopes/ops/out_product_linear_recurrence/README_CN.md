@@ -19,6 +19,7 @@ $$
 $$
 
 
+
 ## Forward
 
 输入：$\mathbf K\in \mathbb R^{n\times d}, \mathbf V\in \mathbb R^{n\times e}$，以及Decay $\Lambda\in \mathbb R^{n\times d}$，注意如果Decay为空，我们使用$\Lambda=1-\mathbf K$（我们默认$0\le \mathbf K \le 1$）。
@@ -30,6 +31,7 @@ $$
 \mathbf o_i &= \mathrm{diag}(\lambda_i) \mathbf o_{i-1} + \mathbf k_i \mathbf v_i^\top.
 \end{aligned}
 $$
+
 
 
 ## Backward
@@ -58,75 +60,82 @@ $$
 那么：
 $$
 \begin{aligned}
-\mathbf o_t &= \mathrm{diag}(\lambda_t) \mathbf o_{t-1} + \mathbf k_t \mathbf v_t^\top \\
-&= \mathrm{diag}(\lambda_t )
-\left( \mathrm{diag}(\lambda_t ) \mathbf o_{t-2} +\mathbf k_{t-1} \mathbf v_{t-1}^\top  \right)+\mathbf k_t \mathbf v_t^\top  \\
-&= \mathrm{diag}(\lambda_t \lambda_{t-1})\mathbf o_{t-2}  + \mathrm{diag}(\lambda_t ) \mathbf k_{t-1} \mathbf v_{t-1}^\top
-+ \mathbf k_t \mathbf v_t^\top \\
+\mathbf o_s &= \mathrm{diag}(\lambda_s) \mathbf o_{s-1} + \mathbf k_s \mathbf v_s^\top \\
+&= \mathrm{diag}(\lambda_s )
+\left( \mathrm{diag}(\lambda_{s-1} ) \mathbf o_{s-2} +\mathbf k_{s-1} \mathbf v_{s-1}^\top  \right)+\mathbf k_s \mathbf v_s^\top  \\
+&= \mathrm{diag}(\lambda_s \lambda_{s-1})\mathbf o_{s-2}  + \mathrm{diag}(\lambda_s ) \mathbf k_{s-1} \mathbf v_{s-1}^\top
++ \mathbf k_s \mathbf v_s^\top \\
 &=  \ldots \\
-&= \sum_{j=1}^t \mathrm{diag} \left(\prod_{i=j+1}^n \lambda_i \right)  \mathbf k_j^\top \mathbf v_j \\
-&= \sum_{j=1}^t \mathrm{diag} \left(\exp(\beta_n-\beta_j) \right)  \mathbf k_j^\top \mathbf v_j \\
-&=\mathrm{diag}\left( \exp(\beta_n) \right)\sum_{j=1}^t \mathrm{diag} \left(\exp(-\beta_j) \right)  \mathbf k_j^\top \mathbf v_j.
+&= \sum_{j=1}^s \mathrm{diag} \left(\prod_{i=j+1}^s \lambda_i \right)  \mathbf k_j^\top \mathbf v_j \\
+&= \sum_{j=1}^s \mathrm{diag} \left(\exp(\beta_s-\beta_j) \right)  \mathbf k_j^\top \mathbf v_j \\
+&=\mathrm{diag}\left( \exp(\beta_s) \right)\sum_{j=1}^t \mathrm{diag} \left(\exp(-\beta_j) \right)  \mathbf k_j^\top \mathbf v_j.
 \end{aligned}
 $$
 所以：
 $$
 \begin{aligned}
- \frac{\partial [\mathbf{do}_t]_{ij}} {\partial [\mathbf{k}_t]_s}
- &=[\exp(\beta_n)]_i [\exp(-\beta_t) ]_i[\mathbf v_t]_j \mathbf{1}_{i=s} \\
-[\mathbf{dk}_u]_s
-&= \sum_{t=u}^n \sum_{i,j} \frac{\partial [\mathbf{do}_t]_{ij}} {\partial [\mathbf{k}_t]_s}  [\mathbf{do_t}]_{ij} \\
-&= \sum_{t=u}^n \sum_{i,j} [\exp(\beta_n)]_i [\exp(-\beta_t) ]_i [\mathbf v_t]_j \mathbf{1}_{i=s} [\mathbf{do_t}]_{ij}  \\
-&=  [\exp(\beta_n)]_s\sum_{t=u}^n  [\exp(-\beta_t) ]_s\sum_{j}  [\mathbf v_t]_j  [\mathbf{do_t}]_{sj} \\
-&=  [\exp(\beta_n)]_s\sum_{t=u}^n  [\exp(-\beta_t) ]_s
-[\mathbf{do}_t\mathbf v_t]_s, \\
-\mathbf{dk}_u& = \mathrm{diag}\left( \exp(\beta_n) \right)\sum_{t=u}^n \mathrm{diag}\left(\exp(-\beta_t) \right)
-[\mathbf{do}_t\mathbf v_t].
+ \frac{\partial [\mathbf{do}_s]_{ij}} {\partial [\mathbf{k}_t]_r}
+ &=[\exp(\beta_s)]_i [\exp(-\beta_t) ]_i[\mathbf v_t]_j \mathbf{1}_{i=r} \\
+[\mathbf{dk}_t]_r
+&= \sum_{s=t}^n \sum_{i,j} \frac{\partial [\mathbf{do}_s]_{ij}} {\partial [\mathbf{k}_t]_r}  [\mathbf{do_s}]_{ij} \\
+&= \sum_{s=t}^n \sum_{i,j} [\exp(\beta_s)]_i [\exp(-\beta_t) ]_i [\mathbf v_t]_j \mathbf{1}_{i=r} [\mathbf{do_s}]_{ij}  \\
+&=  \sum_{s=t}^n  [\exp(\beta_s)]_r[\exp(-\beta_t) ]_r\sum_{j}  [\mathbf v_t]_j  [\mathbf{do_s}]_{rj} \\
+&=  \sum_{s=t}^n  [\exp(\beta_s)]_r[\exp(-\beta_t) ]_r
+[\mathbf{do}_s\mathbf v_t]_r, \\
+
+\mathbf{dk}_u& = \sum_{s=t}^n \mathrm{diag}\left( \exp(\beta_s) \right)\mathrm{diag}\left(\exp(-\beta_t) \right)
+[\mathbf{do}_s\mathbf v_t].
 \end{aligned}
 $$
 另一方面：
 $$
 \begin{aligned}
- \frac{\partial [\mathbf{do}_t]_{ij}} {\partial [\mathbf{\beta}_t]_s}
- &= -[\exp(\beta_n)]_i [\exp(-\beta_t) ]_i  [\mathbf k_t \mathbf v_t^\top]_{ij}\mathbf{1}_{i=s}, t\neq n,  \\
-[\mathbf{d\beta}_u]_s
-&= \sum_{t=u}^n \sum_{i,j} \frac{\partial [\mathbf{do}_t]_{ij}} {\partial [\mathbf{\beta}_t]_s}  [\mathbf{do_t}]_{ij} \\
-&= \sum_{t=u}^n \sum_{i,j} -[\exp(\beta_n)]_i [\exp(-\beta_t) ]_i  [\mathbf k_t \mathbf v_t^\top]_{ij}\mathbf{1}_{i=s} [\mathbf{do_t}]_{ij}  \\
-&=  -[\exp(\beta_n)]_s\sum_{t=u}^n [\exp(-\beta_t) ]_s\sum_{j}  [\mathbf k_t \mathbf v_t^\top]_{sj} [\mathbf{do_t}]_{sj} \\
-&=   -[\exp(\beta_n)]_s\sum_{t=u}^n  [\exp(-\beta_t) ]_s \left([\mathbf k_t \mathbf v_t^\top]_s \odot [\mathbf{do_t}]_s  \right) \mathbf 1_{e}  \\
-\mathbf{d\beta}_u& = -\mathrm{diag}\left( \exp(\beta_n) \right)\sum_{t=u}^n \mathrm{diag}\left(\exp(-\beta_t) \right)
-\left([\mathbf k_t \mathbf v_t^\top] \odot [\mathbf{do_t}]  \right) \mathbf 1_{e}.
+ \frac{\partial [\mathbf{do}_s]_{ij}} {\partial [\mathbf{\beta}_t]_r}
+ &= -[\exp(\beta_s)]_i [\exp(-\beta_t) ]_i  [\mathbf k_t \mathbf v_t^\top]_{ij}\mathbf{1}_{i=r}, t\neq s,  \\
+
+[\mathbf{d\beta}_t]_r
+&= \sum_{s=t+1}^n \sum_{i,j} \frac{\partial [\mathbf{do}_s]_{ij}} {\partial [\mathbf{\beta}_t]_r}  [\mathbf{do_s}]_{ij} \\
+
+&= \sum_{s=t+1}^n \sum_{i,j} -[\exp(\beta_s)]_i [\exp(-\beta_t) ]_i  [\mathbf k_t \mathbf v_t^\top]_{ij}\mathbf{1}_{i=r} [\mathbf{do_s}]_{ij}  \\
+&=  - \sum_{s=t+1}^n [\exp(\beta_s)]_r[\exp(-\beta_t) ]_r\sum_{j}  [\mathbf k_t \mathbf v_t^\top]_{rj} [\mathbf{do_s}]_{rj} \\
+
+&=   -\sum_{s=t+1}^n  [\exp(\beta_s)]_r [\exp(-\beta_t) ]_r \left([\mathbf k_t \mathbf v_t^\top]_r \odot [\mathbf{do_s}]_r  \right) \mathbf 1_{e}  \\
+\mathbf{d\beta}_t& = -\sum_{s=t+1}^n \mathrm{diag}\left( \exp(\beta_s) \right) \mathrm{diag}\left(\exp(-\beta_t) \right)
+\left([\mathbf k_t \mathbf v_t^\top] \odot [\mathbf{do_s}]  \right) \mathbf 1_{e}\\
+&= -\sum_{s=t}^n \mathrm{diag}\left( \exp(\beta_s) \right)\mathrm{diag}\left(\exp(-\beta_t) \right)
+\left([\mathbf k_t \mathbf v_t^\top] \odot [\mathbf{do_s}]  \right) \mathbf 1_{e}
++ \left([\mathbf k_t \mathbf v_t^\top] \odot [\mathbf{do_t}]  \right) \mathbf 1_{e}.
 \end{aligned}
 $$
 注意到：
 $$
 \begin{aligned}
-\left[\left([\mathbf k_t \mathbf v_t^\top] \odot [\mathbf{do_t}]  \right) \mathbf 1_{e} \right]_{s}
+\left[\left([\mathbf k_t \mathbf v_t^\top] \odot [\mathbf{do_s}]  \right) \mathbf 1_{e} \right]_{r}
 
-&= \sum_{k} [\mathbf{k}_t]_s[\mathbf v_{t}]_k[\mathbf{do_t}]_{s, k} \\
-&= [\mathbf k_{t}]_s \sum_{k} [\mathbf v_{t}]_k[\mathbf{do_t}]_{s, k} \\
-&= [\mathbf k_{t}]_s [\mathbf{do}_t\mathbf v_t]_s,\\
-\left([\mathbf k_t \mathbf v_t^\top] \odot [\mathbf{do_t}]  \right) \mathbf 1_{e}
-&= [\mathbf k_{t}] \odot [\mathbf{do}_t\mathbf v_t].
+&= \sum_{k} [\mathbf{k}_t]_r[\mathbf v_{t}]_k[\mathbf{do_s}]_{r, k} \\
+&= [\mathbf k_{t}]_r \sum_{k} [\mathbf v_{t}]_k[\mathbf{do_s}]_{r, k} \\
+&= [\mathbf k_{t}]_r [\mathbf{do}_s\mathbf v_t]_r,\\
+\left([\mathbf k_t \mathbf v_t^\top] \odot [\mathbf{do_s}]  \right) \mathbf 1_{e}
+&= [\mathbf k_{t}] \odot [\mathbf{do}_s\mathbf v_t].
 \end{aligned}
 $$
 因此：
 $$
-\mathbf{d\beta}_u = - \mathbf k_u \odot  \mathbf{dk}_u.
+\mathbf{d\beta}_t = - \mathbf k_t \odot  \mathbf{dk}_t + [\mathbf k_{t}] \odot [\mathbf{do}_t\mathbf v_t].
 $$
 因为：
 $$
-\beta_u = \sum_{j=1}^t\alpha_u.
+\beta_t = \sum_{j=1}^t\alpha_u.
 $$
 所以：
 $$
 \begin{aligned}
-\mathbf{d}\alpha_u
-& = \sum_{j=u}^n \beta_j,  \\
-\mathbf{d}\lambda_u
-&= \mathbf{d}\exp(\alpha_u)\\
-&= \exp(\alpha_u)\odot\mathbf{d}\alpha_u\\
-&= \lambda_u \odot \mathbf{d}\alpha_u.
+\mathbf{d}\alpha_t
+& = \sum_{j=t}^n \beta_j,  \\
+\mathbf{d}\lambda_t
+&= \mathbf{d}\exp(\alpha_t)\\
+&= \exp(\alpha_t)\odot\mathbf{d}\alpha_t\\
+&= \lambda_t \odot \mathbf{d}\alpha_t.
 \end{aligned}
 $$
 
