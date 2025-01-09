@@ -31,7 +31,7 @@ def _oplr_data_dependent_decay_fwd(
     off_b = tl.program_id(0)
     off_d = tl.program_id(1)
     # compute offset
-    offset_xk = off_b * N * D + off_d * D
+    offset_xk = off_b * N * D + off_d
     offset_xv = off_b * N * E
     offset_o = off_b * N * D * E + off_d * E
     # compute block ptr
@@ -41,11 +41,11 @@ def _oplr_data_dependent_decay_fwd(
     o_block_ptr = O + offset_o + array
     if HAS_LOG_DECAY:
         log_decay_block_ptr = LOG_DECAY + offset_xk
+    mask = array < E
 
     # compute
     o = tl.zeros([BLOCK_E], dtype=tl.float32)
     for i in range(N):
-        mask = array < E
         # load
         xk = tl.load(xk_block_ptr)
         xv = tl.load(xv_block_ptr, mask=mask, other=0)
@@ -64,7 +64,6 @@ def _oplr_data_dependent_decay_fwd(
         xk_block_ptr += D
         xv_block_ptr += E
         o_block_ptr += D * E
-        array += E
 
 
 @triton.autotune(
@@ -170,7 +169,6 @@ class OPLRDataDependentDecayTriton(torch.autograd.Function):
 
         has_log_decay = log_decay is not None
         MAX_BLOCK_SIZE = 65536
-        # BLOCK_D = min(triton.next_power_of_2(d), MAX_BLOCK_SIZE)
         BLOCK_E = min(triton.next_power_of_2(e), MAX_BLOCK_SIZE)
 
         # Launch kernel
