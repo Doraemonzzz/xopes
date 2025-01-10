@@ -47,10 +47,7 @@ def _normalize_fwd(
     offset_wb = off_g * E
     offset_ms = off_b * G + off_g
     # mask
-    array_d = tl.arange(0, BLOCK_D)
-    array_e = tl.arange(0, BLOCK_E)
-    array_d < D
-    mask_e = array_e < E
+    mask_e = tl.arange(0, BLOCK_E) < E
     # compute block ptr
     x_block_ptr = X + offset_xro + tl.arange(0, BLOCK_E)
     o_block_ptr = O + offset_xro + tl.arange(0, BLOCK_E)
@@ -62,7 +59,7 @@ def _normalize_fwd(
     if USE_RESIDUAL:
         r_block_ptr = RESIDUAL + offset_xro + tl.arange(0, BLOCK_E)
         updated_r_block_ptr = UPDATED_RESIDUAL + offset_xro + tl.arange(0, BLOCK_E)
-        residual = tl.load(r_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        residual = tl.load(r_block_ptr, mask=mask_e, other=0.0)
         x = x + residual
         tl.store(
             updated_r_block_ptr, x.to(updated_r_block_ptr.dtype.element_ty), mask=mask_e
@@ -78,21 +75,23 @@ def _normalize_fwd(
         mean = tl.sum(x, axis=0) / E
         tl.store(mean_block_ptr, mean.to(mean_block_ptr.dtype.element_ty))
         x = x - mean
+        # !!! important, must add mask !!!
+        x = tl.where(mask_e, x, 0.0)
 
     sigma = tl.sqrt(tl.sum(x * x, axis=0) + EPS)
-    x = C * x / sigma
+    o = C * x / sigma
 
     if USE_WEIGHT:
         w_block_ptr = WEIGHT + offset_wb + tl.arange(0, BLOCK_E)
         weight = tl.load(w_block_ptr, mask=mask_e, other=1.0).to(tl.float32)
-        x = x * weight
+        o = o * weight
 
     if USE_BIAS:
         b_block_ptr = BIAS + offset_wb + tl.arange(0, BLOCK_E)
         bias = tl.load(b_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
-        x = x + bias
+        o = o + bias
 
-    tl.store(o_block_ptr, x.to(o_block_ptr.dtype.element_ty), mask=mask_e)
+    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_e)
     tl.store(sigma_block_ptr, sigma.to(sigma_block_ptr.dtype.element_ty))
 
 
@@ -138,9 +137,8 @@ def _normalize_bwd(
     offset_wb = off_g * E
     offset_ms = off_b * G + off_g
     # mask
-    array_d = tl.arange(0, BLOCK_D)
+    tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
-    array_d < D
     mask_e = array_e < E
     # compute block ptr
     x_block_ptr = X + offset_xr + tl.arange(0, BLOCK_E)
@@ -149,7 +147,7 @@ def _normalize_bwd(
     dx_block_ptr = DX + offset_xr + tl.arange(0, BLOCK_E)
 
     # load and compute
-    x = tl.load(x_block_ptr, mask=mask_e, other=0.0)
+    x = tl.load(x_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
     do = tl.load(do_block_ptr, mask=mask_e, other=0.0)
 
     if USE_RESIDUAL:
@@ -161,6 +159,8 @@ def _normalize_bwd(
         mean_block_ptr = MEAN + offset_ms
         mean = tl.load(mean_block_ptr)
         x = x - mean
+        # !!! important, must add mask !!!
+        x = tl.where(mask_e, x, 0.0)
 
     sigma = tl.load(sigma_block_ptr)
     r = x / sigma
@@ -169,7 +169,7 @@ def _normalize_bwd(
     if USE_WEIGHT:
         w_block_ptr = WEIGHT + offset_wb + tl.arange(0, BLOCK_E)
         dw_block_ptr = DW + offset_xr + tl.arange(0, BLOCK_E)
-        dw = do * C * r
+        dw = dr * r
         tl.store(dw_block_ptr, dw.to(dw_block_ptr.dtype.element_ty), mask=mask_e)
         weight = tl.load(w_block_ptr, mask=mask_e, other=0.0)
         dr = dr * weight
@@ -178,6 +178,8 @@ def _normalize_bwd(
 
     if USE_MEAN:
         dx = dx - tl.sum(dx, axis=0) / E
+        # !!! important, must add mask !!!
+        dx = tl.where(mask_e, dx, 0.0)
 
     if USE_RESIDUAL or RETURN_RESIDUAL:
         updated_r_block_ptr = DUR + offset_xr + tl.arange(0, BLOCK_E)
@@ -210,14 +212,14 @@ class NormalizeTriton(torch.autograd.Function):
         if x.dtype == torch.float16:
             eps = max(eps, 1.6e-5)
 
-        # allocate output
-        o = torch.empty_like(x).contiguous()
-
         # reshape input data into 2D tensor
         x_ = x.reshape(-1, x.shape[-1])
         b, d = x_.shape
         x_ = rearrange(x_, "... (g e) -> ... g e", g=num_groups).contiguous()
         e = x_.shape[-1]
+        # allocate output
+        o = torch.empty_like(x_)
+
         # Less than 64KB per feature: enqueue fused kernel
         MAX_FUSED_SIZE = 65536 // x.element_size()
         BLOCK_E = min(MAX_FUSED_SIZE, triton.next_power_of_2(e))
@@ -238,6 +240,7 @@ class NormalizeTriton(torch.autograd.Function):
             mean = None
 
         grid = (b, num_groups)
+
         _normalize_fwd[grid](
             X=x_,
             WEIGHT=weight,
@@ -279,6 +282,7 @@ class NormalizeTriton(torch.autograd.Function):
             updated_residual = updated_residual.reshape_as(x)
 
         return o, updated_residual
+        # return mean, updated_residual
 
     @staticmethod
     @contiguous
