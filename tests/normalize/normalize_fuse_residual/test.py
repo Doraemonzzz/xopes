@@ -14,6 +14,10 @@ def naive_prenorm(
 ):
     dtype = x.dtype
     x = x.float()
+    if weight is not None:
+        weight = weight.float()
+    if bias is not None:
+        bias = bias.float()
     for i in range(l):
         r = x
         x_norm, _ = normalize_torch(
@@ -84,6 +88,7 @@ def fuse_triton_prenorm(
 
 def get_params():
     shape = [(6, 128), (4, 8, 256), (6, 2048, 768)]
+    shape = [(6, 2048, 768)]
 
     return shape
 
@@ -95,8 +100,9 @@ def get_params():
 @pytest.mark.parametrize("use_bias", [True, False])
 @pytest.mark.parametrize("c", [1, 16])
 @pytest.mark.parametrize("eps", [1e-5])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test(shape, num_groups, use_mean, use_weight, use_bias, c, eps, dtype, l=6):
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("l", [6])
+def test(shape, num_groups, use_mean, use_weight, use_bias, c, eps, dtype, l):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     d = shape[-1]

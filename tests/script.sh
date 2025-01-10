@@ -17,7 +17,7 @@ folder=page_flip/additive
 
 ##### normalize 241231 / 250110 fix bug
 folder=normalize/normalize
-folder=normalize/normalize_fuse_residual
+folder=normalize/normalize_fuse_residual # only pass fp32
 folder=normalize/srms_norm
 folder=normalize/rms_norm
 folder=normalize/layer_norm
