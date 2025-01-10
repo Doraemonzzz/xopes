@@ -2,8 +2,15 @@
 
 对于输入$\mathbf x\in \mathbb R^d$，本节讨论各种normalize的算法，算法定义为：
 $$
-\mathbf o=f(\mathbf x)= c\times \frac{\mathbf x_1 \odot \mathbf w}{\sqrt{\mathbf x_1^\top \mathbf x_1}} + \mathbf b.
+\begin{aligned}
+\mathbf o
+&=f(\mathbf x)  \\
+&= c\times \frac{\mathbf x_1 \odot \mathbf w}{\sqrt{\mathbf x_1^\top \mathbf x_1}} + \mathbf b \\
+&= (c/\sqrt{d})\times  \frac{\mathbf x_1 \odot \mathbf w}{\sqrt{\mathbf x_1^\top \mathbf x_1/d}} + \mathbf b.
+\end{aligned}
 $$
+（其中最后一个等式是为了减少数值精度带来的影响。）
+
 其中$c\in\mathbb R, \mathbf w, \mathbf b\in \mathbb R^d$，$\mathbf x_1 = \mathbf x$或者$\mathbf x_1 =\mathbf x- \bar {\mathbf x},\bar {\mathbf x}=(\sum_{i=1}^d x_i)/d$。特别的，我们考虑如下算子：
 $$
 \mathbf o= f(\mathbf x + \mathbf y).
@@ -22,12 +29,13 @@ $$
 \mathbf p  & =\mathbf x+\mathbf y, \\
 \mathbf q &= \mathbf p, \mathrm{or}, \\
 \mathbf q&=\mathbf p-\left(\sum_{i=1}^d p_i\right)/d,\\
-\sigma&= \sqrt{\mathbf q^\top \mathbf q}, \\
+\sigma&= \sqrt{\mathbf q^\top \mathbf q/d}, \\
 \mathbf r&= \mathbf q /\sigma, \\
-\mathbf o&=c\times\mathbf r \odot \mathbf w + \mathbf b.
+\mathbf o&=(c/\sqrt d)\times\mathbf r \odot \mathbf w + \mathbf b.
 
 \end{aligned}
 $$
+
 
 
 ## Backward
@@ -38,22 +46,23 @@ $$
 $$
 \begin{aligned}
 \mathbf {db}&= \mathbf {do},\\
-\mathbf {dw}&= \mathbf {do} \odot (c\times \mathbf r),  \\
-\mathbf {d r}&= \mathbf {do} \odot (c\times \mathbf w),\\
+\mathbf {dw}&= \mathbf {do} \odot (c/\sqrt d\times \mathbf r),  \\
+\mathbf {d r}&= \mathbf {do} \odot (c /\sqrt d\times \mathbf w),\\
 \frac{\partial r_i}{\partial q_j}
 &= 1_{i=j}/\sigma - q_i /\sigma^2 \frac{\partial \sigma}{\partial q_j}  \\
-&= 1_{i=j}/\sigma - q_i /\sigma^2 \left(1/2 \times  (\mathbf q^\top \mathbf q)^{-1/2}\times 2 q_j \right)   \\
-&= 1_{i=j}/\sigma - q_iq_j /\sigma^3   \\
-&=1/\sigma  (1_{i=j}-r_i r_j)   \\
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \left(1/2 \times  (\mathbf q^\top \mathbf q)^{-1/2}\times 2 q_j /\sqrt d \right)   \\
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \left( \sigma^{-1}/\sqrt d\times q_j /\sqrt d \right)   \\
+&= 1_{i=j}/\sigma - q_iq_j /\sigma^3 /d   \\
+&=1/\sigma  (1_{i=j}-r_i r_j /d)   \\
 
 \frac{\partial \mathbf r}{\partial \mathbf q}
-&= 1/\sigma (\mathbf I- \mathbf r \mathbf r^\top) \\
+&= 1/\sigma (\mathbf I- \mathbf r \mathbf r^\top / d) \\
 
 
 \mathbf {dq}
 &= \left(\frac{\partial \mathbf r}{\partial \mathbf q} \right)^\top \mathbf {dr}  \\
-&=1/\sigma (\mathbf I- \mathbf r \mathbf r^\top) \mathbf {dr}  \\
-&=1/\sigma  \left( \mathbf {dr}  - (\mathbf r^\top \mathbf {dr})\mathbf r    \right)\\
+&=1/\sigma (\mathbf I- \mathbf r \mathbf r^\top / d) \mathbf {dr}  \\
+&=1/\sigma  \left( \mathbf {dr}  - (\mathbf r^\top \mathbf {dr})\mathbf r /d   \right)\\
 \mathbf {dp} &= \mathbf {dq}, \mathrm{or}, \\
 \mathbf {d}p_k& = \sum_{i=1}^d \mathbf {d}q_i \frac{\partial q_i }{\partial p_k} \\
 & = \sum_{i=1}^d \mathbf {d}q_i (\mathbf 1_{i=k}-1/d) \\

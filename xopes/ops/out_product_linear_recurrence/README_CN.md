@@ -125,7 +125,7 @@ $$
 $$
 因为：
 $$
-\beta_t = \sum_{j=1}^t\alpha_u.
+\beta_t = \sum_{j=1}^t\alpha_j.
 $$
 所以：
 $$

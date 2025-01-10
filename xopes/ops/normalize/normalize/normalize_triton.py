@@ -59,7 +59,7 @@ def _normalize_fwd(
     if USE_RESIDUAL:
         r_block_ptr = RESIDUAL + offset_xro + tl.arange(0, BLOCK_E)
         updated_r_block_ptr = UPDATED_RESIDUAL + offset_xro + tl.arange(0, BLOCK_E)
-        residual = tl.load(r_block_ptr, mask=mask_e, other=0.0)
+        residual = tl.load(r_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         x = x + residual
         tl.store(
             updated_r_block_ptr, x.to(updated_r_block_ptr.dtype.element_ty), mask=mask_e
@@ -78,8 +78,11 @@ def _normalize_fwd(
         # !!! important, must add mask !!!
         x = tl.where(mask_e, x, 0.0)
 
-    sigma = tl.sqrt(tl.sum(x * x, axis=0) + EPS)
-    o = C * x / sigma
+    # !!! important, the following implementation has much larger numerical error
+    # sigma = tl.sqrt(tl.sum(x * x, axis=0) + EPS)
+    # o = C * x / sigma
+    sigma = tl.sqrt(tl.sum(x * x, axis=0) / E + EPS)
+    o = (C / (E**0.5)) * x / sigma
 
     if USE_WEIGHT:
         w_block_ptr = WEIGHT + offset_wb + tl.arange(0, BLOCK_E)
@@ -148,33 +151,34 @@ def _normalize_bwd(
 
     # load and compute
     x = tl.load(x_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
-    do = tl.load(do_block_ptr, mask=mask_e, other=0.0)
+    do = tl.load(do_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
 
     if USE_RESIDUAL:
         r_block_ptr = RESIDUAL + offset_xr + tl.arange(0, BLOCK_E)
-        residual = tl.load(r_block_ptr, mask=mask_e, other=0.0)
+        residual = tl.load(r_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         x = x + residual
 
     if USE_MEAN:
         mean_block_ptr = MEAN + offset_ms
-        mean = tl.load(mean_block_ptr)
+        mean = tl.load(mean_block_ptr).to(tl.float32)
         x = x - mean
         # !!! important, must add mask !!!
         x = tl.where(mask_e, x, 0.0)
 
-    sigma = tl.load(sigma_block_ptr)
+    sigma = tl.load(sigma_block_ptr).to(tl.float32)
     r = x / sigma
-    dr = do * C
+    dr = do * (C / (E**0.5))
 
     if USE_WEIGHT:
         w_block_ptr = WEIGHT + offset_wb + tl.arange(0, BLOCK_E)
         dw_block_ptr = DW + offset_xr + tl.arange(0, BLOCK_E)
+        # dw = dr * r
         dw = dr * r
         tl.store(dw_block_ptr, dw.to(dw_block_ptr.dtype.element_ty), mask=mask_e)
-        weight = tl.load(w_block_ptr, mask=mask_e, other=0.0)
+        weight = tl.load(w_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         dr = dr * weight
 
-    dx = 1 / sigma * (dr - r * tl.sum(r * dr, axis=0))
+    dx = 1 / sigma * (dr - r * tl.sum(r * dr, axis=0) / E)
 
     if USE_MEAN:
         dx = dx - tl.sum(dx, axis=0) / E
@@ -183,7 +187,7 @@ def _normalize_bwd(
 
     if USE_RESIDUAL or RETURN_RESIDUAL:
         updated_r_block_ptr = DUR + offset_xr + tl.arange(0, BLOCK_E)
-        dur = tl.load(updated_r_block_ptr, mask=mask_e, other=0.0)
+        dur = tl.load(updated_r_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         dx = dx + dur
 
     tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask_e)
