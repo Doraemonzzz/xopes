@@ -25,13 +25,10 @@ def groupnorm_torch(
         if return_residual:
             residual = x.to(dtype)
 
-    # Reshape tensor to support grouping
-    x.shape
-    # x = x.reshape(-1, num_groups, x.shape[-1] // num_groups)
     x_ = rearrange(x, "... (g e) -> ... g e", g=num_groups)
 
     # Calculate mean and variance across last two dimensions
-    x_ = x_ - x_.mean((-1, -2), keepdim=True)
+    x_ = x_ - x_.mean(-1, keepdim=True)
     x_ = x_ * torch.rsqrt(x_.pow(2).mean(-1, keepdim=True) + eps)
 
     # Apply weight and bias
