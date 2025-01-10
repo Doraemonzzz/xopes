@@ -30,7 +30,7 @@ from .multinomial import (
     parallel_gumbel_multinomial_triton,
     parallel_multinomial_triton,
 )
-from .normalize import normalize_fn, rmsnorm_fn, srmsnorm_fn
+from .normalize import normalize_fn, rms_norm_fn, srms_norm_fn
 from .page_flip import (
     page_flip_additive_naive_torch,
     page_flip_additive_recurrence_torch,
