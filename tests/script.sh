@@ -21,12 +21,15 @@ folder=normalize/normalize
 # folder=normalize/srmsnorm
 # folder=normalize/rmsnorm
 # folder=normalize/layernorm
+folder=normalize/groupnorm
+folder=normalize/grouprmsnorm
+folder=normalize/groupsrmsnorm
 
 ##### householder 250101
 # folder=householder
 
-##### logsumexp 250103
-folder=logsumexp
+# ##### logsumexp 250103
+# folder=logsumexp
 
 # ##### linear_cross_entropy 250105
 # folder=linear_cross_entropy
@@ -37,6 +40,9 @@ folder=logsumexp
 ##### element_wise_binary_op 250106
 # folder=element_wise_binary_op
 # folder=element_wise_binary_op/fn
+
+# ##### oplr 250109
+# folder=oplr/data_dependent_decay
 
 mkdir -p $folder/log
 
