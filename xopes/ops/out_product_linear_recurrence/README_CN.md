@@ -42,7 +42,7 @@ $$
 $$
 \begin{aligned}
 \mathbf{dkv}_{n+1} &= \mathbf 0\in \mathbb R^{d\times e}, \\
-\mathbf{dkv}_{i}&= \mathrm{diag}(\lambda_i)  \mathbf{dkv}_{i+1} + \mathbf{do}_{i}, \\
+\mathbf{dkv}_{i}&= \mathrm{diag}(\lambda_{i+1})  \mathbf{dkv}_{i+1} + \mathbf{do}_{i}, \\
 \mathbf{dk}_i &=\mathbf{dkv}_{i} \mathbf{v}_i, \\
 \mathbf{dv}_i &=\mathbf k_i\mathbf{dkv}_{i}^\top. \\
 
@@ -68,7 +68,7 @@ $$
 &=  \ldots \\
 &= \sum_{j=1}^s \mathrm{diag} \left(\prod_{i=j+1}^s \lambda_i \right)  \mathbf k_j^\top \mathbf v_j \\
 &= \sum_{j=1}^s \mathrm{diag} \left(\exp(\beta_s-\beta_j) \right)  \mathbf k_j^\top \mathbf v_j \\
-&=\mathrm{diag}\left( \exp(\beta_s) \right)\sum_{j=1}^t \mathrm{diag} \left(\exp(-\beta_j) \right)  \mathbf k_j^\top \mathbf v_j.
+&=\mathrm{diag}\left( \exp(\beta_s) \right)\sum_{j=1}^s \mathrm{diag} \left(\exp(-\beta_j) \right)  \mathbf k_j^\top \mathbf v_j.
 \end{aligned}
 $$
 所以：
@@ -83,7 +83,7 @@ $$
 &=  \sum_{s=t}^n  [\exp(\beta_s)]_r[\exp(-\beta_t) ]_r
 [\mathbf{do}_s\mathbf v_t]_r, \\
 
-\mathbf{dk}_u& = \sum_{s=t}^n \mathrm{diag}\left( \exp(\beta_s) \right)\mathrm{diag}\left(\exp(-\beta_t) \right)
+\mathbf{dk}_t& = \sum_{s=t}^n \mathrm{diag}\left( \exp(\beta_s) \right)\mathrm{diag}\left(\exp(-\beta_t) \right)
 [\mathbf{do}_s\mathbf v_t].
 \end{aligned}
 $$
@@ -146,5 +146,10 @@ $$
 
 那么：
 $$
-\mathbf {dK} = \mathbf {dK}- \mathbf {d\Lambda}.
+\begin{aligned}
+\mathbf {dK} 
+&= \mathbf {dK}- \mathbf {d\Lambda} \\
+&= \mathbf {dK}- (\Lambda \odot \mathbf{d\Alpha}) \\
+&= \mathbf {dK}- ((1-\mathbf K) \odot \mathbf{d\Alpha}).
+\end{aligned}
 $$
