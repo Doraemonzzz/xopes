@@ -22,8 +22,8 @@ folder=normalize/srms_norm
 folder=normalize/rms_norm
 folder=normalize/layer_norm
 folder=normalize/group_norm
-folder=normalize/group_rms_norm
-folder=normalize/group_srms_norm
+# folder=normalize/group_rms_norm
+# folder=normalize/group_srms_norm
 
 ##### householder 250101
 # folder=householder

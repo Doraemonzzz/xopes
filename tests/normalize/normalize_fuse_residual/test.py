@@ -88,7 +88,6 @@ def fuse_triton_prenorm(
 
 def get_params():
     shape = [(6, 128), (4, 8, 256), (6, 2048, 768)]
-    shape = [(6, 2048, 768)]
 
     return shape
 
