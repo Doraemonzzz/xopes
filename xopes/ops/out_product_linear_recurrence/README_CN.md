@@ -147,7 +147,7 @@ $$
 那么：
 $$
 \begin{aligned}
-\mathbf {dK} 
+\mathbf {dK}
 &= \mathbf {dK}- \mathbf {d\Lambda} \\
 &= \mathbf {dK}- (\Lambda \odot \mathbf{d\Alpha}) \\
 &= \mathbf {dK}- ((1-\mathbf K) \odot \mathbf{d\Alpha}).
