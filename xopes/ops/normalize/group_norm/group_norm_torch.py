@@ -25,14 +25,17 @@ def group_norm_torch(
         if return_residual:
             residual = x.to(dtype)
 
+    x.shape
     x_ = rearrange(x, "... (g e) -> ... g e", g=num_groups)
 
-    # Calculate mean and variance across last two dimensions
     x_ = x_ - x_.mean(-1, keepdim=True)
-    x_ = x_ * torch.rsqrt(x_.pow(2).mean(-1, keepdim=True) + eps)
+    o = x_ * torch.rsqrt(x_.pow(2).mean(-1, keepdim=True) + eps)
+    # sigma = torch.sqrt(torch.sum(x_ * x_, dim=-1, keepdim=True) + eps)
+    # c = x_.shape[-1] ** 0.5
+    # o = c * x_ / sigma
 
     # Apply weight and bias
-    x_ = rearrange(x_, "... g e -> ... (g e)")
-    x_ = x_ * weight + bias
+    o = rearrange(o, "... g e -> ... (g e)")
+    o = o * weight + bias
 
-    return x_.to(dtype), residual
+    return o.to(dtype), residual

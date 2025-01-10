@@ -15,15 +15,15 @@ folder=lrpe/cosine/_md
 folder=page_flip
 folder=page_flip/additive
 
-##### normalize 241231
+##### normalize 241231 / 250110 fix bug
 folder=normalize/normalize
 folder=normalize/normalize_fuse_residual
-# folder=normalize/srms_norm
-# folder=normalize/rms_norm
-# folder=normalize/layer_norm
-# folder=normalize/group_norm
-# folder=normalize/group_rms_norm
-# folder=normalize/group_srms_norm
+folder=normalize/srms_norm
+folder=normalize/rms_norm
+folder=normalize/layer_norm
+folder=normalize/group_norm
+folder=normalize/group_rms_norm
+folder=normalize/group_srms_norm
 
 ##### householder 250101
 # folder=householder

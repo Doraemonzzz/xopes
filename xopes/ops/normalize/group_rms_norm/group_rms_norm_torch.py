@@ -26,8 +26,6 @@ def group_rms_norm_torch(
             residual = x.to(dtype)
 
     x_ = rearrange(x, "... (g e) -> ... g e", g=num_groups)
-
-    # Calculate mean and variance across last two dimensions
     x_ = x_ * torch.rsqrt(x_.pow(2).mean(-1, keepdim=True) + eps)
 
     # Apply weight and bias

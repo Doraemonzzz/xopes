@@ -6,34 +6,34 @@ from xopes.utils import get_threshold
 
 
 def get_params():
-    shape = [(6, 128), (4, 8, 256)]
+    shape = [(6, 128), (4, 8, 256), (6, 2048, 768)]
 
     return shape
 
 
-##### return_residual = False
-@pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("num_groups", [1, 4])
-@pytest.mark.parametrize("use_mean", [True, False])
-@pytest.mark.parametrize("use_weight", [True, False])
-@pytest.mark.parametrize("use_bias", [True, False])
-@pytest.mark.parametrize("use_residual", [True, False])
-@pytest.mark.parametrize("return_residual", [False])
-@pytest.mark.parametrize("c", [1, 16])
-@pytest.mark.parametrize("eps", [1e-5])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-
-# ##### return_residual = True
+# ##### return_residual = False
 # @pytest.mark.parametrize("shape", get_params())
 # @pytest.mark.parametrize("num_groups", [1, 4])
 # @pytest.mark.parametrize("use_mean", [True, False])
 # @pytest.mark.parametrize("use_weight", [True, False])
 # @pytest.mark.parametrize("use_bias", [True, False])
-# @pytest.mark.parametrize("use_residual", [False])
-# @pytest.mark.parametrize("return_residual", [True])
+# @pytest.mark.parametrize("use_residual", [True, False])
+# @pytest.mark.parametrize("return_residual", [False])
 # @pytest.mark.parametrize("c", [1, 16])
 # @pytest.mark.parametrize("eps", [1e-5])
 # @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+
+##### return_residual = True
+@pytest.mark.parametrize("shape", get_params())
+@pytest.mark.parametrize("num_groups", [1, 4])
+@pytest.mark.parametrize("use_mean", [True, False])
+@pytest.mark.parametrize("use_weight", [True, False])
+@pytest.mark.parametrize("use_bias", [True, False])
+@pytest.mark.parametrize("use_residual", [False])
+@pytest.mark.parametrize("return_residual", [True])
+@pytest.mark.parametrize("c", [1, 16])
+@pytest.mark.parametrize("eps", [1e-5])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test(
     shape,
     num_groups,
