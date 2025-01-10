@@ -1,15 +1,15 @@
-from .groupnorm import groupnorm_torch, groupnorm_triton
-from .grouprmsnorm import grouprmsnorm_torch, grouprmsnorm_triton
-from .groupsrmsnorm import groupsrmsnorm_torch, groupsrmsnorm_triton
-from .layernorm import layernorm_torch, layernorm_triton
+from .group_norm import group_norm_torch, group_norm_triton
+from .group_rms_norm import group_rms_norm_torch, group_rms_norm_triton
+from .group_srms_norm import group_srms_norm_torch, group_srms_norm_triton
+from .layer_norm import layer_norm_torch, layer_norm_triton
 from .normalize import normalize_torch, normalize_triton
-from .rmsnorm import rmsnorm_torch, rmsnorm_triton
-from .srmsnorm import srmsnorm_torch, srmsnorm_triton
+from .rms_norm import rms_norm_torch, rms_norm_triton
+from .srms_norm import srms_norm_torch, srms_norm_triton
 
 normalize_fn = normalize_triton
-layernorm_fn = layernorm_triton
-rmsnorm_fn = rmsnorm_triton
-srmsnorm_fn = srmsnorm_triton
-groupnorm_fn = groupnorm_triton
-grouprmsnorm_fn = grouprmsnorm_triton
-groupsrmsnorm_fn = groupsrmsnorm_triton
+layer_norm_fn = layer_norm_triton
+rms_norm_fn = rms_norm_triton
+srms_norm_fn = srms_norm_triton
+group_norm_fn = group_norm_triton
+group_rms_norm_fn = group_rms_norm_triton
+group_srms_norm_fn = group_srms_norm_triton
