@@ -2,7 +2,12 @@ from typing import Optional
 
 import torch
 
-from .data_dependent_decay import oplr_ddd_ag_torch, oplr_ddd_torch, oplr_ddd_triton
+from .data_dependent_decay import (
+    oplr_ddd_ag_torch,
+    oplr_ddd_torch,
+    oplr_ddd_triton,
+    oplr_ddd_ya_ag_torch,
+)
 from .oplr_no_decay_torch import oplr_no_decay_torch
 
 oplr_ddd_fn = torch.compile(oplr_ddd_torch)
