@@ -12,6 +12,12 @@ class OPLRDataDependentDecayTorch(torch.autograd.Function):
         if log_decay is None:
             assert torch.all(xk <= 1), "xk must be all negative when decay is None"
 
+        dtype = xk.dtype
+        xk = xk.float()
+        xv = xv.float()
+        if log_decay is not None:
+            log_decay = log_decay.float()
+
         # Get dimensions
         b, n, d = xk.shape
         e = xv.shape[-1]
@@ -31,12 +37,14 @@ class OPLRDataDependentDecayTorch(torch.autograd.Function):
             ].unsqueeze(-1) * xv[:, i, :].unsqueeze(1)
 
         ctx.save_for_backward(xk, xv, log_decay, o)
-        return o
+        ctx.dtype = dtype
+        return o.to(dtype)
 
     @staticmethod
     @contiguous
     def backward(ctx, do):
         xk, xv, log_decay, o = ctx.saved_tensors
+        dtype = ctx.dtype
         b, n, d = xk.shape
         e = xv.shape[-1]
 
@@ -68,11 +76,12 @@ class OPLRDataDependentDecayTorch(torch.autograd.Function):
 
         if log_decay is not None:
             dlog_decay = d_decay * torch.exp(log_decay)
+            dlog_decay = dlog_decay.to(dtype)
         else:
             dlog_decay = None
             dxk = dxk - d_decay
 
-        return dxk, dxv, dlog_decay
+        return dxk.to(dtype), dxv.to(dtype), dlog_decay
 
 
 def oplr_data_dependent_decay_auto_grad_torch(

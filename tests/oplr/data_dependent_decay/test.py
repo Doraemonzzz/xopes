@@ -12,8 +12,9 @@ from xopes.utils import get_threshold
 
 def get_params():
     shapes = [
-        (2, 128, 64, 64),  # (B, N, D, E)
-        (4, 256, 128, 128),
+        (2, 128, 64, 64),
+        (2, 32, 64, 48),
+        # (4, 256, 128, 128),
         # (1, 512, 32, 64),
     ]
     return shapes
@@ -21,9 +22,9 @@ def get_params():
 
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("use_log_decay", [True, False])
-# @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 # @pytest.mark.parametrize("use_log_decay", [False])
-@pytest.mark.parametrize("dtype", [torch.float16])
+# @pytest.mark.parametrize("dtype", [torch.float16])
 def test(shape, use_log_decay, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")

@@ -18,9 +18,13 @@ def oplr_data_dependent_decay_torch(
     Returns:
         Output tensor
     """
+    dtype = xk.dtype
+    xk = xk.float()
+    xv = xv.float()
     if log_decay is None:
         assert torch.all(xk <= 1), "xk must be all negative when decay is None"
-        log_decay = torch.log(1 - xk.float())
+        log_decay = torch.log(1 - xk)
+    log_decay = log_decay.float()
 
     b, n, d = xk.shape
     e = xv.shape[-1]
@@ -31,12 +35,12 @@ def oplr_data_dependent_decay_torch(
         xv_i = xv[:, i]
         xk_i = xk[:, i]
         log_decay_i = log_decay[:, i]
-        decay = torch.exp(log_decay_i.float()).unsqueeze(-1)
+        decay = torch.exp(log_decay_i).unsqueeze(-1)
         state_i = torch.einsum("b d, b e -> b d e", xk_i, xv_i)
         state = decay * state + state_i
         o[:, i] = state
 
-    return o.contiguous()
+    return o.to(dtype)
 
 
 if __name__ == "__main__":
