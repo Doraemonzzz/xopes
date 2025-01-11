@@ -34,9 +34,9 @@ folder=normalize/layer_norm
 # ##### element_wise_binary_op 250106
 # folder=element_wise_binary_op
 
-# ##### out_product_linear_recurrence 250107
-# folder=oplr/no_decay
-# folder=oplr/data_dependent_decay
+##### out_product_linear_recurrence 250107
+folder=oplr/no_decay
+folder=oplr/ddd
 
 mkdir -p $folder/log
 

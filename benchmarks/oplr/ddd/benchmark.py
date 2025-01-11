@@ -5,8 +5,9 @@ import torch
 import torch.nn.functional as F
 import triton
 
-from xopes.ops.out_product_linear_recurrence.oplr_data_dependent_decay_torch import (
-    oplr_data_dependent_decay_torch,
+from xopes.ops.out_product_linear_recurrence.data_dependent_decay import (
+    oplr_ddd_torch,
+    oplr_ddd_triton,
 )
 from xopes.utils import get_memory
 
@@ -19,8 +20,9 @@ dtype_map = {
 }
 
 module_map = {
-    "torch": oplr_data_dependent_decay_torch,
-    "torch_compile": torch.compile(oplr_data_dependent_decay_torch),
+    "triton": oplr_ddd_triton,
+    "torch": oplr_ddd_torch,
+    "torch_compile": torch.compile(oplr_ddd_torch),
 }
 
 configs = [
@@ -31,15 +33,15 @@ configs = [
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            "torch",
+            "triton",
             "torch_compile",
         ],
-        line_names=["to", "toc"],
+        line_names=["tr", "toc"],
         styles=[
             ("orange", "-"),
             ("green", "-"),
         ],
-        plot_name=f"oplr_data_dependent_decay-{bench_type}-{mode}-batch{b}-dim{d}-dim{e}-{dtype_name}",
+        plot_name=f"oplr_ddd-{bench_type}-{mode}-batch{b}-dim{d}-dim{e}-{dtype_name}",
         args={
             "b": b,
             "d": d,
