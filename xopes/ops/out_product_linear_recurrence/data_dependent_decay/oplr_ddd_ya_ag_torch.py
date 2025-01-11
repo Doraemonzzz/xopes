@@ -5,7 +5,7 @@ import torch
 from xopes.utils import contiguous
 
 
-class OplrDddAgTorch(torch.autograd.Function):
+class OplrDddYaAgTorch(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, xk, xv, log_decay=None):
@@ -50,7 +50,7 @@ class OplrDddAgTorch(torch.autograd.Function):
 
         dxk = torch.empty_like(xk)
         dxv = torch.empty_like(xv)
-        d_decay = torch.empty_like(xk)
+        dbeta = torch.empty_like(xk)
 
         # Initialize accumulated gradients
         dkv = torch.zeros((b, d, e), device=xk.device, dtype=torch.float32)
@@ -66,31 +66,35 @@ class OplrDddAgTorch(torch.autograd.Function):
             else:
                 dkv = do[:, i]
 
-            if i > 0:
-                d_decay[:, i] = torch.sum(dkv * o[:, i - 1], dim=-1)
-            else:
-                d_decay[:, i] = torch.zeros_like(d_decay[:, i])
-
+            dbeta[:, i] = xk[:, i] * torch.sum(
+                dkv * xv[:, i].unsqueeze(1), dim=-1
+            ) + torch.sum(dkv * o[:, i], dim=-1)
             dxk[:, i] = torch.sum(dkv * xv[:, i].unsqueeze(1), dim=-1)
             dxv[:, i] = torch.sum(dkv * xk[:, i].unsqueeze(-1), dim=1)
 
+        dbeta -= xk * dxk
+        dlog_decay_ = torch.flip(
+            torch.cumsum(torch.flip(dbeta, dims=(1,)), dim=1), dims=(1,)
+        )
+
         if log_decay is not None:
-            dlog_decay = d_decay * torch.exp(log_decay)
+            dlog_decay = dlog_decay_
             dlog_decay = dlog_decay.to(dtype)
         else:
             dlog_decay = None
+            d_decay = dlog_decay_ * (1 - xk)
             dxk = dxk - d_decay
 
         return dxk.to(dtype), dxv.to(dtype), dlog_decay
 
 
-def oplr_ddd_ag_torch(
+def oplr_ddd_ya_ag_torch(
     xk: torch.Tensor,
     xv: torch.Tensor,
     log_decay: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """
-    Applies Out Product Linear Recurrence with data-dependent decay using AutoGrad PyTorch.
+    Applies Out Product Linear Recurrence with data-dependent decay using Yet Another AutoGrad PyTorch.
 
     Args:
         xk: Input tensor (B, N, D)
@@ -100,7 +104,7 @@ def oplr_ddd_ag_torch(
     Returns:
         Output tensor (B, N, D, E)
     """
-    return OplrDddAgTorch.apply(xk, xv, log_decay)
+    return OplrDddYaAgTorch.apply(xk, xv, log_decay)
 
 
 if __name__ == "__main__":
@@ -111,5 +115,5 @@ if __name__ == "__main__":
     xv = torch.randn((b, n, e), dtype=dtype).cuda()
     xk = torch.randn((b, n, d), dtype=dtype).cuda()
     log_decay = F.logsigmoid(torch.randn((b, n, d), dtype=dtype).cuda())
-    o = oplr_ddd_ag_torch(xk, xv, log_decay)
+    o = oplr_ddd_ya_ag_torch(xk, xv, log_decay)
     print(o.shape)
