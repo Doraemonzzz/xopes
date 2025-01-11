@@ -10,7 +10,7 @@ from .data_dependent_decay import (
 )
 from .oplr_no_decay_torch import oplr_no_decay_torch
 
-oplr_ddd_fn = torch.compile(oplr_ddd_torch)
+oplr_ddd_fn = oplr_ddd_triton
 oplr_no_decay_fn = torch.compile(oplr_no_decay_torch)
 
 
