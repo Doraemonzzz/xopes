@@ -140,6 +140,7 @@ $$
 $$
 
 
+
 ### 补充
 
 如果$\Lambda=1-\mathbf K$。
@@ -184,6 +185,11 @@ $$
 \end{aligned}
 $$
 
+所以：
+$$
+\mathbf{d\beta}_t = - \mathbf k_t \odot  \mathbf{dk}_t + [\mathbf k_{t}] \odot [\mathbf{do}_t\mathbf v_t]
++\left([ \mathbf o_t] \odot [\mathbf{do_t}]  \right) \mathbf 1_{e} .
+$$
 
 
 注意到：
@@ -204,3 +210,4 @@ $$
 
 \end{aligned}
 $$
+
