@@ -1,5 +1,3 @@
-from .oplr_data_dependent_decay_auto_grad_torch import (
-    oplr_data_dependent_decay_auto_grad_torch,
-)
-from .oplr_data_dependent_decay_torch import oplr_data_dependent_decay_torch
-from .oplr_data_dependent_decay_triton import oplr_data_dependent_decay_triton
+from .oplr_ddd_ag_torch import oplr_ddd_ag_torch
+from .oplr_ddd_torch import oplr_ddd_torch
+from .oplr_ddd_triton import oplr_ddd_triton

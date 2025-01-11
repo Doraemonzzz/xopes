@@ -5,7 +5,7 @@ import torch
 from xopes.utils import contiguous
 
 
-class OPLRDataDependentDecayTorch(torch.autograd.Function):
+class OplrDddTorch(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, xk, xv, log_decay=None):
@@ -84,13 +84,13 @@ class OPLRDataDependentDecayTorch(torch.autograd.Function):
         return dxk.to(dtype), dxv.to(dtype), dlog_decay
 
 
-def oplr_data_dependent_decay_auto_grad_torch(
+def oplr_ddd_ag_torch(
     xk: torch.Tensor,
     xv: torch.Tensor,
     log_decay: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """
-    Applies Out Product Linear Recurrence with data-dependent decay using PyTorch.
+    Applies Out Product Linear Recurrence with data-dependent decay using AutoGrad PyTorch.
 
     Args:
         xk: Input tensor (B, N, D)
@@ -100,4 +100,4 @@ def oplr_data_dependent_decay_auto_grad_torch(
     Returns:
         Output tensor (B, N, D, E)
     """
-    return OPLRDataDependentDecayTorch.apply(xk, xv, log_decay)
+    return OplrDddTorch.apply(xk, xv, log_decay)

@@ -3,9 +3,9 @@ import torch
 import torch.nn.functional as F
 
 from xopes.ops.out_product_linear_recurrence import (
-    oplr_data_dependent_decay_auto_grad_torch,
-    oplr_data_dependent_decay_torch,
-    oplr_data_dependent_decay_triton,
+    oplr_ddd_ag_torch,
+    oplr_ddd_torch,
+    oplr_ddd_triton,
 )
 from xopes.utils import get_threshold
 
@@ -49,9 +49,9 @@ def test(shape, use_log_decay, dtype):
     do = torch.randn((b, n, d, e), dtype=dtype, device=device)
 
     # Forward pass
-    o_torch = oplr_data_dependent_decay_torch(xk, xv, log_decay)
-    o_auto_grad_torch = oplr_data_dependent_decay_auto_grad_torch(xk, xv, log_decay)
-    o_triton = oplr_data_dependent_decay_triton(xk, xv, log_decay)
+    o_torch = oplr_ddd_torch(xk, xv, log_decay)
+    o_auto_grad_torch = oplr_ddd_ag_torch(xk, xv, log_decay)
+    o_triton = oplr_ddd_triton(xk, xv, log_decay)
 
     # Backward pass
     o_torch.backward(do, retain_graph=True)

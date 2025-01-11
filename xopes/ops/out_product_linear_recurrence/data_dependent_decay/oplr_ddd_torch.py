@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 
 
-def oplr_data_dependent_decay_torch(
+def oplr_ddd_torch(
     xk: torch.Tensor,  # b n d
     xv: torch.Tensor,  # b n e
     log_decay: Optional[torch.Tensor],  # b n d
@@ -51,5 +51,5 @@ if __name__ == "__main__":
     xv = torch.randn((b, n, e), dtype=dtype).cuda()
     xk = torch.randn((b, n, d), dtype=dtype).cuda()
     log_decay = F.logsigmoid(torch.randn((b, n, d), dtype=dtype).cuda())
-    o = oplr_data_dependent_decay_torch(xk, xv, log_decay)
+    o = oplr_ddd_torch(xk, xv, log_decay)
     print(o.shape)

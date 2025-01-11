@@ -16,7 +16,7 @@ from xopes.utils import contiguous, generate_configs
     key=["B", "D", "E"],
 )
 @triton.jit
-def _oplr_data_dependent_decay_fwd(
+def _oplr_ddd_fwd(
     XK,  # B N D
     XV,  # B N E
     LOG_DECAY,  # B N D or None
@@ -75,7 +75,7 @@ def _oplr_data_dependent_decay_fwd(
     key=["D", "E"],
 )
 @triton.jit
-def _oplr_data_dependent_decay_bwd(
+def _oplr_ddd_bwd(
     XK,  # B N D
     XV,  # B N E
     LOG_DECAY,  # B N D or None
@@ -155,7 +155,7 @@ def _oplr_data_dependent_decay_bwd(
         )
 
 
-class OPLRDataDependentDecayTriton(torch.autograd.Function):
+class OplrDddTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, xk, xv, log_decay=None):
@@ -175,7 +175,7 @@ class OPLRDataDependentDecayTriton(torch.autograd.Function):
 
         # Launch kernel
         grid = (b, d)
-        _oplr_data_dependent_decay_fwd[grid](
+        _oplr_ddd_fwd[grid](
             XK=xk,
             XV=xv,
             LOG_DECAY=log_decay,
@@ -220,7 +220,7 @@ class OPLRDataDependentDecayTriton(torch.autograd.Function):
         BLOCK_E = min(triton.next_power_of_2(e), MAX_BLOCK_SIZE)
         print("aaa", do.shape)
         grid = (b,)
-        _oplr_data_dependent_decay_bwd[grid](
+        _oplr_ddd_bwd[grid](
             XK=xk,
             XV=xv,
             LOG_DECAY=log_decay,
@@ -249,7 +249,7 @@ class OPLRDataDependentDecayTriton(torch.autograd.Function):
         return dxk, dxv, dlog_decay
 
 
-def oplr_data_dependent_decay_triton(
+def oplr_ddd_triton(
     xk: torch.Tensor,
     xv: torch.Tensor,
     log_decay: Optional[torch.Tensor] = None,
@@ -265,7 +265,7 @@ def oplr_data_dependent_decay_triton(
     Returns:
         Output tensor (B, N, D, E)
     """
-    return OPLRDataDependentDecayTriton.apply(xk, xv, log_decay)
+    return OplrDddTriton.apply(xk, xv, log_decay)
 
 
 if __name__ == "__main__":
@@ -278,7 +278,7 @@ if __name__ == "__main__":
     log_decay = F.logsigmoid(torch.randn((b, n, d), dtype=dtype).cuda()).requires_grad_(
         True
     )
-    o = oplr_data_dependent_decay_triton(xk, xv, log_decay)
+    o = oplr_ddd_triton(xk, xv, log_decay)
     print(o.shape)
 
     o.sum().backward()
