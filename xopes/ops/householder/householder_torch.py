@@ -17,9 +17,15 @@ def householder_torch(
     dtype = x.dtype
     x = x.float()
     y = y.float()
-    sigma = torch.sqrt(torch.sum(y * y, dim=-1, keepdim=True) + eps)
+    sigma = torch.sqrt(torch.mean(y * y, dim=-1, keepdim=True) + eps)
     y_ = y / sigma
-    c = (x * y_).sum(dim=-1, keepdim=True)
+    c = (x * y_).mean(dim=-1, keepdim=True)
     o = x - 2 * c * y_
+
+    # sigma = torch.sqrt(torch.sum(y * y, dim=-1, keepdim=True) + eps)
+    # y_ = y / sigma
+    # # y_ = F.normalize(y, dim=-1)
+    # c = (x * y_).sum(dim=-1, keepdim=True)
+    # o = x - 2 * c * y_
 
     return o.to(dtype)

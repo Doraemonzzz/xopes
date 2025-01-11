@@ -26,7 +26,7 @@ folder=normalize/normalize
 # folder=normalize/group_srms_norm
 
 ##### householder 250101
-# folder=householder
+folder=householder
 
 # ##### logsumexp 250103
 # folder=logsumexp

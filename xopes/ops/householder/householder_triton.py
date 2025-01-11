@@ -51,11 +51,11 @@ def _householder_fwd(
     y = tl.load(y_block_ptr, mask=mask, other=0.0).to(tl.float32)
 
     # normalize y
-    sigma = tl.sqrt(tl.sum(y * y, axis=0) + EPS)
+    sigma = tl.sqrt(tl.sum(y * y, axis=0) / D + EPS)
     y_ = y / sigma
 
     # compute o = x - 2 * c * y
-    c = tl.sum(x * y_, axis=0)
+    c = tl.sum(x * y_, axis=0) / D
     o = x - 2.0 * c * y_
 
     # store
@@ -123,13 +123,13 @@ def _householder_bwd(
     y_ = y / sigma
 
     # compute gradients
-    c1 = tl.sum(do * y_, axis=0)
+    c1 = tl.sum(do * y_, axis=0) / D
     dx = do - 2 * c1 * y_
 
-    c2 = tl.sum(do * y_, axis=0)
-    c3 = tl.sum(x * y_, axis=0)
+    c2 = tl.sum(do * y_, axis=0) / D
+    c3 = tl.sum(x * y_, axis=0) / D
     dy_ = -2 * c2 * x - 2 * c3 * do
-    dy = 1 / sigma * (dy_ - tl.sum(dy_ * y_, axis=0) * y_)
+    dy = 1 / sigma * (dy_ - tl.sum(dy_ * y_, axis=0) / D * y_)
 
     # store
     tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask)
