@@ -26,20 +26,17 @@ def oplr_data_dependent_decay_torch(
     e = xv.shape[-1]
 
     state = torch.zeros(b, d, e, dtype=torch.float32, device=xv.device)
-    o = []
+    o = torch.zeros(b, n, d, e, dtype=torch.float32, device=xv.device)
     for i in range(n):
         xv_i = xv[:, i]
         xk_i = xk[:, i]
         log_decay_i = log_decay[:, i]
         decay = torch.exp(log_decay_i.float()).unsqueeze(-1)
-
         state_i = torch.einsum("b d, b e -> b d e", xk_i, xv_i)
         state = decay * state + state_i
-        o.append(state)
+        o[:, i] = state
 
-    o = torch.stack(o, dim=1)
-
-    return o
+    return o.contiguous()
 
 
 if __name__ == "__main__":

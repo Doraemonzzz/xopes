@@ -14,18 +14,16 @@ def get_params():
     shapes = [
         (2, 128, 64, 64),  # (B, N, D, E)
         (4, 256, 128, 128),
-        (1, 512, 32, 32),
+        # (1, 512, 32, 64),
     ]
-    # shapes = [(2, 8, 64, 64)]
-    shapes = [(2, 2, 64, 32)]
     return shapes
 
 
 @pytest.mark.parametrize("shape", get_params())
-# @pytest.mark.parametrize("use_log_decay", [True, False])
+@pytest.mark.parametrize("use_log_decay", [True, False])
 # @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("use_log_decay", [True])
-@pytest.mark.parametrize("dtype", [torch.float32])
+# @pytest.mark.parametrize("use_log_decay", [False])
+@pytest.mark.parametrize("dtype", [torch.float16])
 def test(shape, use_log_decay, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
@@ -35,14 +33,15 @@ def test(shape, use_log_decay, dtype):
 
     # Prepare input data
     xv = torch.randn((b, n, e), dtype=dtype, device=device).requires_grad_()
-    xk = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
+    xk = torch.randn((b, n, d), dtype=dtype, device=device)
 
     if use_log_decay:
+        xk.requires_grad_()
         log_decay = F.logsigmoid(
             torch.randn((b, n, d), dtype=dtype, device=device)
-        ).requires_grad_(True)
+        ).requires_grad_()
     else:
-        xk = torch.sigmoid(xk)  # Ensure xk <= 1
+        xk = torch.sigmoid(xk).requires_grad_()  # Ensure xk <= 1
         log_decay = None
 
     # Prepare gradient
@@ -130,7 +129,6 @@ def test(shape, use_log_decay, dtype):
         # )
         # assert torch.allclose(dlog_decay_torch, dlog_decay_triton, atol=atol, rtol=rtol)
 
-        # print(torch.norm((dlog_decay_torch - dlog_decay_auto_grad_torch)[:, 0]))
         print(
             "dlog_decay diff max (Vs auto grad torch):",
             torch.abs(dlog_decay_torch - dlog_decay_auto_grad_torch).max().item(),
