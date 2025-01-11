@@ -14,9 +14,10 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [x] 250103
 - householder
   - [x] 250101
+  - [x] 250111 update
 - normalize
   - [x] 241231
-  - [x] 250111 fix bug.
+  - [x] 250111 fix bug
 - 240910
   - [x] add fwd_fn, bwd_fn for lrpe, md_lrpe;
   - [x] add test, benchmark for flao_fal;
