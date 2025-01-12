@@ -26,12 +26,16 @@ def oplr_fn(
     Args:
         xv: Input tensor
         xk: Expansion vector
+        log_decay: Logarithmic decay factor
+        decay_type: Type of decay to apply,
+                    nd: no decay
+                    ddd: data-dependent decay
 
     Returns:
         Output tensor
     """
-    assert decay_type in ["no_decay", "data_dependent_decay"], "Invalid decay type"
-    if decay_type == "no_decay":
+    assert decay_type in ["nd", "ddd"], "Invalid decay type"
+    if decay_type == "nd":
         return oplr_no_decay_fn(
             xk=xk,
             xv=xv,
