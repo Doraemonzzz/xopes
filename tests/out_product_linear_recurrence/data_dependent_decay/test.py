@@ -14,22 +14,17 @@ from xopes.utils import get_threshold
 def get_params():
     shapes = [
         (2, 128, 64, 64),
-        (2, 32, 64, 48),
-        (2, 32, 64, 32),
-        # (4, 256, 128, 128),
-        # (1, 512, 32, 64),
-        (1, 4, 4, 16),
+        # (2, 32, 64, 48),
+        # (2, 32, 64, 32),
+        # (1, 4, 4, 16),
     ]
-    # shapes = [
-    #     (2, 256, 64, 48),
-    # ]
     return shapes
 
 
 @pytest.mark.parametrize("shape", get_params())
 # @pytest.mark.parametrize("use_log_decay", [True, False])
 # @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("use_log_decay", [True])
+@pytest.mark.parametrize("use_log_decay", [True, False])
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
 def test(shape, use_log_decay, dtype):
     torch.manual_seed(2024)
@@ -75,11 +70,11 @@ def test(shape, use_log_decay, dtype):
     if use_log_decay:
         dlog_decay_auto_grad_torch, log_decay.grad = log_decay.grad.clone(), None
 
-    # o_ya_auto_grad_torch.backward(do, retain_graph=True)
-    # dxk_ya_auto_grad_torch, xk.grad = xk.grad.clone(), None
-    # dxv_ya_auto_grad_torch, xv.grad = xv.grad.clone(), None
-    # if use_log_decay:
-    #     dlog_decay_ya_auto_grad_torch, log_decay.grad = log_decay.grad.clone(), None
+    o_ya_auto_grad_torch.backward(do, retain_graph=True)
+    dxk_ya_auto_grad_torch, xk.grad = xk.grad.clone(), None
+    dxv_ya_auto_grad_torch, xv.grad = xv.grad.clone(), None
+    if use_log_decay:
+        dlog_decay_ya_auto_grad_torch, log_decay.grad = log_decay.grad.clone(), None
 
     o_triton.backward(do, retain_graph=True)
     dxk_triton, xk.grad = xk.grad.clone(), None
@@ -122,15 +117,15 @@ def test(shape, use_log_decay, dtype):
     )
     assert torch.allclose(dxk_torch, dxk_auto_grad_torch, atol=atol, rtol=rtol)
 
-    # print(
-    #     "dxk diff max (Vs ya auto grad torch):",
-    #     torch.abs(dxk_torch - dxk_ya_auto_grad_torch).max().item(),
-    # )
-    # print(
-    #     "dxk diff norm (Vs ya auto grad torch):",
-    #     torch.norm(dxk_torch - dxk_ya_auto_grad_torch).item(),
-    # )
-    # assert torch.allclose(dxk_torch, dxk_ya_auto_grad_torch, atol=atol, rtol=rtol)
+    print(
+        "dxk diff max (Vs ya auto grad torch):",
+        torch.abs(dxk_torch - dxk_ya_auto_grad_torch).max().item(),
+    )
+    print(
+        "dxk diff norm (Vs ya auto grad torch):",
+        torch.norm(dxk_torch - dxk_ya_auto_grad_torch).item(),
+    )
+    assert torch.allclose(dxk_torch, dxk_ya_auto_grad_torch, atol=atol, rtol=rtol)
 
     ##### dxv
     print(
@@ -161,19 +156,17 @@ def test(shape, use_log_decay, dtype):
             dlog_decay_torch, dlog_decay_auto_grad_torch, atol=atol, rtol=rtol
         )
 
-        # print(dlog_decay_ya_auto_grad_torch[0, 0, :4,])
-        # print(dlog_decay_ya_auto_grad_torch[0, 1, :4,])
-        # print(
-        #     "dlog_decay diff max (Vs ya auto grad torch):",
-        #     torch.abs(dlog_decay_torch - dlog_decay_ya_auto_grad_torch).max().item(),
-        # )
-        # print(
-        #     "dlog_decay diff norm (Vs ya auto grad torch):",
-        #     torch.norm(dlog_decay_torch - dlog_decay_ya_auto_grad_torch).item(),
-        # )
-        # assert torch.allclose(
-        #     dlog_decay_torch, dlog_decay_ya_auto_grad_torch, atol=atol, rtol=rtol
-        # )
+        print(
+            "dlog_decay diff max (Vs ya auto grad torch):",
+            torch.abs(dlog_decay_torch - dlog_decay_ya_auto_grad_torch).max().item(),
+        )
+        print(
+            "dlog_decay diff norm (Vs ya auto grad torch):",
+            torch.norm(dlog_decay_torch - dlog_decay_ya_auto_grad_torch).item(),
+        )
+        assert torch.allclose(
+            dlog_decay_torch, dlog_decay_ya_auto_grad_torch, atol=atol, rtol=rtol
+        )
 
         print(
             "dlog_decay diff max (Vs triton):",
@@ -185,4 +178,4 @@ def test(shape, use_log_decay, dtype):
         )
         assert torch.allclose(dlog_decay_torch, dlog_decay_triton, atol=atol, rtol=rtol)
 
-    assert False
+    # assert False

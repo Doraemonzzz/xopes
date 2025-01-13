@@ -47,6 +47,7 @@ class OplrDddAgTorch(torch.autograd.Function):
         dtype = ctx.dtype
         b, n, d = xk.shape
         e = xv.shape[-1]
+        do = do.float()
 
         dxk = torch.empty_like(xk)
         dxv = torch.empty_like(xv)

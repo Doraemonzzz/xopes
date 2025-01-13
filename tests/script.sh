@@ -42,7 +42,7 @@ folder=householder
 # folder=element_wise_binary_op/fn
 
 ##### oplr 250109
-folder=oplr/data_dependent_decay
+folder=out_product_linear_recurrence/data_dependent_decay
 
 mkdir -p $folder/log
 
