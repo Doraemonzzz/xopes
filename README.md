@@ -3,6 +3,7 @@
 Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 # Plan
+- lrpe
 - householder sum update
 - oplr
 - lce

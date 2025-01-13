@@ -47,10 +47,10 @@ class OplrDddYaAgTorch(torch.autograd.Function):
         dtype = ctx.dtype
         b, n, d = xk.shape
         e = xv.shape[-1]
+        do = do.float()
 
         dxk = torch.empty_like(xk)
         dxv = torch.empty_like(xv)
-        dbeta = torch.empty_like(xk)
 
         # Initialize accumulated gradients
         dkv = torch.zeros((b, d, e), device=xk.device, dtype=torch.float32)
@@ -66,13 +66,10 @@ class OplrDddYaAgTorch(torch.autograd.Function):
             else:
                 dkv = do[:, i]
 
-            dbeta[:, i] = xk[:, i] * torch.sum(
-                dkv * xv[:, i].unsqueeze(1), dim=-1
-            ) + torch.sum(dkv * o[:, i], dim=-1)
             dxk[:, i] = torch.sum(dkv * xv[:, i].unsqueeze(1), dim=-1)
             dxv[:, i] = torch.sum(dkv * xk[:, i].unsqueeze(-1), dim=1)
 
-        dbeta -= xk * dxk
+        dbeta = torch.sum(o * do, dim=-1) - xk * dxk
         dlog_decay_ = torch.flip(
             torch.cumsum(torch.flip(dbeta, dims=(1,)), dim=1), dims=(1,)
         )
@@ -82,7 +79,7 @@ class OplrDddYaAgTorch(torch.autograd.Function):
             dlog_decay = dlog_decay.to(dtype)
         else:
             dlog_decay = None
-            d_decay = dlog_decay_ * (1 - xk)
+            d_decay = dlog_decay_ / (1 - xk)
             dxk = dxk - d_decay
 
         return dxk.to(dtype), dxv.to(dtype), dlog_decay
