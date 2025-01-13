@@ -25,7 +25,7 @@ $$
 Computation:
 $$
 \begin{aligned}
-\Theta_{st} &= (\mathrm{offset}+s) \theta_{t} , \Theta\in \mathbb R^{d}, \\
+\Theta_{sk} &= (\mathrm{offset}+s) \theta_{k} , \Theta_s\in \mathbb R^{d}, \\
 {\mathbf {\bar X}}&=f_{\text{act}}(\mathbf X, \mathrm{dim}),\\
 \mathbf O &=\mathrm{concat}([\mathbf {\bar X}  \odot \cos(\Theta),\mathbf {\bar X}  \odot  \sin(\Theta)])
 \in \mathbb R^{n\times 2d}.
