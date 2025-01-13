@@ -9,6 +9,7 @@
   - Perform parallel in block units, use for scenarios where dim = -2.
 
 
+## Forward
 
 Fwd input:
 $$
@@ -21,22 +22,7 @@ Fwd output:
 $$
 \mathbf O\in \mathbb R^{n\times 2d}.
 $$
-Bwd input:
-$$
-\begin{aligned}
-\mathbf {dO} \in \mathbb R^{n\times 2d}.
-\end{aligned}
-$$
-Bwd output:
-$$
-\mathbf {dX}\in \mathbb R^{n\times d}.
-$$
-Where $n$ denotes the sequence length, and $d$ denotes the head dimension, $\mathrm{offset}$ denotes the offset(only use this during the inference stage for language model.)
-
-
-
-## Forward
-
+Computation:
 $$
 \begin{aligned}
 \Theta_{st} &= (\mathrm{offset}+s) \theta_{t} , \Theta\in \mathbb R^{d}, \\
@@ -50,6 +36,19 @@ $$
 
 ## Backward
 
+Bwd input:
+$$
+\begin{aligned}
+\mathbf {dO} \in \mathbb R^{n\times 2d}.
+\end{aligned}
+$$
+Bwd output:
+$$
+\mathbf {dX}\in \mathbb R^{n\times d}.
+$$
+Where $n$ denotes the sequence length, and $d$ denotes the head dimension, $\mathrm{offset}$ denotes the offset(only use this during the inference stage for language model.)
+
+Computation:
 $$
 \begin{aligned}
 &\Theta_{st} = (\mathrm{offset}+s) \theta_{t} , \Theta\in \mathbb R^{ d}, \\
