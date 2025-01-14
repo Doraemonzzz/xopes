@@ -6,7 +6,7 @@
 - `lrpe_cosine_torch`：Lrpe Cosine 1d 的 Pytorch 版本。
 - `lrpe_cosine_1d_sp_triton`, `lrpe_cosine_1d_sp_fwd_triton`, `lrpe_cosine_1d_sp_bwd_triton`：
   - 针对序列进行并行计算，适用于 `dim != -2` 的情况。
-- `lrpe_cosine_1d_bp_triton`, `lrpe_cosine_1d_bp_fwd_triton`, `lrpe_cosine_1d_bp_bwd_triton`：
+- `lrpe_cosine_1d_cp_triton`, `lrpe_cosine_1d_cp_fwd_triton`, `lrpe_cosine_1d_cp_bwd_triton`：
   - 按块单位进行并行计算，适用于 `dim = -2` 的情况。
 
 ## 前向传播

@@ -17,7 +17,6 @@ def lrpe_cosine_1d_torch(
         x: Input tensor of shape (B, N, H, D)
         theta: Tensor of shape (H, E) or (H, 1) or (1, E)
         offset: Offset for the index
-        e: Number of elements to apply the operation on
         act: Activation function before apply lrpe cosine
         dim: Dimension to apply the operation on
 
