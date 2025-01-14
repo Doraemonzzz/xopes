@@ -16,7 +16,7 @@ def lrpe_cosine_1d_torch(
 
     Args:
         x: Input tensor of shape (B, N, H, D)
-        theta: Tensor of shape (H, D) or (H) or (D)
+        theta: Tensor of shape (H, D) or (H, 1) or (1, D)
         offset: Offset for the index
         start_dim: Start dimension to apply the operation on
         act: Activation function before apply lrpe cosine
@@ -32,12 +32,7 @@ def lrpe_cosine_1d_torch(
     index = offset + torch.arange(
         n, device=torch.cuda.current_device(), dtype=torch.int64
     )
-    if len(theta.shape) == 1:
-        if theta.shape[0] == h:  # h -> h 1
-            theta = theta.unsqueeze(-1)
-        elif theta.shape[0] == d:  # d -> 1 d
-            theta = theta.unsqueeze(0)
-    theta = torch.einsum("h d, n -> h n d", theta.float(), index)
+    theta = torch.einsum("h d, n -> n h d", theta.float(), index)
     cos = theta.cos()
     sin = theta.sin()
 
@@ -50,3 +45,11 @@ def lrpe_cosine_1d_torch(
     output = torch.cat([output_identity, output_lrpe], dim=start_dim)
 
     return output.to(x.dtype)
+
+
+if __name__ == "__main__":
+    b, n, h, d = 2, 16, 12, 64
+    x = torch.randn(b, n, h, d)
+    theta = torch.randn(h, d)
+    o = lrpe_cosine_1d_torch(x, theta)
+    print(o.shape)
