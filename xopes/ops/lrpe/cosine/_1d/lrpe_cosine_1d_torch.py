@@ -25,6 +25,7 @@ def lrpe_cosine_1d_torch(
         output: Tensor of shape (B, N, H, 2 * D)
     """
     b, n, h, d = x.shape
+    h_t, h_d = theta.shape
     index = offset + torch.arange(
         n, device=torch.cuda.current_device(), dtype=torch.int64
     )
@@ -32,11 +33,9 @@ def lrpe_cosine_1d_torch(
     cos = theta.cos()
     sin = theta.sin()
 
-    # When e != d, we need to pad the theta with zeros, this makes the kernel much simpler
-    if e != d:
-        theta = torch.cat(
-            [theta[..., :e], torch.zeros(h, d - e, device=theta.device)], dim=-1
-        )
+    # When h_d != d, we need to pad the theta with zeros, this makes the kernel much simpler
+    if h_d != 1 and h_d != d:
+        theta = F.pad(theta, (0, 0, 0, d - h_d))
 
     x = act_torch(x, act, dim)
 
