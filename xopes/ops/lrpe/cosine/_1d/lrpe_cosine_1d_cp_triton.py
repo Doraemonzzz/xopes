@@ -19,7 +19,7 @@ from xopes.utils import contiguous, generate_configs
 @triton.jit
 def _lrpe_cosine_1d_cp_fwd_triton(
     X,  # B N H D
-    Theta,  # H D / H 1 / 1 D
+    THETA,  # H D / H 1 / 1 D
     O,  # B N H 2D
     X_STAT1,  # B H D
     X_STAT2,  # B H D
@@ -126,10 +126,10 @@ def _lrpe_cosine_1d_cp_fwd_triton(
     )
     array = tl.arange(0, BLOCK_N)
     if H_D != 1:
-        theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK_D)[None, :]
+        theta_block_ptr = THETA + offset_theta + tl.arange(0, BLOCK_D)[None, :]
         theta_ = tl.load(theta_block_ptr, mask=mask_d[None, :], other=0).to(tl.float32)
     else:  # scalar version
-        theta_block_ptr = Theta + offset_theta + tl.arange(0, 1)[None, :]
+        theta_block_ptr = THETA + offset_theta + tl.arange(0, 1)[None, :]
         theta_ = tl.load(theta_block_ptr).to(tl.float32)[None, :]
 
     for i in range(tl.cdiv(N, BLOCK_N)):
@@ -177,15 +177,16 @@ def _lrpe_cosine_1d_cp_fwd_triton(
 @triton.jit
 def _lrpe_cosine_1d_cp_bwd_triton(
     X,  # B N H D
-    Theta,  # H D / H 1 / 1 D
+    THETA,  # H D / H 1 / 1 D
     DO,  # B N H 2D
     DX,  # B N H D
     X_STAT1,  # B H D
     X_STAT2,  # B H D
     OFFSET: tl.constexpr,
+    THETA_TYPE: tl.constexpr,
     B: tl.constexpr,
-    H: tl.constexpr,
     N: tl.constexpr,
+    H: tl.constexpr,
     D: tl.constexpr,
     H_T: tl.constexpr,
     H_D: tl.constexpr,
@@ -200,11 +201,11 @@ def _lrpe_cosine_1d_cp_bwd_triton(
     offset_d = off_d * BLOCK_D
     offset_x = off_b * N * H * D + off_h * D + offset_d
     if THETA_TYPE == 1:  # H D
-        off_h * D + offset_d
+        offset_theta = off_h * D + offset_d
     elif THETA_TYPE == 2:  # H 1
-        pass
+        offset_theta = off_h
     elif THETA_TYPE == 3:  # 1 D
-        pass
+        offset_theta = offset_d
     offset_o = off_b * N * H * 2 * D + off_h * 2 * D + offset_d
     dx_block_ptr = (
         DX
@@ -227,9 +228,13 @@ def _lrpe_cosine_1d_cp_bwd_triton(
     )
     array = tl.arange(0, BLOCK_N)
     # mask
-    mask_d = (offset_d + tl.arange(0, BLOCK_D)) < d
-
-    theta_ = tl.load(theta_block_ptr, mask=mask_d[None, :], other=0).to(tl.float32)
+    mask_d = (offset_d + tl.arange(0, BLOCK_D)) < D
+    if H_D != 1:
+        theta_block_ptr = THETA + offset_theta + tl.arange(0, BLOCK_D)[None, :]
+        theta_ = tl.load(theta_block_ptr, mask=mask_d[None, :], other=0).to(tl.float32)
+    else:  # scalar version
+        theta_block_ptr = THETA + offset_theta + tl.arange(0, 1)[None, :]
+        theta_ = tl.load(theta_block_ptr).to(tl.float32)[None, :]
 
     if ACT == "softmax":  # compute c first
         x_block_ptr = (
@@ -397,7 +402,7 @@ def lrpe_cosine_1d_cp_fwd_triton(x, theta, offset=0, act="none", dim=None, **kwa
 
     _lrpe_cosine_1d_cp_fwd_triton[grid](
         X=x,
-        Theta=theta,
+        THETA=theta,
         O=o,
         X_STAT1=x_stat1,
         X_STAT2=x_stat2,
@@ -425,11 +430,11 @@ def lrpe_cosine_1d_cp_bwd_triton(
         theta = F.pad(theta, (0, 0, 0, d - h_d))
 
     if h_t != 1 and h_t != h:  # H D
-        pass
+        theta_type = 1
     elif h_d == 1:  # H 1
-        pass
+        theta_type = 2
     else:  # D 1
-        pass
+        theta_type = 3
 
     # update shape
     h_t, h_d = theta.shape
@@ -447,10 +452,13 @@ def lrpe_cosine_1d_cp_bwd_triton(
         X_STAT1=x_stat1,
         X_STAT2=x_stat2,
         OFFSET=offset,
+        THETA_TYPE=theta_type,
         B=b,
         N=n,
         H=h,
         D=d,
+        H_T=h_t,
+        H_D=h_d,
         ACT=act,
     )
 

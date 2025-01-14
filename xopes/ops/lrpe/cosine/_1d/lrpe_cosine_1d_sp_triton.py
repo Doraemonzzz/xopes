@@ -12,7 +12,7 @@ from xopes.utils import contiguous, generate_configs, next_power_of_two
 @triton.jit
 def _lrpe_cosine_1d_sp_fwd_triton(
     X,  # B N H D
-    Theta,  # H D / H 1 / 1 D
+    THETA,  # H D / H 1 / 1 D
     O,  # B N H 2D
     OFFSET: tl.constexpr,
     THETA_TYPE: tl.constexpr,
@@ -43,9 +43,9 @@ def _lrpe_cosine_1d_sp_fwd_triton(
 
     x_block_ptr = X + offset_x + tl.arange(0, BLOCK_D)
     if H_D != 1:
-        theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK_D)
+        theta_block_ptr = THETA + offset_theta + tl.arange(0, BLOCK_D)
     else:  # scalar version
-        theta_block_ptr = Theta + offset_theta + tl.arange(0, 1)
+        theta_block_ptr = THETA + offset_theta + tl.arange(0, 1)
     o_cos_block_ptr = O + offset_o + tl.arange(0, BLOCK_D)
     o_sin_block_ptr = O + offset_o + D + tl.arange(0, BLOCK_D)
 
@@ -92,7 +92,7 @@ def _lrpe_cosine_1d_sp_fwd_triton(
 @triton.jit
 def _lrpe_cosine_1d_sp_bwd_triton(
     X,
-    Theta,
+    THETA,
     DO,
     DX,
     OFFSET: tl.constexpr,
@@ -122,12 +122,12 @@ def _lrpe_cosine_1d_sp_bwd_triton(
     # mask
     mask_d = tl.arange(0, BLOCK_D) < D
 
-    theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK_D)
+    theta_block_ptr = THETA + offset_theta + tl.arange(0, BLOCK_D)
     dx_block_ptr = DX + offset_x + tl.arange(0, BLOCK_D)
     if H_D != 1:
-        theta_block_ptr = Theta + offset_theta + tl.arange(0, BLOCK_D)
+        theta_block_ptr = THETA + offset_theta + tl.arange(0, BLOCK_D)
     else:  # scalar version
-        theta_block_ptr = Theta + offset_theta + tl.arange(0, 1)
+        theta_block_ptr = THETA + offset_theta + tl.arange(0, 1)
     do_cos_block_ptr = DO + offset_o + tl.arange(0, BLOCK_D)
     do_sin_block_ptr = DO + offset_o + D + tl.arange(0, BLOCK_D)
 
@@ -247,7 +247,7 @@ def lrpe_cosine_1d_sp_fwd_triton(
 
     _lrpe_cosine_1d_sp_fwd_triton[grid](
         X=x,
-        Theta=theta,
+        THETA=theta,
         O=o,
         OFFSET=offset,
         THETA_TYPE=theta_type,
@@ -293,7 +293,7 @@ def lrpe_cosine_1d_sp_bwd_triton(
 
     _lrpe_cosine_1d_sp_bwd_triton[grid](
         X=x,
-        Theta=theta,
+        THETA=theta,
         DO=do,
         DX=dx,
         OFFSET=offset,
