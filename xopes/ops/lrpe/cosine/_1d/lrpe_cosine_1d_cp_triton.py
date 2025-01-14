@@ -388,7 +388,7 @@ def lrpe_cosine_1d_cp_fwd_triton(x, theta, offset=0, act="none", dim=None, **kwa
     # update shape
     h_t, h_d = theta.shape
 
-    o = torch.empty(b, h, n, 2 * d, dtype=x.dtype, device=x.device)
+    o = torch.empty(b, n, h, 2 * d, dtype=x.dtype, device=x.device)
     x_stat1 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
     x_stat2 = torch.empty(b, h, d, dtype=x.dtype, device=x.device)
 
@@ -418,6 +418,7 @@ def lrpe_cosine_1d_cp_fwd_triton(x, theta, offset=0, act="none", dim=None, **kwa
 def lrpe_cosine_1d_cp_bwd_triton(
     x, theta, do, x_stat1, x_stat2, offset=0, act="none", dim=None, **kwargs
 ):
+    b, n, h, d = x.shape
     h_t, h_d = theta.shape
     # When h_d != d, we need to pad the theta with zeros, this makes the kernel much simpler
     if h_d != 1 and h_d != d:
