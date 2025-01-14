@@ -7,7 +7,6 @@ def lrpe_cosine_1d_torch(
     x: torch.Tensor,
     theta: torch.Tensor,
     offset: int = 0,
-    start_dim: int = 0,
     act: str = "none",
     dim: int = None,
 ) -> torch.Tensor:
@@ -16,17 +15,14 @@ def lrpe_cosine_1d_torch(
 
     Args:
         x: Input tensor of shape (B, N, H, D)
-        theta: Tensor of shape (H, D) or (H, 1) or (1, D)
+        theta: Tensor of shape (H, E) or (H, 1) or (1, E)
         offset: Offset for the index
-        start_dim: Start dimension to apply the operation on
+        e: Number of elements to apply the operation on
         act: Activation function before apply lrpe cosine
         dim: Dimension to apply the operation on
 
     Returns:
-        output: Tensor of shape (B, N, H, start_dim + 2 * (D - start_dim))
-
-    Examples:
-        [:start_dim], [start_dim:d] -> [:start_dim], [start_dim:d] * cos, [start_dim:d] * sin
+        output: Tensor of shape (B, N, H, 2 * D)
     """
     b, n, h, d = x.shape
     index = offset + torch.arange(
@@ -36,13 +32,15 @@ def lrpe_cosine_1d_torch(
     cos = theta.cos()
     sin = theta.sin()
 
+    # When e != d, we need to pad the theta with zeros, this makes the kernel much simpler
+    if e != d:
+        theta = torch.cat(
+            [theta[..., :e], torch.zeros(h, d - e, device=theta.device)], dim=-1
+        )
+
     x = act_torch(x, act, dim)
 
-    output_identity = x[..., :start_dim]
-    output_lrpe = torch.cat(
-        [x[..., start_dim:] * cos, x[..., start_dim:] * sin], dim=-1
-    )
-    output = torch.cat([output_identity, output_lrpe], dim=start_dim)
+    output = torch.cat([x * cos, x * sin], dim=-1)
 
     return output.to(x.dtype)
 
