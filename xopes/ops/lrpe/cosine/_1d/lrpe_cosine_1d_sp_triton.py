@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import triton
 import triton.language as tl
 
@@ -21,7 +22,7 @@ def _lrpe_cosine_1d_sp_fwd_triton(
     H: tl.constexpr,
     D: tl.constexpr,
     H_T: tl.constexpr,
-    H_D: tl.constexpr,
+    D_T: tl.constexpr,
     ACT: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
@@ -42,7 +43,7 @@ def _lrpe_cosine_1d_sp_fwd_triton(
     mask_d = tl.arange(0, BLOCK_D) < D
 
     x_block_ptr = X + offset_x + tl.arange(0, BLOCK_D)
-    if H_D != 1:
+    if D_T != 1:
         theta_block_ptr = THETA + offset_theta + tl.arange(0, BLOCK_D)
     else:  # scalar version
         theta_block_ptr = THETA + offset_theta + tl.arange(0, 1)
@@ -72,7 +73,7 @@ def _lrpe_cosine_1d_sp_fwd_triton(
             denominator = tl.sum(numerator)
             x = numerator / denominator
 
-    if H_D != 1:
+    if D_T != 1:
         theta = tl.load(theta_block_ptr, mask=mask_d, other=0).to(tl.float32) * (
             off_n + OFFSET
         )
@@ -91,10 +92,10 @@ def _lrpe_cosine_1d_sp_fwd_triton(
 )
 @triton.jit
 def _lrpe_cosine_1d_sp_bwd_triton(
-    X,
-    THETA,
-    DO,
-    DX,
+    X,  # B N H D
+    THETA,  # H D / H 1 / 1 D
+    DO,  # B N H 2D
+    DX,  # B N H D
     OFFSET: tl.constexpr,
     THETA_TYPE: tl.constexpr,
     B: tl.constexpr,
@@ -102,7 +103,7 @@ def _lrpe_cosine_1d_sp_bwd_triton(
     N: tl.constexpr,
     D: tl.constexpr,
     H_T: tl.constexpr,
-    H_D: tl.constexpr,
+    D_T: tl.constexpr,
     ACT: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
@@ -124,7 +125,7 @@ def _lrpe_cosine_1d_sp_bwd_triton(
 
     theta_block_ptr = THETA + offset_theta + tl.arange(0, BLOCK_D)
     dx_block_ptr = DX + offset_x + tl.arange(0, BLOCK_D)
-    if H_D != 1:
+    if D_T != 1:
         theta_block_ptr = THETA + offset_theta + tl.arange(0, BLOCK_D)
     else:  # scalar version
         theta_block_ptr = THETA + offset_theta + tl.arange(0, 1)
@@ -134,7 +135,7 @@ def _lrpe_cosine_1d_sp_bwd_triton(
     # load
     do_cos = tl.load(do_cos_block_ptr, mask=mask_d, other=0).to(tl.float32)
     do_sin = tl.load(do_sin_block_ptr, mask=mask_d, other=0).to(tl.float32)
-    if H_D != 1:
+    if D_T != 1:
         theta = tl.load(theta_block_ptr, mask=mask_d, other=0).to(tl.float32) * (
             off_n + OFFSET
         )
@@ -221,23 +222,21 @@ def lrpe_cosine_1d_sp_fwd_triton(
     dim: int = None,
     **kwargs
 ):
-    assert dim in [-1, None], "dim must in [-1, None]"
-
     b, n, h, d = x.shape
-    h_t, h_d = theta.shape
-    # When h_d != d, we need to pad the theta with zeros, this makes the kernel much simpler
-    if h_d != 1 and h_d != d:
-        theta = F.pad(theta, (0, 0, 0, d - h_d))
+    h_t, d_t = theta.shape
+    # When d_t != d, we need to pad the theta with zeros, this makes the kernel much simpler
+    if d_t != 1 and d_t != d:
+        theta = F.pad(theta, (0, 0, 0, d - d_t))
 
-    if h_t != 1 and h_t != h:  # H D
+    if h_t != 1 and d_t != 1:  # H D
         theta_type = 1
-    elif h_d == 1:  # H 1
+    elif d_t == 1:  # H 1
         theta_type = 2
     else:  # D 1
         theta_type = 3
 
     # update shape
-    h_t, h_d = theta.shape
+    h_t, d_t = theta.shape
 
     o = torch.empty(b, n, h, 2 * d, dtype=x.dtype, device=x.device)
     BLOCK_D = next_power_of_two(d)
@@ -256,7 +255,7 @@ def lrpe_cosine_1d_sp_fwd_triton(
         H=h,
         D=d,
         H_T=h_t,
-        H_D=h_d,
+        D_T=d_t,
         ACT=act,
         BLOCK_D=BLOCK_D,
     )
@@ -267,23 +266,21 @@ def lrpe_cosine_1d_sp_fwd_triton(
 def lrpe_cosine_1d_sp_bwd_triton(
     x, theta, do, offset=0, start_dim=0, act="none", dim=None, **kwargs
 ):
-    assert dim in [-1, None], "dim must in [-1, None]"
+    b, n, h, d = x.shape
+    h_t, d_t = theta.shape
+    # When d_t != d, we need to pad the theta with zeros, this makes the kernel much simpler
+    if d_t != 1 and d_t != d:
+        theta = F.pad(theta, (0, 0, 0, d - d_t))
 
-    b, h, n, d = x.shape
-    h_t, h_d = theta.shape
-    # When h_d != d, we need to pad the theta with zeros, this makes the kernel much simpler
-    if h_d != 1 and h_d != d:
-        theta = F.pad(theta, (0, 0, 0, d - h_d))
-
-    if h_t != 1 and h_t != h:  # H D
+    if h_t != 1 and d_t != 1:  # H D
         theta_type = 1
-    elif h_d == 1:  # H 1
+    elif d_t == 1:  # H 1
         theta_type = 2
     else:  # D 1
         theta_type = 3
 
     # update shape
-    h_t, h_d = theta.shape
+    h_t, d_t = theta.shape
 
     dx = torch.empty_like(x)
     BLOCK_D = next_power_of_two(d)
@@ -291,6 +288,7 @@ def lrpe_cosine_1d_sp_bwd_triton(
     def grid(meta):
         return (b, n, h)
 
+    print("aaa", theta_type)
     _lrpe_cosine_1d_sp_bwd_triton[grid](
         X=x,
         THETA=theta,
@@ -303,7 +301,7 @@ def lrpe_cosine_1d_sp_bwd_triton(
         N=n,
         D=d,
         H_T=h_t,
-        H_D=h_d,
+        D_T=d_t,
         ACT=act,
         BLOCK_D=BLOCK_D,
     )
@@ -315,7 +313,6 @@ def lrpe_cosine_1d_sp_triton(
     x: torch.Tensor,
     theta: torch.Tensor,
     offset: int = 0,
-    e: int = -1,
     act: str = "none",
     dim: int = None,
     **kwargs
@@ -334,7 +331,9 @@ def lrpe_cosine_1d_sp_triton(
         output: Tensor of shape (B, N, H, 2 * D)
     """
     assert dim in [None, -1, -3], "dim must in [None, -1, -3]"
+    print("bbb", act, dim)
     if act == "softmax" and dim == -3:  # softmax over sequence
+        print("here")
         # TODO: use triton version
         x = F.softmax(x, dim=-3)
         # important: set act to none, because we dont need to apply softmax in kernel

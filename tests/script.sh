@@ -5,7 +5,6 @@ folder=additive
 folder=base
 folder=logcumsumexp
 folder=grpe
-folder=lrpe/cosine/_1d
 folder=lrpe/cosine/_md
 # folder=lrpe/cosine/_md_act
 # folder=flao/non_causal
@@ -43,6 +42,9 @@ folder=householder
 
 ##### oplr 250109
 folder=out_product_linear_recurrence/data_dependent_decay
+
+##### lrpe 250114
+folder=lrpe/cosine/_1d
 
 mkdir -p $folder/log
 
