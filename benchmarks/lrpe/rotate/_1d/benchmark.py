@@ -4,12 +4,12 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops.lrpe.cosine._1d import lrpe_cosine_1d_sp_triton, lrpe_cosine_1d_torch
+from xopes.ops.lrpe.rotate._1d import lrpe_rotate_1d_sp_triton, lrpe_rotate_1d_torch
 from xopes.utils import get_memory
 
 b, h, n, d = 12, 12, 8192, 128
 h_t, d_t = -1, -1
-# h_t, d_t = -1, d
+# h_t, d_t = -1, d//2
 # h_t, d_t = h, -1
 device = torch.device("cuda")
 
@@ -20,9 +20,9 @@ dtype_map = {
 }
 
 module_map = {
-    "triton": lrpe_cosine_1d_sp_triton,
-    "torch": lrpe_cosine_1d_torch,
-    "torch_compile": torch.compile(lrpe_cosine_1d_torch),
+    "triton": lrpe_rotate_1d_sp_triton,
+    "torch": lrpe_rotate_1d_torch,
+    "torch_compile": torch.compile(lrpe_rotate_1d_torch),
 }
 
 configs = [
@@ -43,9 +43,9 @@ configs = [
             ("orange", "-"),
             ("green", "-"),
         ],
-        plot_name=f"lrpe_cosine-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-dim_{dim}-{dtype_name}"
+        plot_name=f"lrpe_rotate-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-dim_{dim}-{dtype_name}"
         if dim is not None
-        else f"lrpe_cosine-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-{dtype_name}",
+        else f"lrpe_rotate-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-{dtype_name}",
         args={
             "b": b,
             "h": h,
@@ -86,7 +86,7 @@ def benchmark(
     if h_t == -1:
         h_t = h
     if d_t == -1:
-        d_t = d
+        d_t = d // 2  # For rotate, theta is half the dimension
     x = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
     theta = torch.randn((h_t, d_t), dtype=dtype, device=device)
 
@@ -95,12 +95,11 @@ def benchmark(
     fn = lambda: module(x, theta, act=act, dim=dim)
     if mode == "bwd":
         o = fn()
-        do = torch.randn((b, n, h, 2 * d), dtype=dtype, device=device)
+        do = torch.randn_like(o)
         fn = lambda: o.backward(do, retain_graph=True)
 
     if bench_type == "speed":
         ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-
         return ms
     else:
         rep = 20
@@ -117,6 +116,6 @@ def benchmark(
         return mb
 
 
-save_path = "stat/lrpe_cosine"
+save_path = "stat/lrpe_rotate"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
