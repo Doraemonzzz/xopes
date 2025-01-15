@@ -4,9 +4,7 @@
 
 - `lrpe_cosine_torch`: Lrpe Cosine 1d Pytorch version.
 - `lrpe_cosine_1d_sp_triton`, `lrpe_cosine_1d_sp_fwd_triton`, `lrpe_cosine_1d_sp_bwd_triton`:
-  - Parallel over sequence, use for scenarios where dim != -2.
-- `lrpe_cosine_1d_cp_triton`, `lrpe_cosine_1d_cp_fwd_triton`, `lrpe_cosine_1d_cp_bwd_triton`：
-  - Perform parallel in block units, use for scenarios where dim = -2.
+  - Parallel over sequence.
 
 
 ## Forward

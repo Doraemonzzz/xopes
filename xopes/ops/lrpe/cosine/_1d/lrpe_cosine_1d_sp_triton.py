@@ -328,12 +328,17 @@ def lrpe_cosine_1d_sp_triton(
         theta: Tensor of shape (H, E) or (H, 1) or (1, E)
         offset: Offset for the index
         act: Activation function before apply lrpe cosine
-        dim: Dimension to apply the operation on
+        dim: Dimension to apply the operation on, choose from [None, -1, -3]
 
     Returns:
         output: Tensor of shape (B, N, H, 2 * D)
     """
-    assert dim in [-1, None], "dim must in [-1, None]"
+    assert dim in [None, -1, -3], "dim must in [None, -1, -3]"
+    if act == "softmax" and dim == -3:  # softmax over sequence
+        # TODO: use triton version
+        x = F.softmax(x, dim=-3)
+        # important: set act to none, because we dont need to apply softmax in kernel
+        act = "none"
     return LrpeCosine1dSpTriton.apply(x, theta, offset, act, dim)
 
 
