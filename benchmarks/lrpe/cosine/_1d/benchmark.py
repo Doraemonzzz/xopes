@@ -4,15 +4,13 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops.lrpe.cosine._1d import (
-    lrpe_cosine_1d_bp_triton,
-    lrpe_cosine_1d_sp_triton,
-    lrpe_cosine_1d_torch,
-)
+from xopes.ops.lrpe.cosine._1d import lrpe_cosine_1d_sp_triton, lrpe_cosine_1d_torch
 from xopes.utils import get_memory
 
 b, h, n, d = 12, 12, 8192, 128
-# b, h, n, d = 12, 12, 8192, 64
+h_t, d_t = -1, -1
+# h_t, d_t = -1, d
+# h_t, d_t = h, -1
 device = torch.device("cuda")
 
 dtype_map = {
@@ -22,8 +20,7 @@ dtype_map = {
 }
 
 module_map = {
-    "triton_sp": lrpe_cosine_1d_sp_triton,
-    "triton_bp": lrpe_cosine_1d_bp_triton,
+    "triton": lrpe_cosine_1d_sp_triton,
     "torch": lrpe_cosine_1d_torch,
     "torch_compile": torch.compile(lrpe_cosine_1d_torch),
 }
@@ -36,18 +33,15 @@ configs = [
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            "triton_sp",
-            "triton_bp",
+            "triton",
             "torch",
             "torch_compile",
         ],
-        line_names=["Triton Sp", "Triton Bp", "Torch", "Torch C"],
+        line_names=["tr", "to", "toc"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
             ("green", "-"),
-            ("blue", "-"),
-            ("black", "-"),
         ],
         plot_name=f"lrpe_cosine-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-act_{act}-dim_{dim}-{dtype_name}"
         if dim is not None
@@ -56,6 +50,8 @@ configs = [
             "b": b,
             "h": h,
             "d": d,
+            "h_t": h_t,
+            "d_t": d_t,
             "act": act,
             "dim": dim,
             "dtype": dtype_map[dtype_name],
@@ -68,29 +64,38 @@ configs = [
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
     # witout dim
-    for act in ["silu", "none"]
-    for dim in [None]
+    # for act in ["none"]
+    # for act in ["silu"]
+    # for dim in [None]
     # with dim
-    # for act in ["softmax"]
-    # for dim in [-1, -2]
+    for act in ["softmax"]
+    # for dim in [-1]
+    for dim in [-3]
 ]
 
 
 @triton.testing.perf_report(configs)
-def benchmark(b, h, n, d, act, dim, dtype, device, mode, provider, bench_type="speed"):
+def benchmark(
+    b, h, n, d, h_t, d_t, act, dim, dtype, device, mode, provider, bench_type="speed"
+):
     torch.manual_seed(2024)
     assert mode in ["fwd", "bwd"]
     warmup = 25
     rep = 100
-    x = torch.randn((b, h, n, d), dtype=dtype, device=device).requires_grad_()
-    theta = torch.randn((h, d), dtype=dtype, device=device)
+    h_t, d_t = h_t, d_t
+    if h_t == -1:
+        h_t = h
+    if d_t == -1:
+        d_t = d
+    x = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
+    theta = torch.randn((h_t, d_t), dtype=dtype, device=device)
 
     module = module_map[provider]
 
     fn = lambda: module(x, theta, act=act, dim=dim)
     if mode == "bwd":
         o = fn()
-        do = torch.randn((b, h, n, 2 * d), dtype=dtype, device=device)
+        do = torch.randn((b, n, h, 2 * d), dtype=dtype, device=device)
         fn = lambda: o.backward(do, retain_graph=True)
 
     if bench_type == "speed":
@@ -112,6 +117,6 @@ def benchmark(b, h, n, d, act, dim, dtype, device, mode, provider, bench_type="s
         return mb
 
 
-save_path = "stat/lrpe_fa_cosine"
+save_path = "stat/lrpe_cosine"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)

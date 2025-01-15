@@ -288,7 +288,6 @@ def lrpe_cosine_1d_sp_bwd_triton(
     def grid(meta):
         return (b, n, h)
 
-    print("aaa", theta_type)
     _lrpe_cosine_1d_sp_bwd_triton[grid](
         X=x,
         THETA=theta,
@@ -331,9 +330,7 @@ def lrpe_cosine_1d_sp_triton(
         output: Tensor of shape (B, N, H, 2 * D)
     """
     assert dim in [None, -1, -3], "dim must in [None, -1, -3]"
-    print("bbb", act, dim)
     if act == "softmax" and dim == -3:  # softmax over sequence
-        print("here")
         # TODO: use triton version
         x = F.softmax(x, dim=-3)
         # important: set act to none, because we dont need to apply softmax in kernel
