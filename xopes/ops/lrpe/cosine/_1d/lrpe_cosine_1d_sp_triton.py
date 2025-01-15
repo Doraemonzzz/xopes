@@ -179,6 +179,11 @@ class LrpeCosine1dSpTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, theta, offset=0, act="none", dim=None):
+        has_head = len(x.shape) != 3
+        if not has_head:  # b n d -> b n h d
+            assert theta.shape[0] == 1, "theta must be (1, E)"
+            x = x.unsqueeze(-2)
+
         o = lrpe_cosine_1d_sp_fwd_triton(
             x=x,
             theta=theta,
@@ -187,10 +192,14 @@ class LrpeCosine1dSpTriton(torch.autograd.Function):
             dim=dim,
         )
 
+        if not has_head:  # b n d -> b n h d
+            o = o.squeeze(-2)
+
         ctx.save_for_backward(x, theta)
         ctx.offset = offset
         ctx.act = act
         ctx.dim = dim
+        ctx.has_head = has_head
 
         return o
 
@@ -201,6 +210,7 @@ class LrpeCosine1dSpTriton(torch.autograd.Function):
         offset = ctx.offset
         act = ctx.act
         dim = ctx.dim
+        has_head = ctx.has_head
 
         dx = lrpe_cosine_1d_sp_bwd_triton(
             x=x,
@@ -210,6 +220,9 @@ class LrpeCosine1dSpTriton(torch.autograd.Function):
             act=act,
             dim=dim,
         )
+
+        if not has_head:
+            dx = dx.squeeze(-2)
 
         return dx, None, None, None, None
 
@@ -320,19 +333,19 @@ def lrpe_cosine_1d_sp_triton(
     Apply Lrpe Cosine 1d on the last dimension of x, parallel over sequence.
 
     Args:
-        x: Input tensor of shape (B, N, H, D)
+        x: Input tensor of shape (B, N, H, D) or (B, N, D)
         theta: Tensor of shape (H, E) or (H, 1) or (1, E)
         offset: Offset for the index
         act: Activation function before apply lrpe cosine
-        dim: Dimension to apply the operation on, choose from [None, -1, -3]
+        dim: Dimension to apply the operation on, choose from [None, -1, 1]
 
     Returns:
         output: Tensor of shape (B, N, H, 2 * D)
     """
-    assert dim in [None, -1, -3], "dim must in [None, -1, -3]"
-    if act == "softmax" and dim == -3:  # softmax over sequence
+    assert dim in [None, -1, 1], "dim must in [None, -1, 1]"
+    if act == "softmax" and dim == 1:  # softmax over sequence
         # TODO: use triton version
-        x = F.softmax(x, dim=-3)
+        x = F.softmax(x, dim=dim)
         # important: set act to none, because we dont need to apply softmax in kernel
         act = "none"
     return LrpeCosine1dSpTriton.apply(x, theta, offset, act, dim)

@@ -14,15 +14,20 @@ def lrpe_cosine_1d_torch(
     Apply Lrpe Cosine 1d on the last dimension of x.
 
     Args:
-        x: Input tensor of shape (B, N, H, D)
+        x: Input tensor of shape (B, N, H, D) or (B, N, D)
         theta: Tensor of shape (H, E) or (H, 1) or (1, E)
         offset: Offset for the index
         act: Activation function before apply lrpe cosine
-        dim: Dimension to apply the operation on, choose from [None, -1, -3]
+        dim: Dimension to apply the operation on, choose from [None, -1, 1]
 
     Returns:
         output: Tensor of shape (B, N, H, 2 * D)
     """
+    assert dim in [None, -1, 1], "dim must in [None, -1, 1]"
+    has_head = len(x.shape) != 3
+    if not has_head:  # b n d -> b n h d
+        assert theta.shape[0] == 1, "theta must be (1, E)"
+        x = x.unsqueeze(-2)
     b, n, h, d = x.shape
     h_t, h_d = theta.shape
     index = offset + torch.arange(
@@ -40,6 +45,8 @@ def lrpe_cosine_1d_torch(
 
     output = torch.cat([x * cos, x * sin], dim=-1)
 
+    if not has_head:
+        output = output.squeeze(-2)
     return output.to(x.dtype)
 
 

@@ -45,6 +45,7 @@ folder=out_product_linear_recurrence/data_dependent_decay
 
 ##### lrpe 250114
 folder=lrpe/cosine/_1d
+folder=lrpe/cosine/_1d/_1d_mpa
 
 mkdir -p $folder/log
 
