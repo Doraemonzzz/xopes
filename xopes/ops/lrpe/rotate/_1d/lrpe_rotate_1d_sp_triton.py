@@ -2,7 +2,6 @@ import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
-from einops import repeat
 
 from xopes.utils import contiguous, generate_configs, next_power_of_two
 
@@ -33,19 +32,22 @@ def _lrpe_rotate_1d_sp_fwd_triton(
 
     # compute offset
     offset_x = off_b * N * H * D + off_n * H * D + off_h * D
-    if THETA_TYPE == 1:  # H D
-        offset_theta = off_h * D
-    elif THETA_TYPE == 2:  # 1 D
+    if THETA_TYPE == 1:  # H D/2
+        offset_theta = off_h * D_T
+    elif THETA_TYPE == 2:  # 1 D/2
         offset_theta = 0
     offset_o = off_b * N * H * D + off_n * H * D + off_h * D
 
     # mask
-    array = tl.arange(0, BLOCK_D)
-    mask_d = array < D
+    array_d = tl.arange(0, BLOCK_D)
+    mask_d1 = array_d < D_T
+    mask_d2 = (D_T + array_d) < D
 
-    x_block_ptr = X + offset_x + tl.arange(0, BLOCK_D)
+    x1_block_ptr = X + offset_x + tl.arange(0, BLOCK_D)
+    x2_block_ptr = X + offset_x + D_T + tl.arange(0, BLOCK_D)
+    o1_block_ptr = O + offset_o + tl.arange(0, BLOCK_D)
+    o2_block_ptr = O + offset_o + D_T + tl.arange(0, BLOCK_D)
     theta_ptr = THETA + offset_theta + tl.arange(0, BLOCK_D)
-    o_block_ptr = O + offset_o + tl.arange(0, BLOCK_D)
 
     # load values
     if ACT == "softmax":
@@ -53,41 +55,42 @@ def _lrpe_rotate_1d_sp_fwd_triton(
     else:
         value = 0
 
-    x = tl.load(x_block_ptr, mask=mask_d, other=value).to(tl.float32)
+    x1 = tl.load(x1_block_ptr, mask=mask_d1, other=value).to(tl.float32)
+    x2 = tl.load(x2_block_ptr, mask=mask_d2, other=value).to(tl.float32)
 
     if ACT != "none":
         if ACT == "relu":
-            x = tl.where(x >= 0, x, 0)
+            x1 = tl.where(x1 >= 0, x1, 0)
+            x2 = tl.where(x2 >= 0, x2, 0)
         elif ACT == "sigmoid":
-            x = tl.sigmoid(x)
+            x1 = tl.sigmoid(x1)
+            x2 = tl.sigmoid(x2)
         elif ACT == "silu":
-            x = x * tl.sigmoid(x)
+            x1 = x1 * tl.sigmoid(x1)
+            x2 = x2 * tl.sigmoid(x2)
         elif ACT == "softmax":
-            x_max = tl.max(x, axis=0)
+            x1_max = tl.max(x1, axis=0)
+            x2_max = tl.max(x2, axis=0)
+            x_max = tl.maximum(x1_max, x2_max)
             # for stable
-            x_minus_max = x - x_max
+            x1_minus_max = x1 - x_max
+            x2_minus_max = x2 - x_max
             # softmax
-            numerator = tl.exp(x_minus_max)
-            denominator = tl.sum(numerator)
-            x = numerator / denominator
+            numerator1 = tl.exp(x1_minus_max)
+            numerator2 = tl.exp(x2_minus_max)
+            denominator = tl.sum(numerator1) + tl.sum(numerator2)
+            x1 = numerator1 / denominator
+            x2 = numerator2 / denominator
 
     # load and compute rotation
-    theta_cos = tl.load(theta_ptr, mask=mask_d, other=0).to(tl.float32) * (
-        off_n + OFFSET
-    )
-    theta_sin = tl.where(array % 2 == 0, -theta_cos, theta_cos)
-    x_cos = x
-    # 0 1 2 3 4 5 (base)
-    # 1 0 1 0 1 0 (+ 1 mod 2)
-    # 2 0 2 0 2 0 (* 2)
-    # 2 1 4 3 6 5 (add base)
-    # 1 0 3 2 5 4 (-1)
-    index = array + (array + 1) % 2 * 2 - 1
-    x_sin = tl.permute(x, index)
+    theta = tl.load(theta_ptr, mask=mask_d1, other=0).to(tl.float32) * (off_n + OFFSET)
+    cos = tl.cos(theta)
+    sin = tl.sin(theta)
+    o1 = x1 * cos - x2 * sin
+    o2 = x1 * sin + x2 * cos
 
-    o = x_cos * tl.cos(theta_cos) + x_sin * tl.sin(theta_sin)
-
-    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_d)
+    tl.store(o1_block_ptr, o1.to(o1_block_ptr.dtype.element_ty), mask=mask_d1)
+    tl.store(o2_block_ptr, o2.to(o2_block_ptr.dtype.element_ty), mask=mask_d2)
 
 
 @triton.autotune(
@@ -116,37 +119,33 @@ def _lrpe_rotate_1d_sp_bwd_triton(
     off_h = tl.program_id(2)
     # compute offset
     offset_x = off_b * N * H * D + off_n * H * D + off_h * D
-    if THETA_TYPE == 1:  # H D
-        offset_theta = off_h * D
-    elif THETA_TYPE == 2:  # 1 D
+    if THETA_TYPE == 1:  # H D/2
+        offset_theta = off_h * D_T
+    elif THETA_TYPE == 2:  # 1 D/2
         offset_theta = 0
     offset_o = off_b * N * H * D + off_n * H * D + off_h * D
 
     # mask
-    array = tl.arange(0, BLOCK_D)
-    mask_d = array < D
+    array_d = tl.arange(0, BLOCK_D)
+    mask_d1 = array_d < D_T
+    mask_d2 = (D_T + array_d) < D
 
-    THETA + offset_theta + tl.arange(0, BLOCK_D)
-    dx_block_ptr = DX + offset_x + tl.arange(0, BLOCK_D)
-    THETA + offset_theta + tl.arange(0, BLOCK_D)
-    do_block_ptr = DO + offset_o + tl.arange(0, BLOCK_D)
+    do1_block_ptr = DO + offset_o + tl.arange(0, BLOCK_D)
+    do2_block_ptr = DO + offset_o + D_T + tl.arange(0, BLOCK_D)
+    dx1_block_ptr = DX + offset_x + tl.arange(0, BLOCK_D)
+    dx2_block_ptr = DX + offset_x + D_T + tl.arange(0, BLOCK_D)
+    theta_block_ptr = THETA + offset_theta + tl.arange(0, BLOCK_D)
 
     # load and compute rotation
-    theta_cos = tl.load(theta_ptr, mask=mask_d, other=0).to(tl.float32) * (
+    theta = -tl.load(theta_block_ptr, mask=mask_d1, other=0).to(tl.float32) * (
         off_n + OFFSET
     )
-    theta_sin = tl.where(array % 2 == 0, theta_cos, -theta_cos)
-    do = tl.load(do_block_ptr, mask=mask_d, other=0).to(tl.float32)
-    do_cos = do
-    # 0 1 2 3 4 5 (base)
-    # 1 0 1 0 1 0 (+ 1 mod 2)
-    # 2 0 2 0 2 0 (* 2)
-    # 2 1 4 3 6 5 (add base)
-    # 1 0 3 2 5 4 (-1)
-    index = array + (array + 1) % 2 * 2 - 1
-    do_sin = tl.permute(do, index)
-
-    dx = do_cos * tl.cos(theta_cos) + do_sin * tl.sin(theta_sin)
+    do1 = tl.load(do1_block_ptr, mask=mask_d1, other=0).to(tl.float32)
+    do2 = tl.load(do2_block_ptr, mask=mask_d2, other=0).to(tl.float32)
+    cos = tl.cos(theta)
+    sin = tl.sin(theta)
+    dx1 = do1 * cos - do2 * sin
+    dx2 = do1 * sin + do2 * cos
 
     if ACT != "none":
         if ACT == "softmax":
@@ -154,30 +153,45 @@ def _lrpe_rotate_1d_sp_bwd_triton(
         else:
             value = 0
 
-        x_block_ptr = X + offset_x + tl.arange(0, BLOCK_D)
-        x = tl.load(x_block_ptr, mask=mask_d, other=value).to(tl.float32)
+        x1_block_ptr = X + offset_x + tl.arange(0, BLOCK_D)
+        x2_block_ptr = X + offset_x + D_T + tl.arange(0, BLOCK_D)
+        x1 = tl.load(x1_block_ptr, mask=mask_d1, other=value).to(tl.float32)
+        x2 = tl.load(x2_block_ptr, mask=mask_d2, other=value).to(tl.float32)
 
         if ACT == "relu":
-            dx = tl.where(x >= 0, dx, 0)
+            dx1 = tl.where(x1 >= 0, dx1, 0)
+            dx2 = tl.where(x2 >= 0, dx2, 0)
         elif ACT == "sigmoid":
-            sigmoid = tl.sigmoid(x)
-            dx = dx * sigmoid * (1 - sigmoid)
+            sigmoid1 = tl.sigmoid(x1)
+            dx1 = dx1 * sigmoid1 * (1 - sigmoid1)
+            sigmoid2 = tl.sigmoid(x2)
+            dx2 = dx2 * sigmoid2 * (1 - sigmoid2)
         elif ACT == "silu":
-            sigmoid = tl.sigmoid(x)
-            dx = dx * sigmoid * (1 + x * (1 - sigmoid))
+            sigmoid1 = tl.sigmoid(x1)
+            dx1 = dx1 * sigmoid1 * (1 + x1 * (1 - sigmoid1))
+            sigmoid2 = tl.sigmoid(x2)
+            dx2 = dx2 * sigmoid2 * (1 + x2 * (1 - sigmoid2))
         elif ACT == "softmax":
+            x1_max = tl.max(x1, axis=0)
+            x2_max = tl.max(x2, axis=0)
+            x_max = tl.maximum(x1_max, x2_max)
             # for stable
-            x_minus_max = x - tl.max(x, axis=0)
+            x1_minus_max = x1 - x_max
+            x2_minus_max = x2 - x_max
             # softmax
-            numerator = tl.exp(x_minus_max)
-            denominator = tl.sum(numerator)
-            o = numerator / denominator
+            numerator1 = tl.exp(x1_minus_max)
+            numerator2 = tl.exp(x2_minus_max)
+            denominator = tl.sum(numerator1) + tl.sum(numerator2)
+            o1 = numerator1 / denominator
+            o2 = numerator2 / denominator
 
             # scalar
-            c = tl.sum(o * dx, axis=0)
-            dx = o * dx - c * o
+            c = tl.sum(o1 * dx1, axis=0) + tl.sum(o2 * dx2, axis=0)
+            dx1 = o1 * dx1 - c * o1
+            dx2 = o2 * dx2 - c * o2
 
-    tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask_d)
+    tl.store(dx1_block_ptr, dx1.to(dx1_block_ptr.dtype.element_ty), mask=mask_d1)
+    tl.store(dx2_block_ptr, dx2.to(dx2_block_ptr.dtype.element_ty), mask=mask_d2)
 
 
 class LrpeRotate1dSpTriton(torch.autograd.Function):
@@ -246,19 +260,16 @@ def lrpe_rotate_1d_sp_fwd_triton(
     if d_t != 1 and d_t != d // 2:
         theta = F.pad(theta, (0, 0, 0, d // 2 - d_t))
 
-    # x1 x2 x3 -> x1 x1 x2 x2 x3 x3
-    theta = repeat(x, "h d -> h (d g)", g=2)
-
-    if h_t != 1 and d_t != 1:  # H D
+    if h_t != 1 and d_t != 1:  # H D/2
         theta_type = 1
-    else:  # 1 D
+    else:  # 1 D/2
         theta_type = 2
 
     # update shape
     h_t, d_t = theta.shape
 
     o = torch.empty(b, n, h, d, dtype=x.dtype, device=x.device)
-    BLOCK_D = next_power_of_two(d)
+    BLOCK_D = next_power_of_two(d_t)
 
     def grid(meta):
         return (b, n, h)
@@ -291,19 +302,16 @@ def lrpe_rotate_1d_sp_bwd_triton(
     if d_t != 1 and d_t != d // 2:
         theta = F.pad(theta, (0, 0, 0, d // 2 - d_t))
 
-    # x1 x2 x3 -> x1 x1 x2 x2 x3 x3
-    theta = repeat(x, "h d -> h (d g)", g=2)
-
-    if h_t != 1 and d_t != 1:  # H D
+    if h_t != 1 and d_t != 1:  # H D/2
         theta_type = 1
-    else:  # 1 D
+    else:  # 1 D/2
         theta_type = 2
 
     # update shape
     h_t, d_t = theta.shape
 
     dx = torch.empty_like(x)
-    BLOCK_D = next_power_of_two(d)
+    BLOCK_D = next_power_of_two(d_t)
 
     def grid(meta):
         return (b, n, h)
@@ -364,3 +372,6 @@ if __name__ == "__main__":
     x = (torch.randn((b, n, h, d), dtype=dtype, device=device)).requires_grad_()
     theta = torch.randn((h, d // 2), dtype=dtype, device=device)
     do = torch.randn((b, n, h, d), dtype=dtype, device=device)
+
+    o = lrpe_rotate_1d_sp_triton(x, theta, offset=0, act="none", dim=None)
+    o.backward(do)
