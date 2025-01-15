@@ -3,8 +3,10 @@
 Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 # Plan
-- Update doc
+- Update b h d -> B H D
 - lrpe-cosine
+  - [x] 250115
+  - [ ] update softmax function
 - lrpe-rope
 - householder sum update
 - oplr
