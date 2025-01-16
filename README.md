@@ -4,6 +4,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 # Plan
 - Update b h d -> B H D
+- act
+  - [x] 250116
 - lrpe-cosine
   - [x] 250115
   - [ ] update softmax function
@@ -17,6 +19,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - lcse
 - ce
   - [x] 250107
+  - [ ] fix bug
 - ewbo;
   - [x] 250107
 - logsumexp

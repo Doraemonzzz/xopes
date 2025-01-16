@@ -39,10 +39,10 @@ folder=oplr/ddd
 
 ##### lrpe 250115
 folder=lrpe/cosine/_1d
-folder=lrpe/rotate/_1d
+# folder=lrpe/rotate/_1d
 
-##### act 250116
-folder=act
+# ##### act 250116
+# folder=act
 
 mkdir -p $folder/log
 

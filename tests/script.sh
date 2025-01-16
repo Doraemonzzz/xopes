@@ -49,8 +49,8 @@ folder=lrpe/cosine/_1d_mpa
 folder=lrpe/rotate/_1d
 folder=lrpe/rotate/_1d_mpa
 
-##### act 250116
-folder=act
+# ##### act 250116
+# folder=act
 
 mkdir -p $folder/log
 

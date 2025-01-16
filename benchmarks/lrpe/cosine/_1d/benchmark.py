@@ -69,8 +69,8 @@ configs = [
     # for dim in [None]
     # with dim
     for act in ["softmax"]
-    # for dim in [-1]
-    for dim in [1]
+    for dim in [-1]
+    # for dim in [1]
 ]
 
 

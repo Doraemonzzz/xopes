@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
+from xopes.ops.act import act_fn
 from xopes.utils import contiguous, generate_configs, next_power_of_two
 
 
@@ -344,8 +345,7 @@ def lrpe_cosine_1d_sp_triton(
     """
     assert dim in [None, -1, 1], "dim must in [None, -1, 1]"
     if act == "softmax" and dim == 1:  # softmax over sequence
-        # TODO: use triton version
-        x = F.softmax(x, dim=dim)
+        x = act_fn(x, act=act, dim=dim)
         # important: set act to none, because we dont need to apply softmax in kernel
         act = "none"
     return LrpeCosine1dSpTriton.apply(x, theta, offset, act, dim)
