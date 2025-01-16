@@ -8,10 +8,10 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [x] 250116
 - lrpe-cosine
   - [x] 250115
-  - [ ] update softmax function
+  - [x] update softmax function
 - lrpe-rope
   - [x] 250116
-  - [ ] update softmax function
+  - [x] update softmax function
 - householder sum update
 - oplr
   - [x] 250113 sequential doc/kernel
