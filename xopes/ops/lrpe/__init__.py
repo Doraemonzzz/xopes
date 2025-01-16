@@ -1,5 +1,5 @@
-from .cosine import lrpe_cosine_bwd, lrpe_cosine_fn, lrpe_cosine_fwd
-from .rotate import lrpe_rotate_bwd, lrpe_rotate_fn, lrpe_rotate_fwd
+from .cosine import lrpe_cosine_bwd_fn, lrpe_cosine_fn, lrpe_cosine_fwd_fn
+from .rotate import lrpe_rotate_bwd_fn, lrpe_rotate_fn, lrpe_rotate_fwd_fn
 
 LRPE_DICT = {
     "cosine": lrpe_cosine_fn,
@@ -7,13 +7,13 @@ LRPE_DICT = {
 }
 
 LRPE_FWD_DICT = {
-    "cosine": lrpe_cosine_fwd,
-    "rotate": lrpe_rotate_fwd,
+    "cosine": lrpe_cosine_fwd_fn,
+    "rotate": lrpe_rotate_fwd_fn,
 }
 
 LRPE_BWD_DICT = {
-    "cosine": lrpe_cosine_bwd,
-    "rotate": lrpe_rotate_bwd,
+    "cosine": lrpe_cosine_bwd_fn,
+    "rotate": lrpe_rotate_bwd_fn,
 }
 
 
