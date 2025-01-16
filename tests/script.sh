@@ -9,7 +9,7 @@ folder=lrpe/cosine/_md
 # folder=lrpe/cosine/_md_act
 # folder=flao/non_causal
 # folder=flao/fal_non_causal
-# folder=act
+#
 # folder=multinomial
 folder=page_flip
 folder=page_flip/additive
@@ -48,6 +48,9 @@ folder=lrpe/cosine/_1d
 folder=lrpe/cosine/_1d_mpa
 folder=lrpe/rotate/_1d
 folder=lrpe/rotate/_1d_mpa
+
+##### act 250116
+folder=act
 
 mkdir -p $folder/log
 

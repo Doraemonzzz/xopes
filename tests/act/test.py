@@ -49,12 +49,16 @@ def test(shape, act, dim, dtype):
 
     atol, rtol = get_threshold(dtype)
 
-    # forward
+    # forward check
+    print("o diff max: ", torch.abs(o_act_torch - o_act_triton).max().item())
+    print("o diff norm: ", torch.norm(o_act_torch - o_act_triton).item())
     assert torch.allclose(
         o_act_torch, o_act_triton, atol=atol, rtol=rtol
     ), f"o diff: {torch.abs(o_act_torch - o_act_triton).max().item()}"
 
-    # backward
+    # backward check
+    print("dx diff max: ", torch.abs(dx_act_torch - dx_act_triton).max().item())
+    print("dx diff norm: ", torch.norm(dx_act_torch - dx_act_triton).item())
     assert torch.allclose(
         dx_act_torch, dx_act_triton, atol=atol, rtol=rtol
     ), f"dx diff: {torch.abs(dx_act_torch - dx_act_triton).max().item()}"
