@@ -18,7 +18,7 @@ from .logcumsumexp import (
     logcumsumexp_recurrence_triton,
     logcumsumexp_torch,
 )
-from .lrpe import lrpe_bwd, lrpe_fn, lrpe_fwd
+from .lrpe import lrpe_bwd_fn, lrpe_fn, lrpe_fwd_fn
 from .multinomial import (
     gumbel_multinomial_reduce_torch,
     gumbel_multinomial_reduce_triton,

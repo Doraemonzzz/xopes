@@ -19,13 +19,13 @@ def lrpe_cosine_fn(x, theta, offset=0, act="none", dim=None, **kwargs):
     return lrpe_cosine_1d_sp_triton(x=x, theta=theta, offset=offset, act=act, dim=dim)
 
 
-def lrpe_cosine_fwd(x, theta, offset=0, act="none", dim=None, **kwargs):
+def lrpe_cosine_fwd_fn(x, theta, offset=0, act="none", dim=None, **kwargs):
     return lrpe_cosine_1d_sp_fwd_triton(
         x=x, theta=theta, offset=offset, act=act, dim=dim
     )
 
 
-def lrpe_cosine_bwd(x, theta, do, offset=0, act="none", dim=None, **kwargs):
+def lrpe_cosine_bwd_fn(x, theta, do, offset=0, act="none", dim=None, **kwargs):
     return lrpe_cosine_1d_sp_bwd_triton(
         x=x, theta=theta, do=do, offset=offset, act=act, dim=dim
     )
