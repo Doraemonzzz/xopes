@@ -21,6 +21,7 @@ dtype_map = {
 module_map = {
     "triton": act_triton,
     "torch": act_torch,
+    "torch_compile": torch.compile(act_torch),
 }
 
 configs = [
@@ -33,10 +34,12 @@ configs = [
         line_vals=[
             "triton",
             "torch",
+            "torch_compile",
         ],
         line_names=[
-            "Triton",
-            "Torch",
+            "tr",
+            "to",
+            "toc",
         ],
         styles=[
             ("red", "-"),
@@ -60,14 +63,14 @@ configs = [
             "bench_type": bench_type,
         },
     )
+    for bench_type in ["speed", "memory"]
     for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
-    for bench_type in ["speed", "memory"]
-    # witout dim
+    # # witout dim
     # for act in ["relu", "sigmoid", "silu", "none"]
     # for dim in [None]
     # with dim
-    for act in ["softmax", "softmax_no_cache"]
+    for act in ["softmax"]
     for dim in [-1, -2]
 ]
 

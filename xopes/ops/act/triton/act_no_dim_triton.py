@@ -2,34 +2,34 @@ import torch
 import triton
 import triton.language as tl
 
-from xopes.utils import contiguous, generate_configs
+from xopes.utils import contiguous, generate_configs, next_power_of_two
 
 
 @triton.autotune(
-    generate_configs({"BLOCK": [16, 32, 64, 128], "num_warps": [1, 2, 4, 8, 16, 32]}),
-    key=["d"],
+    generate_configs({"num_warps": [1, 2, 4, 8, 16, 32]}),
+    key=["N", "D"],
 )
 @triton.jit
 def _act_no_dim_fwd_triton(
     X,
     O,
-    n: tl.constexpr,
-    d: tl.constexpr,
+    N: tl.constexpr,
+    D: tl.constexpr,
     ACT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     off_n = tl.program_id(0)
     off_block_d = tl.program_id(1)
     # compute offset
-    offset_n = off_n * d
+    offset_n = off_n * D
     offset_d = off_block_d * BLOCK
     # mask
-    d_mask = (offset_d + tl.arange(0, BLOCK)) < d
+    mask_d = (offset_d + tl.arange(0, BLOCK)) < D
 
     # compute
     x_block_ptr = X + offset_n + offset_d + tl.arange(0, BLOCK)
     o_block_ptr = O + offset_n + offset_d + tl.arange(0, BLOCK)
-    x = tl.load(x_block_ptr, mask=d_mask, other=0).to(tl.float32)
+    x = tl.load(x_block_ptr, mask=mask_d, other=0).to(tl.float32)
     o = x
 
     if ACT == "relu":
@@ -39,37 +39,37 @@ def _act_no_dim_fwd_triton(
     elif ACT == "silu":
         o = x * tl.sigmoid(x)
 
-    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=d_mask)
+    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_d)
 
 
 @triton.autotune(
-    generate_configs({"BLOCK": [16, 32, 64, 128], "num_warps": [2, 4, 8]}),
-    key=["d"],
+    generate_configs({"num_warps": [2, 4, 8]}),
+    key=["N", "D"],
 )
 @triton.jit
 def _act_no_dim_bwd_triton(
     X,
     DO,
     DX,
-    n: tl.constexpr,
-    d: tl.constexpr,
+    N: tl.constexpr,
+    D: tl.constexpr,
     ACT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     off_n = tl.program_id(0)
     off_block_d = tl.program_id(1)
     # compute offset
-    offset_n = off_n * d
+    offset_n = off_n * D
     offset_d = off_block_d * BLOCK
     # mask
-    d_mask = (offset_d + tl.arange(0, BLOCK)) < d
+    mask_d = (offset_d + tl.arange(0, BLOCK)) < D
 
     # compute
     x_block_ptr = X + offset_n + offset_d + tl.arange(0, BLOCK)
     do_block_ptr = DO + offset_n + offset_d + tl.arange(0, BLOCK)
     dx_block_ptr = DX + offset_n + offset_d + tl.arange(0, BLOCK)
-    x = tl.load(x_block_ptr, mask=d_mask, other=0).to(tl.float32)
-    do = tl.load(do_block_ptr, mask=d_mask, other=0).to(tl.float32)
+    x = tl.load(x_block_ptr, mask=mask_d, other=0).to(tl.float32)
+    do = tl.load(do_block_ptr, mask=mask_d, other=0).to(tl.float32)
     # dx = tl.zeros_like(x)
     dx = do
 
@@ -82,14 +82,17 @@ def _act_no_dim_bwd_triton(
         sigmoid = tl.sigmoid(x)
         dx = do * sigmoid * (1 + x * (1 - sigmoid))
 
-    tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=d_mask)
+    tl.store(dx_block_ptr, dx.to(dx_block_ptr.dtype.element_ty), mask=mask_d)
 
 
 class ActNoDimTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(ctx, x, act="none"):
-        o = act_no_dim_fwd_triton(x, act)
+        o = act_no_dim_fwd_triton(
+            x=x,
+            act=act,
+        )
 
         ctx.save_for_backward(x)
         ctx.act = act
@@ -102,7 +105,11 @@ class ActNoDimTriton(torch.autograd.Function):
         x = ctx.saved_tensors[0]
         act = ctx.act
 
-        dx = act_no_dim_bwd_triton(x, do, act)
+        dx = act_no_dim_bwd_triton(
+            x=x,
+            do=do,
+            act=act,
+        )
 
         return dx, None
 
@@ -116,15 +123,15 @@ def act_no_dim_fwd_triton(x, act="none"):
     d = x.shape[-1]
     o = torch.empty_like(x)
 
-    def grid(meta):
-        return (n, triton.cdiv(d, meta["BLOCK"]))
-
+    BLOCK = next_power_of_two(d)
+    grid = (n,)
     _act_no_dim_fwd_triton[grid](
-        x,
-        o,
-        n,
-        d,
-        act,
+        X=x,
+        O=o,
+        N=n,
+        D=d,
+        ACT=act,
+        BLOCK=BLOCK,
     )
 
     return o
@@ -140,22 +147,35 @@ def act_no_dim_bwd_triton(x, do, act="none"):
 
     dx = torch.empty_like(x)
 
-    def grid(meta):
-        return (n, triton.cdiv(d, meta["BLOCK"]))
+    # def grid(meta):
+    #     return (n, triton.cdiv(d, meta["BLOCK"]))
 
+    BLOCK = next_power_of_two(d)
+    grid = (n,)
     _act_no_dim_bwd_triton[grid](
-        x,
-        do,
-        dx,
-        n,
-        d,
-        act,
+        X=x,
+        DO=do,
+        DX=dx,
+        N=n,
+        D=d,
+        ACT=act,
+        BLOCK=BLOCK,
     )
 
     return dx
 
 
 def act_no_dim_triton(x, act="none"):
+    """
+    Apply activation function on x.
+
+    Args:
+        x: Input tensor of shape (..., D)
+        act: Activation function, choose from ["none", "relu", "sigmoid", "silu"]
+
+    Returns:
+        output: Tensor of shape (..., D)
+    """
     return ActNoDimTriton.apply(x, act)
 
 

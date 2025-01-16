@@ -1,3 +1,4 @@
+import torch
 import torch.nn.functional as F
 
 from xopes.utils import identity, is_act_valid
@@ -10,8 +11,7 @@ ACT_TORCH_DICT = {
 }
 
 ACT_DIM_TORCH_DICT = {
-    "softmax": F.softmax,
-    "softmax_no_cache": F.softmax,
+    "softmax": lambda x, dim: F.softmax(x, dim=dim, dtype=torch.float32).to(x.dtype),
 }
 
 

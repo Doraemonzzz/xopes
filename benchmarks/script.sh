@@ -8,7 +8,6 @@ folder=lrpe/cosine/_1d
 # folder=md_lrpe_cosine
 # folder=flao/non_causal
 # folder=flao/fal_non_causal
-# folder=act
 # folder=multinomial
 
 ##### normalize 241231
@@ -41,6 +40,9 @@ folder=oplr/ddd
 ##### lrpe 250115
 folder=lrpe/cosine/_1d
 folder=lrpe/rotate/_1d
+
+##### act 250116
+folder=act
 
 mkdir -p $folder/log
 

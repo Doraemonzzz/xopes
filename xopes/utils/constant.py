@@ -21,6 +21,5 @@ ACT_SET = set(
         "silu",
         "none",
         "softmax",
-        "softmax_no_cache",
     ]
 )
