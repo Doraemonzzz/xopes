@@ -28,6 +28,36 @@ $$
 \end{aligned}
 $$
 
+注意到：
+$$
+\begin{aligned}
+
+\left[\begin{array}{cc}
+\cos \left(\theta\right) & -\sin \left(\theta\right) \\
+\sin \left(\theta\right) & \cos \left(\theta\right)
+\end{array}\right]\left[\begin{array}{cc}
+x_1 \\ x_2
+\end{array}\right]
+&=
+\left[\begin{array}{cc}
+x_1\cos \theta -x_2\sin\theta ,  x_2\cos\theta+x_1\sin \theta
+\end{array}\right]
+
+\end{aligned}
+$$
+而对特征做置换不改变结果以及实现便利性，我们假设：
+$$
+\mathbf X = [\mathbf X_1,\mathbf X_2], \mathbf X_i\in \mathbb R^{n\times d/2}.
+$$
+那么最终的输出为：
+$$
+\begin{aligned}
+\mathbf O_1 &= \mathbf X_1 \odot \cos\theta - \mathbf X_2 \odot \sin \theta ,\\
+\mathbf O_2 &= \mathbf X_1 \odot \sin\theta +\mathbf X_2 \odot \cos \theta, \\
+\mathbf O&= [\mathbf O_1 , \mathbf O_2].
+\end{aligned}
+$$
+
 
 
 ## 反向传播
@@ -53,6 +83,19 @@ $$
  &= {\mathbf o}_t^\top \mathbf W_t(\Theta)^\top,   \\
   &= {\mathbf o}_t^\top \mathbf W_t(-\Theta),   \\
 \mathbf {d X}& = f'_{\text{act}}(\mathbf{d{\bar X}}, \mathrm{dim}).
+\end{aligned}
+$$
+
+我们假设：
+$$
+\mathbf {dO}= [\mathbf {dO}_1,\mathbf {dO}_2], \mathbf {dO}_i\in \mathbb R^{n\times d/2}.
+$$
+那么最终的输出为：
+$$
+\begin{aligned}
+\mathbf {dX}_1 &= \mathbf {dO}_1 \odot \cos\theta + \mathbf {dO}_2 \odot \sin \theta ,\\
+\mathbf {dX}_2 &= -\mathbf {dO}_1\odot \sin\theta +\mathbf {dO}_2 \odot \cos \theta, \\
+\mathbf {dO}&= [\mathbf {dO}_1,\mathbf {dO}_2].
 \end{aligned}
 $$
 
