@@ -101,7 +101,8 @@ def benchmark(
             label_smoothing=label_smoothing,
             ignore_index=-100,
         )
-    except:
+    except Exception as e:
+        print(f"Error setting up {provider}: {e}")
         fn = None
 
     if mode == "bwd":
@@ -109,13 +110,15 @@ def benchmark(
             o = fn()
             do = torch.rand_like(o)
             fn = lambda: o.backward(do, retain_graph=True)
-        except:
+        except Exception as e:
+            print(f"Error in speed benchmark for {provider}: {e}")
             fn = None
 
     if bench_type == "speed":
         try:
             ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-        except:
+        except Exception as e:
+            print(f"Error in memory benchmark for {provider}: {e}")
             ms = -1
 
         return ms
