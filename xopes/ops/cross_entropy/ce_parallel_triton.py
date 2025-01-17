@@ -291,17 +291,17 @@ def cross_entropy_parallel_triton(
     label_smoothing: float = 0.0,
 ) -> torch.Tensor:
     """
-    Applies Cross Entropy loss using Triton, parallelized over the vocab dimension.
+    Applies cross entropy loss using Triton, parallelized over the vocab dimension.
 
     Args:
-        z: Input logits tensor
-        y: Target indices tensor
-        ignore_index: Specifies a target value that is ignored
-        reduction: Specifies the reduction to apply to the output
-        label_smoothing: Float in [0.0, 1.0]
+        z: Input logits tensor of shape (B, V)
+        y: Target indices tensor of shape (B)
+        ignore_index: Index to ignore in loss calculation
+        reduction: Reduction method
+        label_smoothing: Label smoothing factor
 
     Returns:
-        Loss tensor
+        Cross entropy loss tensor
     """
     assert reduction in ["mean", "sum", "none"], f"Unsupported reduction: {reduction}"
     o = CrossEntropyParallelTriton.apply(z, y, ignore_index, reduction, label_smoothing)

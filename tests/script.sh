@@ -33,21 +33,21 @@ folder=householder
 # ##### linear_cross_entropy 250105
 # folder=linear_cross_entropy
 
-# ##### cross_entropy 250106
-# folder=cross_entropy
+##### cross_entropy 250106
+folder=cross_entropy
 
 ##### element_wise_binary_op 250106
 # folder=element_wise_binary_op
 # folder=element_wise_binary_op/fn
 
-##### oplr 250109
-folder=out_product_linear_recurrence/data_dependent_decay
+# ##### oplr 250109
+# folder=out_product_linear_recurrence/data_dependent_decay
 
-##### lrpe 250114
-folder=lrpe/cosine/_1d
-folder=lrpe/cosine/_1d_mpa
-folder=lrpe/rotate/_1d
-folder=lrpe/rotate/_1d_mpa
+# ##### lrpe 250114
+# folder=lrpe/cosine/_1d
+# folder=lrpe/cosine/_1d_mpa
+# folder=lrpe/rotate/_1d
+# folder=lrpe/rotate/_1d_mpa
 
 # ##### act 250116
 # folder=act

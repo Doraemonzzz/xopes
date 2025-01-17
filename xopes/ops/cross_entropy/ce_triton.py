@@ -152,24 +152,24 @@ class CrossEntropyTriton(torch.autograd.Function):
 
 
 def cross_entropy_triton(
-    z: torch.Tensor,  # (b v)
-    y: torch.Tensor,  # (b)
+    z: torch.Tensor,
+    y: torch.Tensor,
     ignore_index: int = -100,
     reduction: str = "mean",
     label_smoothing: float = 0.0,
 ) -> torch.Tensor:
     """
-    Applies Cross Entropy loss using Triton.
+    Applies cross entropy loss using Triton.
 
     Args:
-        z: Input logits tensor
-        y: Target indices tensor
-        ignore_index: Specifies a target value that is ignored
-        reduction: Specifies the reduction to apply to the output
-        label_smoothing: Float in [0.0, 1.0]
+        z: Input logits tensor of shape (B, V)
+        y: Target indices tensor of shape (B)
+        ignore_index: Index to ignore in loss calculation
+        reduction: Reduction method
+        label_smoothing: Label smoothing factor
 
     Returns:
-        Loss tensor
+        Cross entropy loss tensor
     """
     assert reduction in ["mean", "sum", "none"], f"Unsupported reduction: {reduction}"
     return CrossEntropyTriton.apply(z, y, ignore_index, reduction, label_smoothing)

@@ -10,11 +10,11 @@ folder=lrpe/cosine/_1d
 # folder=flao/fal_non_causal
 # folder=multinomial
 
-##### normalize 241231
+# ##### normalize 241231
 # folder=normalize/srms_norm
 # folder=normalize/rms_norm
 # folder=normalize/group_norm
-folder=normalize/layer_norm
+# folder=normalize/layer_norm
 
 # ##### householder 250101
 # folder=householder
@@ -27,18 +27,18 @@ folder=normalize/layer_norm
 # # folder=linear_cross_entropy/hidden_dim
 # folder=linear_cross_entropy/batch_size
 
-# ##### cross_entropy 250105
-# folder=cross_entropy
+##### cross_entropy 250105
+folder=cross_entropy
 
 # ##### element_wise_binary_op 250106
 # folder=element_wise_binary_op
 
-##### out_product_linear_recurrence 250107
-folder=oplr/no_decay
-folder=oplr/ddd
+# ##### out_product_linear_recurrence 250107
+# folder=oplr/no_decay
+# folder=oplr/ddd
 
-##### lrpe 250115
-folder=lrpe/cosine/_1d
+# ##### lrpe 250115
+# folder=lrpe/cosine/_1d
 # folder=lrpe/rotate/_1d
 
 # ##### act 250116
