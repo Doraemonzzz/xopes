@@ -118,8 +118,14 @@ def _ce_fwd_reduce(
     zk = tl.load(zk_block_ptr).to(tl.float32)
 
     # compute global lse and sum
+    # Important!!! Check whether lse is all -inf
+    all_inf = tl.max(lse) == -float("inf")
     m = tl.max(lse)
-    lse = tl.log(tl.sum(tl.exp(lse - m))) + m
+    # If all -inf, set lse to 0
+    if all_inf:
+        lse_ = 0.0
+    else:
+        lse_ = tl.log(tl.sum(tl.exp(lse - m))) + m
 
     if USE_LABEL_SMOOTHING:
         s_block_ptr = S + offset_ls + tl.arange(0, BLOCK_G)
@@ -128,9 +134,9 @@ def _ce_fwd_reduce(
     else:
         s = 0.0
 
-    o = (-(1 - LABEL_SMOOTHING) * zk + lse - (LABEL_SMOOTHING / V) * s) / N
+    o = (-(1 - LABEL_SMOOTHING) * zk + lse_ - (LABEL_SMOOTHING / V) * s) / N
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty))
-    tl.store(lse_output_block_ptr, lse.to(lse_output_block_ptr.dtype.element_ty))
+    tl.store(lse_output_block_ptr, lse_.to(lse_output_block_ptr.dtype.element_ty))
 
 
 @triton.autotune(
@@ -181,6 +187,8 @@ def _ce_bwd(
     p = tl.exp(z - lse)
     c = -LABEL_SMOOTHING / V
     dz = tl.where(array == y, -1 + LABEL_SMOOTHING + p + c, p + c) * do / N
+    # When y is IGNORE_INDEX, set dz to 0
+    dz = tl.where(y == IGNORE_INDEX, 0.0, dz)
     tl.store(dz_block_ptr, dz.to(dz_block_ptr.dtype.element_ty), mask=mask)
 
 
@@ -191,7 +199,7 @@ class CrossEntropyParallelTriton(torch.autograd.Function):
         b, v = z.shape
 
         if reduction == "mean":
-            n = y.ne(ignore_index).sum().item()
+            n = max(y.ne(ignore_index).sum().item(), 1)  # avoid all IGNORE_INDEX
         else:
             n = 1
 

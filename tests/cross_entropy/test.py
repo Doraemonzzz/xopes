@@ -11,10 +11,6 @@ from xopes.utils import get_threshold
 
 def get_params():
     shapes = [(512, 2048), (1024, 4096), (512, 2000), (12288, 50257)]
-    # shapes = [(12288, 50257)]
-    # shapes = [(1, 50257)]
-    # shapes = [(1, 65536)]
-    # shapes = [(1, 128 * 1024)]
 
     return shapes
 
@@ -23,22 +19,22 @@ def get_params():
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
 @pytest.mark.parametrize("reduction", ["sum", "mean", "none"])
 @pytest.mark.parametrize("label_smoothing", [0.0, 0.1])
-
-# @pytest.mark.parametrize("dtype", [torch.bfloat16])
-# @pytest.mark.parametrize("reduction", ["none"])
-# @pytest.mark.parametrize("label_smoothing", [0.0, 0.1])
-def test(shape, dtype, reduction, label_smoothing, ignore_index=-100):
+@pytest.mark.parametrize("all_ignore", [True, False])
+def test(shape, dtype, reduction, label_smoothing, all_ignore, ignore_index=-100):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     b, v = shape
-    b_ignore = b // 2
 
     # Generate input tensors
     z = torch.randn((b, v), dtype=dtype, device=device).requires_grad_()
-    y_ignore = torch.full((b_ignore,), ignore_index, device=device)
-    y = torch.randint(0, v, (b - b_ignore,), device=device)
-    y = torch.cat([y_ignore, y], dim=0)
-    y = torch.randint(0, v, (b,), device=device)
+    if all_ignore:
+        y = torch.full((b,), ignore_index, device=device)
+        reduction = "none"  # baseline has some bug here
+    else:
+        b_ignore = b // 2
+        y_ignore = torch.full((b_ignore,), ignore_index, device=device)
+        y = torch.randint(0, v, (b - b_ignore,), device=device)
+        y = torch.cat([y_ignore, y], dim=0)
 
     # Forward
     o_ce_torch = cross_entropy_torch(
@@ -127,7 +123,6 @@ def test(shape, dtype, reduction, label_smoothing, ignore_index=-100):
         "dz diff norm (Vs parallel triton): ",
         torch.norm(dz_ce_torch - dz_ce_parallel_triton).item(),
     )
-
     assert torch.allclose(
         dz_ce_torch.to(dz_ce_parallel_triton.dtype),
         dz_ce_parallel_triton,
