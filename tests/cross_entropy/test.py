@@ -10,7 +10,11 @@ from xopes.utils import get_threshold
 
 
 def get_params():
-    shapes = [(512, 2048), (1024, 4096), (512, 2000)]
+    shapes = [(512, 2048), (1024, 4096), (512, 2000), (12288, 50257)]
+    # shapes = [(12288, 50257)]
+    # shapes = [(1, 50257)]
+    # shapes = [(1, 65536)]
+    # shapes = [(1, 128 * 1024)]
 
     return shapes
 
@@ -19,6 +23,10 @@ def get_params():
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
 @pytest.mark.parametrize("reduction", ["sum", "mean", "none"])
 @pytest.mark.parametrize("label_smoothing", [0.0, 0.1])
+
+# @pytest.mark.parametrize("dtype", [torch.bfloat16])
+# @pytest.mark.parametrize("reduction", ["none"])
+# @pytest.mark.parametrize("label_smoothing", [0.0, 0.1])
 def test(shape, dtype, reduction, label_smoothing, ignore_index=-100):
     torch.manual_seed(2024)
     device = torch.device("cuda")
@@ -34,7 +42,7 @@ def test(shape, dtype, reduction, label_smoothing, ignore_index=-100):
 
     # Forward
     o_ce_torch = cross_entropy_torch(
-        z,
+        z.float(),
         y,
         reduction=reduction,
         label_smoothing=label_smoothing,
@@ -109,8 +117,7 @@ def test(shape, dtype, reduction, label_smoothing, ignore_index=-100):
         "dz diff norm (Vs naive triton): ",
         torch.norm(dz_ce_torch - dz_ce_triton).item(),
     )
-    if dtype == torch.float32:
-        assert torch.allclose(dz_ce_torch, dz_ce_triton, atol=atol, rtol=rtol)
+    assert torch.allclose(dz_ce_torch, dz_ce_triton, atol=atol, rtol=rtol)
 
     print(
         "dz diff max (Vs parallel triton): ",
@@ -120,10 +127,10 @@ def test(shape, dtype, reduction, label_smoothing, ignore_index=-100):
         "dz diff norm (Vs parallel triton): ",
         torch.norm(dz_ce_torch - dz_ce_parallel_triton).item(),
     )
-    if dtype == torch.float32:
-        assert torch.allclose(
-            dz_ce_torch.to(dz_ce_parallel_triton.dtype),
-            dz_ce_parallel_triton,
-            atol=atol,
-            rtol=rtol,
-        )
+
+    assert torch.allclose(
+        dz_ce_torch.to(dz_ce_parallel_triton.dtype),
+        dz_ce_parallel_triton,
+        atol=atol,
+        rtol=rtol,
+    )

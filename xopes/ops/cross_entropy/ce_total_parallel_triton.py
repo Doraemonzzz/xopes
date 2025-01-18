@@ -8,6 +8,7 @@ from xopes.utils import contiguous, generate_configs
 @triton.autotune(
     generate_configs(
         {
+            # "num_warps": [1, 2, 4, 8, 16, 32],
             "num_warps": [4, 8, 16, 32],
         }
     ),
@@ -100,21 +101,18 @@ def _ce_fwd_reduce(
     B: tl.constexpr,
     V: tl.constexpr,
     G: tl.constexpr,
-    BLOCK_G: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     # compute offset
     offset_ls = off_b * G
     offset_zo = off_b
     # compute block ptr
-    lse_block_ptr = LSE + offset_ls + tl.arange(0, BLOCK_G)
+    lse_block_ptr = LSE + offset_ls + tl.arange(0, G)
     lse_output_block_ptr = LSE + offset_ls
     zk_block_ptr = ZK + offset_zo + tl.arange(0, 1)
     o_block_ptr = O + offset_zo + tl.arange(0, 1)
-    # mask
-    mask_g = tl.arange(0, BLOCK_G) < G
     # load
-    lse = tl.load(lse_block_ptr, mask=mask_g, other=-float("inf")).to(tl.float32)
+    lse = tl.load(lse_block_ptr).to(tl.float32)
     zk = tl.load(zk_block_ptr).to(tl.float32)
 
     # compute global lse and sum
@@ -122,8 +120,8 @@ def _ce_fwd_reduce(
     lse = tl.log(tl.sum(tl.exp(lse - m))) + m
 
     if USE_LABEL_SMOOTHING:
-        s_block_ptr = S + offset_ls + tl.arange(0, BLOCK_G)
-        s_ = tl.load(s_block_ptr, mask=mask_g, other=0.0).to(tl.float32)
+        s_block_ptr = S + offset_ls + tl.arange(0, G)
+        s_ = tl.load(s_block_ptr)
         s = tl.sum(s_)
     else:
         s = 0.0
@@ -136,8 +134,7 @@ def _ce_fwd_reduce(
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [4, 8, 16, 32],
-            "BLOCK_V": [1024, 2048, 4096, 8192, 16384, 32768, 65536],
+            "num_warps": [1, 2, 4, 8, 16, 32],
         }
     ),
     key=["B", "V"],
@@ -155,10 +152,9 @@ def _ce_bwd(
     N: tl.constexpr,
     B: tl.constexpr,
     V: tl.constexpr,
-    # G: tl.constexpr,
+    G: tl.constexpr,
     BLOCK_V: tl.constexpr,
 ):
-    tl.cdiv(V, BLOCK_V)
     off_b = tl.program_id(0)
     off_g = tl.program_id(1)
     # compute offset
@@ -196,10 +192,9 @@ class CrossEntropyParallelTriton(torch.autograd.Function):
             n = 1
 
         # TODO: tune the parameters
-        MAX_BLOCK_SIZE = 8192
-        BLOCK_V = min(triton.next_power_of_2(v), MAX_BLOCK_SIZE)
+        MAX_BLOCK_SIZE = 65536
+        BLOCK_V = 1024
         g = triton.cdiv(v, BLOCK_V)
-        BLOCK_G = triton.next_power_of_2(g)
         lse = torch.empty((b, g), dtype=torch.float32, device=z.device)
         zk = torch.empty((b), dtype=torch.float32, device=z.device)
         use_label_smoothing = label_smoothing > 0
@@ -237,7 +232,6 @@ class CrossEntropyParallelTriton(torch.autograd.Function):
             B=b,
             V=v,
             G=g,
-            BLOCK_G=BLOCK_G,
         )
 
         # Important!!! Should use contiguous() to save the tensor
@@ -262,14 +256,16 @@ class CrossEntropyParallelTriton(torch.autograd.Function):
         ctx.reduction
         label_smoothing = ctx.label_smoothing
         n = ctx.n
+        MAX_BLOCK_SIZE = ctx.MAX_BLOCK_SIZE
 
         b, v = z.shape
+        BLOCK_V = min(triton.next_power_of_2(v), MAX_BLOCK_SIZE)
+        g = triton.cdiv(v, BLOCK_V)
 
         # init
         use_label_smoothing = label_smoothing > 0
 
-        def grid(meta):
-            return (b, triton.cdiv(v, meta["BLOCK_V"]))
+        grid = (b, g)
 
         _ce_bwd[grid](
             Z=z,
@@ -283,12 +279,14 @@ class CrossEntropyParallelTriton(torch.autograd.Function):
             N=n,
             B=b,
             V=v,
+            G=g,
+            BLOCK_V=BLOCK_V,
         )
 
         return z, None, None, None, None
 
 
-def cross_entropy_parallel_triton(
+def cross_entropy_total_parallel_triton(
     z: torch.Tensor,
     y: torch.Tensor,
     ignore_index: int = -100,

@@ -11,7 +11,7 @@ MAX_BLOCK_SIZE = 64 * 1024
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [1, 2, 4, 8, 16, 32],
+            "num_warps": [4, 8, 16, 32],
         }
     ),
     key=["B", "V"],
@@ -58,7 +58,7 @@ def _ce_fwd(
             dz_block_ptr += BLOCK_V
             array += BLOCK_V
     else:
-        zk = tl.load(zy_block_ptr + y + tl.arange(0, 1))
+        zk = tl.load(zy_block_ptr + y + tl.arange(0, 1)).to(tl.float32)
         # initialize
         m = tl.full([1], -float("inf"), dtype=tl.float32)
         sse = tl.full([1], 0, dtype=tl.float32)
@@ -66,7 +66,7 @@ def _ce_fwd(
 
         for i in range(NUM_BLOCKS):
             mask = array < V
-            z = tl.load(z_block_ptr, mask=mask, other=-float("inf"))
+            z = tl.load(z_block_ptr, mask=mask, other=-float("inf")).to(tl.float32)
             mi = tl.max(z)
             m_ = tl.maximum(m, mi)
             sse = tl.exp(m - m_) * sse + tl.sum(tl.exp(z - m_))
