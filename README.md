@@ -19,7 +19,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - lcse
 - ce
   - [x] 250107
-  - [ ] fix bug
+  - [x] 250119 fix nan bug
 - ewbo;
   - [x] 250107
 - logsumexp
