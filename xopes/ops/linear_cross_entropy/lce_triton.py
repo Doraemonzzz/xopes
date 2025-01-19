@@ -196,6 +196,7 @@ def _ce_bwd(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
+            "BLOCK": [1024, 2048, 4096, 8192, 16384, 32768, 65536],
         }
     ),
     key=["B"],
@@ -206,28 +207,35 @@ def _ewbo_mul_fwd(
     Y,  # ()
     O,  # (B)
     B: tl.constexpr,
-    # BLOCK: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    off_b = tl.program_id(0)
-    offset_xo = off_b
+    off_b = tl.program_id(0).to(tl.int64)  # avoid overflow
+
+    # compute offset
+    offset_b = off_b * BLOCK
+    array = tl.arange(0, BLOCK)
+    offset_xo = offset_b
+    mask = (offset_b + array) < B
 
     # compute block ptr
-    x_block_ptr = X + offset_xo
+    x_block_ptr = X + offset_xo + array
     y_block_ptr = Y
-    o_block_ptr = O + offset_xo
+    o_block_ptr = O + offset_xo + array
 
     # Load data
     y = tl.load(y_block_ptr).to(tl.float32)
-    x = tl.load(x_block_ptr).to(tl.float32)
+    x = tl.load(x_block_ptr, mask=mask, other=0).to(tl.float32)
     o = x * y
 
     # Store result
-    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty))
+    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
 
 
 def ewbo_mul_fwd(x, y):
     b = x.numel()
-    grid = (b,)
+
+    def grid(meta):
+        return (triton.cdiv(b, meta["BLOCK"]),)
 
     _ewbo_mul_fwd[grid](X=x, Y=y, O=x, B=b)
 
@@ -250,20 +258,22 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
 
         # Allocate output
         o = torch.empty((b,), dtype=torch.float32, device=x.device)
-        dx = torch.empty((b, d), dtype=torch.float32, device=x.device)
+        # dx = torch.empty((b, d), dtype=torch.float32, device=x.device)
+        dx = torch.empty_like(x)
         dw = torch.zeros((v, d), dtype=torch.float32, device=x.device)
         if bias is not None:
             db = torch.zeros((v,), dtype=torch.float32, device=x.device)
         else:
             db = None
 
+        # Use at most B D memory size, so we should set NUM_CHUNKS to V / D
         if d < v:
+            num_chunks = 1
             chunk_size = b
         else:
-            chunk_size = 1024
-
-        num_chunks = (b + chunk_size - 1) // chunk_size
-        print("aaa", num_chunks, b, chunk_size)
+            num_chunks = min(8, triton.cdiv(v, d))
+            chunk_size = triton.next_power_of_2(triton.cdiv(b, num_chunks))
+            num_chunks = triton.cdiv(b, chunk_size)
 
         for i in range(num_chunks):
             start = i * chunk_size
@@ -275,7 +285,7 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
             oi = o[start:end]  # c
 
             ##### start compute loss and gradients #####
-            b, v = zi.shape
+            c, v = zi.shape
 
             if reduction == "mean":
                 n = max(yi.ne(ignore_index).sum().item(), 1)  # avoid all IGNORE_INDEX
@@ -287,15 +297,15 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
             BLOCK_V = min(triton.next_power_of_2(v), MAX_BLOCK_SIZE)
             g = triton.cdiv(v, BLOCK_V)
             BLOCK_G = triton.next_power_of_2(g)
-            lse = torch.empty((b, g), dtype=torch.float32, device=zi.device)
-            zk = torch.empty((b), dtype=torch.float32, device=zi.device)
+            lse = torch.empty((c, g), dtype=torch.float32, device=zi.device)
+            zk = torch.empty((c), dtype=torch.float32, device=zi.device)
             use_label_smoothing = label_smoothing > 0
             if use_label_smoothing:
-                s = torch.empty((b, g), dtype=torch.float32, device=zi.device)
+                s = torch.empty((c, g), dtype=torch.float32, device=zi.device)
             else:
                 s = None
 
-            grid = (b, g)
+            grid = (c, g)
 
             _ce_fwd_parallel[grid](
                 Z=zi,
@@ -306,13 +316,13 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
                 IGNORE_INDEX=ignore_index,
                 LABEL_SMOOTHING=label_smoothing,
                 USE_LABEL_SMOOTHING=use_label_smoothing,
-                B=b,
+                B=c,
                 V=v,
                 G=g,
                 BLOCK_V=BLOCK_V,
             )
 
-            grid = (b,)
+            grid = (c,)
             _ce_fwd_reduce[grid](
                 O=oi,
                 ZK=zk,
@@ -321,7 +331,7 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
                 LABEL_SMOOTHING=label_smoothing,
                 USE_LABEL_SMOOTHING=use_label_smoothing,
                 N=n,
-                B=b,
+                B=c,
                 V=v,
                 G=g,
                 BLOCK_G=BLOCK_G,
@@ -330,7 +340,7 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
             lse = lse[:, 0].contiguous()
 
             def grid(meta):
-                return (b, triton.cdiv(v, meta["BLOCK_V"]))
+                return (c, triton.cdiv(v, meta["BLOCK_V"]))
 
             _ce_bwd[grid](
                 Z=zi,
@@ -341,13 +351,14 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
                 LABEL_SMOOTHING=label_smoothing,
                 USE_LABEL_SMOOTHING=use_label_smoothing,
                 N=n,
-                B=b,
+                B=c,
                 V=v,
             )
             ##### end compute loss and gradients #####
 
             dx[start:end] = F.linear(zi, w.T)
-            dw += F.linear(zi.T, xi.T)
+            # dw += F.linear(zi.T, xi.T)
+            dw += zi.T @ xi
             if bias is not None:
                 db += zi.sum(dim=0)
 
@@ -357,7 +368,7 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
         ctx.save_for_backward(
             dx.to(x.dtype),
             dw.to(w.dtype),
-            db.to(bias.dtype),
+            db.to(bias.dtype) if bias is not None else db,
         )
 
         return o
@@ -367,6 +378,10 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
     def backward(ctx, do):
         dx, dw, db = ctx.saved_tensors
         if torch.ne(do, torch.tensor(1.0, device=do.device)):
+            # dx = dx * do
+            # dw = dw * do
+            # if db is not None:
+            #     db = db * do
             ewbo_mul_fwd(dx, do)
             ewbo_mul_fwd(dw, do)
             if db is not None:

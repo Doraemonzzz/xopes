@@ -19,12 +19,6 @@ def get_params():
 )  # with fp16, naive implement maybe nan
 @pytest.mark.parametrize("reduction", ["sum", "mean"])
 @pytest.mark.parametrize("label_smoothing", [0.0, 0.1])
-
-# @pytest.mark.parametrize(
-#     "dtype", [torch.bfloat16]
-# )  # with fp16, naive implement maybe nan
-# @pytest.mark.parametrize("reduction", ["mean"])
-# @pytest.mark.parametrize("label_smoothing", [0.0, 0.1])
 def test(shape, dtype, reduction, label_smoothing, ignore_index=-100):
     torch.manual_seed(2024)
     device = torch.device("cuda")
