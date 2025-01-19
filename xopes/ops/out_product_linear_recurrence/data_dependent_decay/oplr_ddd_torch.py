@@ -4,19 +4,20 @@ import torch
 
 
 def oplr_ddd_torch(
-    xk: torch.Tensor,  # b n d
-    xv: torch.Tensor,  # b n e
-    log_decay: Optional[torch.Tensor],  # b n d
+    xk: torch.Tensor,
+    xv: torch.Tensor,
+    log_decay: Optional[torch.Tensor],
 ) -> torch.Tensor:
     """
     Applies Out Product Linear Recurrence with data-dependent decay.
 
     Args:
-        xv: Input tensor
-        xk: Expansion vector
+        xv: Input tensor of shape (B, N, E)
+        xk: Expansion vector of shape (B, N, D)
+        log_decay: Data-dependent decay of shape (B, N, D)
 
     Returns:
-        Output tensor
+        Output tensor of shape (B, N, D, E)
     """
     dtype = xk.dtype
     xk = xk.float()

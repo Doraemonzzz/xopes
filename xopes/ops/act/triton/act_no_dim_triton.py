@@ -147,9 +147,6 @@ def act_no_dim_bwd_triton(x, do, act="none"):
 
     dx = torch.empty_like(x)
 
-    # def grid(meta):
-    #     return (n, triton.cdiv(d, meta["BLOCK"]))
-
     BLOCK = next_power_of_two(d)
     grid = (n,)
     _act_no_dim_bwd_triton[grid](

@@ -232,11 +232,11 @@ def householder_triton(
     Applies Householder transformation using Triton.
 
     Args:
-        x: Input tensor
-        y: Direction vector
+        x: Input tensor of shape (..., D)
+        y: Direction vector of shape (..., D)
 
     Returns:
-        Transformed tensor
+        Transformed tensor of shape (..., D)
     """
     return HouseholderTriton.apply(x, y, eps)
 

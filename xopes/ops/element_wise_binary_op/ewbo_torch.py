@@ -8,12 +8,12 @@ def ewbo_torch(x: torch.Tensor, y: torch.Tensor, op="add") -> torch.Tensor:
     Element-wise binary operation.
 
     Args:
-        x: Input tensor, (n1, ... , nk, n(k+1), ... , n(k+m), m >= 0)
-        y: Input tensor, (n1, ... , nk)
-        op: Binary operation to apply
+        x: Input tensor of shape (..., N1, ... , Nk, N(k+1), ... , N(k+m), m >= 0)
+        y: Input tensor of shape (..., N1, ... , Nk)
+        op: Binary operation to apply ("add", "mul", "sub", "div")
 
     Returns:
-        Result of the binary operation
+        Result of the binary operation of shape (..., N1, ... , Nk, N(k+1), ... , N(k+m), m >= 0)
     """
     is_op_valid(op)
     x_shape = x.shape

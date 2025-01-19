@@ -4,6 +4,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 # Plan
 - Update b h d -> B H D
+  - [x] 250119
 - act
   - [x] 250116
 - lrpe-cosine

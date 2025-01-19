@@ -285,12 +285,12 @@ def oplr_ddd_triton(
     Applies Out Product Linear Recurrence with data-dependent decay using Triton.
 
     Args:
-        xk: Input tensor (B, N, D)
-        xv: Expansion vector (B, N, E)
-        log_decay: Optional decay tensor (B, N, D)
+        xk: Expansion vector of shape (B, N, D)
+        xv: Input tensor of shape (B, N, E)
+        log_decay: Optional decay tensor of shape (B, N, D)
 
     Returns:
-        Output tensor (B, N, D, E)
+        Output tensor of shape (B, N, D, E)
     """
     return OplrDddTriton.apply(xk, xv, log_decay)
 

@@ -2,18 +2,18 @@ import torch
 
 
 def oplr_no_decay_torch(
-    xk: torch.Tensor,  # b n d
-    xv: torch.Tensor,  # b n e
+    xk: torch.Tensor,
+    xv: torch.Tensor,
 ) -> torch.Tensor:
     """
     Applies Out Product Linear Recurrence without decay.
 
     Args:
-        xk: Expansion vector
-        xv: Input tensor
+        xk: Expansion vector, (B, N, D)
+        xv: Input tensor, (B, N, E)
 
     Returns:
-        Output tensor
+        Output tensor, (B, N, D, E)
     """
     b, n, d = xk.shape
     xv.shape[-1]

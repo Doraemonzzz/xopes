@@ -255,13 +255,13 @@ def ewbo_triton_fwd_fn(x, y, op="add", inplace=False):
     Element-wise binary operation using Triton.
 
     Args:
-        x: Input tensor, (n1, ... , nk, n(k+1), ... , n(k+m), m >= 0)
-        y: Input tensor, (n1, ... , nk)
+        x: Input tensor of shape (..., N1, ... , Nk, N(k+1), ... , N(k+m), m >= 0)
+        y: Input tensor of shape (..., N1, ... , Nk)
         op: Binary operation to apply ("add", "mul", "sub", "div")
         inplace: Whether to perform the operation in place, if inplace is True, the output pointer will be the same as the input x
 
     Returns:
-        Result of the binary operation
+        Result of the binary operation of shape (..., N1, ... , Nk, N(k+1), ... , N(k+m), m >= 0)
     """
     return ewbo_triton_fwd(x, y, op, inplace)
 

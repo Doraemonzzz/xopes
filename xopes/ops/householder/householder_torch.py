@@ -8,11 +8,11 @@ def householder_torch(
     Applies Householder transformation using PyTorch.
 
     Args:
-        x: Input tensor
-        y: Direction vector
+        x: Input tensor of shape (..., D)
+        y: Direction vector of shape (..., D)
 
     Returns:
-        Transformed tensor
+        Transformed tensor of shape (..., D)
     """
     dtype = x.dtype
     x = x.float()
@@ -21,11 +21,5 @@ def householder_torch(
     y_ = y / sigma
     c = (x * y_).mean(dim=-1, keepdim=True)
     o = x - 2 * c * y_
-
-    # sigma = torch.sqrt(torch.sum(y * y, dim=-1, keepdim=True) + eps)
-    # y_ = y / sigma
-    # # y_ = F.normalize(y, dim=-1)
-    # c = (x * y_).sum(dim=-1, keepdim=True)
-    # o = x - 2 * c * y_
 
     return o.to(dtype)

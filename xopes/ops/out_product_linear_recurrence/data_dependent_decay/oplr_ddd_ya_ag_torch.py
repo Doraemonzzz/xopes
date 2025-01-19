@@ -94,12 +94,12 @@ def oplr_ddd_ya_ag_torch(
     Applies Out Product Linear Recurrence with data-dependent decay using Yet Another AutoGrad PyTorch.
 
     Args:
-        xk: Input tensor (B, N, D)
-        xv: Expansion vector (B, N, E)
-        log_decay: Optional decay tensor (B, N, D)
+        xk: Expansion vector of shape (B, N, D)
+        xv: Input tensor of shape (B, N, E)
+        log_decay: Optional decay tensor of shape (B, N, D)
 
     Returns:
-        Output tensor (B, N, D, E)
+        Output tensor of shape (B, N, D, E)
     """
     return OplrDddYaAgTorch.apply(xk, xv, log_decay)
 
