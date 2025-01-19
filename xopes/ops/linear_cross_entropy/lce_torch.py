@@ -5,15 +5,16 @@ import torch.nn.functional as F
 
 
 def linear_cross_entropy_torch(
-    x: torch.Tensor,  # (b d)
-    y: torch.Tensor,  # (b)
-    W: torch.Tensor,  # (v d)
+    x: torch.Tensor,
+    y: torch.Tensor,
+    W: torch.Tensor,
+    bias: Optional[torch.Tensor] = None,
     weight: Optional[torch.Tensor] = None,
     ignore_index: int = -100,
     reduction: str = "mean",
     label_smoothing: float = 0.0,
 ) -> torch.Tensor:
-    logits = torch.matmul(x, W.T)
+    logits = F.linear(x, W, bias)
     return F.cross_entropy(
         input=logits,
         target=y,

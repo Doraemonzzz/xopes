@@ -52,6 +52,9 @@ folder=linear_cross_entropy
 # ##### act 250116
 # folder=act
 
+##### lce 250119
+folder=linear_cross_entropy
+
 mkdir -p $folder/log
 
 
