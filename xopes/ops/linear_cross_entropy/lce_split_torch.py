@@ -143,9 +143,9 @@ class LinearCrossEntropySplitFunction(torch.autograd.Function):
 
 
 def linear_cross_entropy_split_torch(
-    x: torch.Tensor,  # (b d)
-    y: torch.Tensor,  # (b)
-    W: torch.Tensor,  # (v d)
+    x: torch.Tensor,
+    y: torch.Tensor,
+    W: torch.Tensor,
     weight: Optional[torch.Tensor] = None,
     ignore_index: int = -100,
     reduction: str = "mean",
@@ -156,12 +156,12 @@ def linear_cross_entropy_split_torch(
     Split version of linear cross entropy using custom autograd function.
 
     Args:
-        x: Input tensor of shape (b, d)
-        y: Target tensor of shape (b,)
-        W: Weight matrix of shape (v, d)
-        weight: Optional weight tensor for class weights
-        ignore_index: Target value to be ignored
-        reduction: Reduction method ('none', 'mean', 'sum')
+        x: Input tensor of shape (B, D)
+        y: Target indices of shape (B)
+        W: Weight matrix of shape (V, D)
+        weight: Optional weight tensor for class weights of shape (V)
+        ignore_index: Target indices to ignore
+        reduction: Reduction method ("mean", "sum")
         label_smoothing: Label smoothing factor
         chunk_size: Maximum chunk size for splitting the computation
 

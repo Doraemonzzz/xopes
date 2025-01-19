@@ -34,7 +34,7 @@ ewbo-speed-bwd-add-batch64-bf16:
 7  32768.0  5.509270  5.987920  5.961280
 ```
 
-### Backward
+### Memory
 
 ```
 ewbo-memory-fwd-add-batch64-bf16:

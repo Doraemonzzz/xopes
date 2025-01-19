@@ -30,13 +30,13 @@ folder=householder
 # ##### logsumexp 250103
 # folder=logsumexp
 
-# ##### linear_cross_entropy 250105
-# folder=linear_cross_entropy
+##### linear_cross_entropy 250105
+folder=linear_cross_entropy
 
-##### cross_entropy 250106
-folder=cross_entropy
+# ##### cross_entropy 250106
+# folder=cross_entropy
 
-##### element_wise_binary_op 250106
+# ##### element_wise_binary_op 250106
 # folder=element_wise_binary_op
 # folder=element_wise_binary_op/fn
 
