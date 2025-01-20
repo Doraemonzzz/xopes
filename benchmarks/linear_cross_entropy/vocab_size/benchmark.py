@@ -39,8 +39,9 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["v"],
-        x_vals=[2**i for i in range(10, 18)],
+        # x_vals=[2**i for i in range(10, 18)],
         # x_vals=[2**i for i in range(10, 12)],
+        x_vals=[2**i for i in range(17, 18)],
         xlabel="Vocab Size",
         ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory Usage(MB)",
         line_arg="provider",

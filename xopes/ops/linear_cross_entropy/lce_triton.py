@@ -231,6 +231,45 @@ def _ewbo_mul_fwd(
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
 
 
+@triton.autotune(
+    generate_configs(
+        {
+            "num_warps": [4, 8, 16, 32],
+            "BLOCK": [1024, 2048, 4096, 8192, 16384, 32768, 65536],
+        }
+    ),
+    key=["B"],
+)
+@triton.jit
+def _ewbo_add_fwd(
+    X,  # (B)
+    Y,  # (B)
+    O,  # (B)
+    B: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    off_b = tl.program_id(0).to(tl.int64)  # avoid overflow
+
+    # compute offset
+    offset_b = off_b * BLOCK
+    array = tl.arange(0, BLOCK)
+    offset = offset_b
+    mask = (offset_b + array) < B
+
+    # compute block ptr
+    x_block_ptr = X + offset + array
+    y_block_ptr = Y + offset + array
+    o_block_ptr = O + offset + array
+
+    # Load data
+    x = tl.load(x_block_ptr, mask=mask, other=0).to(tl.float32)
+    y = tl.load(y_block_ptr, mask=mask, other=0).to(tl.float32)
+    o = x + y
+
+    # Store result
+    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
+
+
 def ewbo_mul_fwd(x, y):
     b = x.numel()
 
@@ -238,6 +277,15 @@ def ewbo_mul_fwd(x, y):
         return (triton.cdiv(b, meta["BLOCK"]),)
 
     _ewbo_mul_fwd[grid](X=x, Y=y, O=x, B=b)
+
+
+def ewbo_add_fwd(x, y):
+    b = x.numel()
+
+    def grid(meta):
+        return (triton.cdiv(b, meta["BLOCK"]),)
+
+    _ewbo_add_fwd[grid](X=x, Y=y, O=x, B=b)
 
 
 class LinearCrossEntropyTriton(torch.autograd.Function):
@@ -259,7 +307,8 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
         # Allocate output
         o = torch.empty((b,), dtype=torch.float32, device=x.device)
         dx = torch.empty_like(x)
-        dw = torch.zeros((v, d), dtype=torch.float32, device=x.device)
+        # dw = torch.zeros((v, d), dtype=torch.float32, device=x.device)
+        dw = torch.zeros((v, d), dtype=x.dtype, device=x.device)
         if bias is not None:
             db = torch.zeros((v,), dtype=torch.float32, device=x.device)
         else:
@@ -269,6 +318,11 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
         num_chunks = min(8, triton.cdiv(v, d))
         chunk_size = triton.next_power_of_2(triton.cdiv(b, num_chunks))
         num_chunks = triton.cdiv(b, chunk_size)
+
+        if reduction == "mean":
+            n = max(y.ne(ignore_index).sum().item(), 1)  # avoid all IGNORE_INDEX
+        else:
+            n = 1
 
         for i in range(num_chunks):
             start = i * chunk_size
@@ -281,11 +335,6 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
 
             ##### start compute loss and gradients #####
             c, v = zi.shape
-
-            if reduction == "mean":
-                n = max(yi.ne(ignore_index).sum().item(), 1)  # avoid all IGNORE_INDEX
-            else:
-                n = 1
 
             # TODO: tune the parameters
             # MAX_BLOCK_SIZE = 8192
@@ -353,7 +402,7 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
             ##### end compute loss and gradients #####
 
             dx[start:end] = F.linear(zi, w.T)
-            dw += zi.T @ xi
+            ewbo_add_fwd(dw, zi.T @ xi)
             if bias is not None:
                 db += zi.sum(dim=0)
 
