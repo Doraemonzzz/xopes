@@ -24,8 +24,8 @@ folder=lrpe/cosine/_1d
 
 ##### linear_cross_entropy 250104
 folder=linear_cross_entropy/vocab_size
-# # folder=linear_cross_entropy/hidden_dim
-# folder=linear_cross_entropy/batch_size
+folder=linear_cross_entropy/hidden_dim
+folder=linear_cross_entropy/batch_size
 
 # ##### cross_entropy 250105
 # folder=cross_entropy
@@ -46,4 +46,5 @@ folder=linear_cross_entropy/vocab_size
 
 mkdir -p $folder/log
 
-CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
+# CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
+CUDA_VISIBLE_DEVICES=0 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log

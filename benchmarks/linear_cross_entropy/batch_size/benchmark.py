@@ -5,14 +5,15 @@ import torch
 import triton
 
 from xopes.ops.linear_cross_entropy import (
-    linear_cross_entropy_split_torch,
     linear_cross_entropy_torch,
+    linear_cross_entropy_triton,
 )
 from xopes.ops.linear_cross_entropy.baseline import (
     linear_cross_entropy_cut_wrapper,
     linear_cross_entropy_fla_wrapper,
     linear_cross_entropy_jg_wrapper,
     linear_cross_entropy_liger_wrapper,
+    linear_cross_entropy_xopes_wrapper,
 )
 from xopes.utils import get_memory
 
@@ -29,17 +30,17 @@ module_map = {
     "triton_cut": linear_cross_entropy_cut_wrapper,
     "triton_liger": linear_cross_entropy_liger_wrapper,
     "triton_fla": linear_cross_entropy_fla_wrapper,
+    "triton": linear_cross_entropy_triton,
+    "triton_linear_ce": linear_cross_entropy_xopes_wrapper,
     "torch": linear_cross_entropy_torch,
     "torch_compile": torch.compile(linear_cross_entropy_torch),
-    "torch_split": linear_cross_entropy_split_torch,
-    "torch_split_compile": torch.compile(linear_cross_entropy_split_torch),
 }
 
 configs = [
     triton.testing.Benchmark(
         x_names=["b"],
-        x_vals=[2**i for i in range(9, 16)],
-        xlabel="Batch Size",
+        x_vals=[2**i for i in range(9, 15)],
+        xlabel="Vocab Size",
         ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory Usage(MB)",
         line_arg="provider",
         line_vals=[
@@ -47,12 +48,21 @@ configs = [
             "triton_cut",
             "triton_liger",
             "triton_fla",
+            "triton",
+            "triton_linear_ce",
             "torch",
             "torch_compile",
-            "torch_split",  # too slow
-            "torch_split_compile",  # too slow
         ],
-        line_names=["tr_jg", "tr_cut", "tr_liger", "tr_fla", "to", "toc", "ts", "tsc"],
+        line_names=[
+            "tr_jg",
+            "tr_cut",
+            "tr_liger",
+            "tr_fla",
+            "tr",
+            "tr_lce",
+            "to",
+            "toc",
+        ],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -61,7 +71,7 @@ configs = [
             ("purple", "-"),
             ("yellow", "-"),
             ("pink", "-"),
-            ("brown", "-"),
+            ("black", "-"),
         ],
         plot_name=f"lce-{bench_type}-{mode}-dim{d}-v{v}-{dtype_name}",
         args={
@@ -77,7 +87,7 @@ configs = [
     for mode in ["fwd+bwd"]
     for dtype_name in ["bf16"]
     for d in [4096]
-    for v in [65536]
+    for v in [131072]
 ]
 
 
@@ -93,27 +103,41 @@ def benchmark(
     bench_type,
 ):
     torch.manual_seed(2024)
-    assert mode in ["fwd+bwd"]
+    torch.cuda.empty_cache()
+    assert mode in ["fwd", "bwd", "fwd+bwd"]
     warmup = 25
     rep = 100 if bench_type == "speed" else 20
 
     x = torch.randn((b, d), dtype=dtype, device=device).requires_grad_()
     y = torch.randint(0, v, (b,), device=device)
-    A = torch.randn((v, d), dtype=dtype, device=device).requires_grad_()
+    W = torch.randn((v, d), dtype=dtype, device=device).requires_grad_()
     do = torch.randn((), dtype=dtype, device=device)
 
     module = module_map[provider]
 
-    # Define benchmark function
     try:
-
-        def fn():
-            o = module(x, y, A)
-            return o.backward(do, retain_graph=True)
-
+        fn = lambda: module(x, y, W)
     except Exception as e:
         print(f"Error setting up {provider}: {e}")
         fn = None
+
+    if mode == "bwd":
+        try:
+            o = fn()
+            fn = lambda: o.backward(do, retain_graph=True)
+        except Exception as e:
+            print(f"Error setting up {provider}: {e}")
+            fn = None
+    elif mode == "fwd+bwd":
+        try:
+
+            def fn():
+                o = module(x, y, W)
+                return o.backward(do, retain_graph=True)
+
+        except Exception as e:
+            print(f"Error setting up {provider}: {e}")
+            fn = None
 
     # Run benchmark
     if bench_type == "speed":
