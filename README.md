@@ -17,6 +17,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - oplr
   - [x] 250113 sequential doc/kernel
 - lce
+  - [x] 250120
+  - [ ] clear kernel
 - lcse
 - ce
   - [x] 250107
