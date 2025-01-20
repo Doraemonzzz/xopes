@@ -44,40 +44,51 @@ configs = [
         xlabel="Vocab Size",
         ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory Usage(MB)",
         line_arg="provider",
-        # line_vals=[
-        #     "triton_jg",
-        #     "triton_cut",
-        #     "triton_liger",
-        #     "triton_fla",
-        #     "triton",
-        #     "torch",
-        #     "torch_compile",
-        # ],
-        # line_names=["tr_jg", "tr_cut", "tr_liger", "tr_fla", "tr", "to", "toc"],
-        # styles=[
-        #     ("red", "-"),
-        #     ("orange", "-"),
-        #     ("green", "-"),
-        #     ("blue", "-"),
-        #     ("purple", "-"),
-        #     ("yellow", "-"),
-        #     ("pink", "-"),
-        # ],
         line_vals=[
+            "triton_jg",
+            "triton_cut",
+            "triton_liger",
             "triton_fla",
             "triton",
             "triton_linear_ce",
             "torch",
             "torch_compile",
         ],
-        line_names=["tr_fla", "tr", "tr_lce", "to", "toc"],
+        line_names=[
+            "tr_jg",
+            "tr_cut",
+            "tr_liger",
+            "tr_fla",
+            "tr",
+            "tr_lce",
+            "to",
+            "toc",
+        ],
         styles=[
+            ("red", "-"),
+            ("orange", "-"),
+            ("green", "-"),
             ("blue", "-"),
             ("purple", "-"),
             ("yellow", "-"),
             ("pink", "-"),
-            ("red", "-"),
+            ("black", "-"),
         ],
+        # line_vals=[
+        #     "triton_fla",
+        #     "triton",
+        #     "triton_linear_ce",
+        #     "torch",
+        #     "torch_compile",
+        # ],
+        # line_names=["tr_fla", "tr", "tr_lce", "to", "toc"],
+        # styles=[
+        #     ("blue", "-"),
+        #     ("purple", "-"),
+        #     ("yellow", "-"),
+        #     ("pink", "-"),
+        #     ("red", "-"),
+        # ],
         plot_name=f"lce-{bench_type}-{mode}-batch{b}-dim{d}-{dtype_name}",
         args={
             "b": b,
@@ -91,6 +102,7 @@ configs = [
     for bench_type in ["speed", "memory"]
     # for bench_type in ["memory"]
     for mode in ["fwd+bwd"]
+    # for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
     for b in [12288]
     for d in [4096]

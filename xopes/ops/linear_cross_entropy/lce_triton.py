@@ -258,7 +258,6 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
 
         # Allocate output
         o = torch.empty((b,), dtype=torch.float32, device=x.device)
-        # dx = torch.empty((b, d), dtype=torch.float32, device=x.device)
         dx = torch.empty_like(x)
         dw = torch.zeros((v, d), dtype=torch.float32, device=x.device)
         if bias is not None:
@@ -267,13 +266,9 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
             db = None
 
         # Use at most B D memory size, so we should set NUM_CHUNKS to V / D
-        if d < v:
-            num_chunks = 1
-            chunk_size = b
-        else:
-            num_chunks = min(8, triton.cdiv(v, d))
-            chunk_size = triton.next_power_of_2(triton.cdiv(b, num_chunks))
-            num_chunks = triton.cdiv(b, chunk_size)
+        num_chunks = min(8, triton.cdiv(v, d))
+        chunk_size = triton.next_power_of_2(triton.cdiv(b, num_chunks))
+        num_chunks = triton.cdiv(b, chunk_size)
 
         for i in range(num_chunks):
             start = i * chunk_size
@@ -357,10 +352,11 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
             ##### end compute loss and gradients #####
 
             dx[start:end] = F.linear(zi, w.T)
-            # dw += F.linear(zi.T, xi.T)
             dw += zi.T @ xi
             if bias is not None:
                 db += zi.sum(dim=0)
+
+            del lse, zk, s, zi, yi, oi
 
         if reduction in ["mean", "sum"]:
             o = o.sum()
@@ -378,10 +374,6 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
     def backward(ctx, do):
         dx, dw, db = ctx.saved_tensors
         if torch.ne(do, torch.tensor(1.0, device=do.device)):
-            # dx = dx * do
-            # dw = dw * do
-            # if db is not None:
-            #     db = db * do
             ewbo_mul_fwd(dx, do)
             ewbo_mul_fwd(dw, do)
             if db is not None:
