@@ -288,7 +288,8 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
                 n = 1
 
             # TODO: tune the parameters
-            MAX_BLOCK_SIZE = 8192
+            # MAX_BLOCK_SIZE = 8192
+            MAX_BLOCK_SIZE = 65536
             BLOCK_V = min(triton.next_power_of_2(v), MAX_BLOCK_SIZE)
             g = triton.cdiv(v, BLOCK_V)
             BLOCK_G = triton.next_power_of_2(g)
