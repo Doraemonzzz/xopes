@@ -209,7 +209,12 @@ $$
 c &=n/k,  \\
 [\mathbf X_i]_j&= x_{(i-1)c+j}, j=1,\ldots, c, \\
 \mathbf X &\in \{\mathbf Q, \mathbf K, \mathbf V, \mathbf O,\mathbf \Gamma, \mathbf \Lambda \}, \\
-\mathbf S_i &= \mathbf s_{ic}, i=0, \ldots, n/c.
+\mathbf S_i &= \mathbf s_{ic}, i=0, \ldots, n/c, \\
+[\mathbf M]_{ij}&=
+\begin{cases}
+1, & \text{if }  i \ge  j \\
+0, & \text{if }  i < j
+\end{cases}.
 \end{aligned}
 $$
 注意到：
@@ -293,20 +298,20 @@ $$
 \left( \sum_{j=ic+1}^{ic+s}
  (\mathbf k_j / \Gamma_{i,j-ic}) (\mathbf v_j /\Delta_{i,j-ic}) ^\top \right) \right] \odot \Delta_{i,s} \\
 
-&= \left[\left[\left[
+&= \left[ \left(\left[\left[
 \mathbf Q_i \odot \Gamma_i
-\right]  \left[\mathbf K_i / \Gamma_i \right]^\top \odot \mathbf M\right] / \Delta_i \right]_s
+\right]  \left[\mathbf K_i / \Gamma_i \right]^\top \odot \mathbf M\right] [\mathbf V_i/ \Delta_i] \right) \odot \Delta_i \right]_s.
 \end{aligned}
 $$
 因此写成矩阵形式即为：
 $$
 \mathbf O_i=\left[\left[\left[
 \mathbf Q_i \odot \Gamma_i
-\right] \mathbf S_i \right] \odot \Delta_i \right] + \left[\left[\left[
+\right] \mathbf S_i \right] \odot \Delta_i \right] +\left[ \left(\left[\left[
 \mathbf Q_i \odot \Gamma_i
-\right]  \left[\mathbf K_i / \Gamma_i \right]^\top \odot \mathbf M\right] / \Delta_i \right].
+\right]  \left[\mathbf K_i / \Gamma_i \right]^\top \odot \mathbf M\right] [\mathbf V_i/ \Delta_i] \right) \odot \Delta_i \right].
 $$
-另一方面，对下式取$t=ic, s=c$
+另一方面，考虑下式：
 $$
 \begin{aligned}
 \mathbf s_{t+s}
@@ -318,44 +323,67 @@ $$
 我们可得：
 $$
 \begin{aligned}
+\Theta_{i,j} &= \prod_{s=(i-1)c+j}^{ic}\lambda_s, \\
+&= \alpha_{ic}/ \alpha_{(i-1)c+j-1} \\
+\Phi_{i,j} &=  \prod_{s=(i-1)c+j}^{ic}\gamma_s, \\
+&= \beta_{ic}/ \beta_{(i-1)c+j-1} \\
+\frac{\mathbf A_{ic+j}}{\mathbf A_{ic}}
+&= \Theta_{i,j}\Phi_{i,j}^\top.
+
+\end{aligned}
+$$
+对递推式取$t=ic, s=c$，
+$$
+\begin{aligned}
 \mathbf s_{(i+1)c}
 &= \left(\odot_{i=ic+1}^{(i+1)c} \mathbf a_i \right)\odot  \mathbf s_{ic}  + \sum_{j=ic+1}^{(i+1)c} \left(\odot_{t=j+1}^{(i+1)c} \mathbf a_t \right) \odot  \mathbf k_j \mathbf v_j^\top \\
 &= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf s_{ic}  +\sum_{j=1}^{c}  \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic+j}}\odot  \mathbf k_{ic+j}\mathbf v_{ic+j}^\top, \\
 \mathbf S_{i+1} &= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} +
-\sum_{j=1}^{c}    (\mathbf k_{ic+j} \odot  \Gamma_{i,j})(\mathbf v_{ic+j}\odot \Delta_{i,j}) ^\top \\
-&= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} + [\mathbf K_i \odot \Gamma_i]^\top [\mathbf V_i \odot \Delta_i].
+\sum_{j=1}^{c}    (\mathbf k_{ic+j} \odot  \Theta_{i,j})(\mathbf v_{ic+j}\odot \Psi_{i,j}) ^\top \\
+&= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} + [\mathbf K_{i+1} \odot \Theta_{i+1}]^\top [\mathbf V_{i+1} \odot \Psi_{i+1}].
 \end{aligned}
 $$
+
+根据block level的递推公式，我们可以可以考虑如下更简单的递推：
+$$
+\begin{aligned}
+
+\bar{\mathbf Q}_i &=  \mathbf Q_i \odot \mathbf \Gamma_i,  \\
+\bar{\mathbf K}_i &=  \mathbf K_i / \mathbf \Gamma_i,  \\
+\bar{\mathbf V}_i &=  \mathbf V_i / \mathbf \Delta_i,  \\
+
+\tilde{\mathbf K}_i &=  \mathbf K_i \odot \mathbf \Theta_i,  \\
+\tilde{\mathbf V}_i &=  \mathbf V_i \odot \mathbf \Psi_i,  \\
+
+\bar{\mathbf O}_i&=  \bar{\mathbf Q}_i  \mathbf S_i  + [ [\bar{\mathbf Q}_i \bar{\mathbf K}_i^\top] \odot \mathbf M ]
+\bar{\mathbf V}_i, \\
+\mathbf O_i &= \bar{\mathbf O}_i \odot \mathbf\Delta_i, \\
+\mathbf S_{i+1}&= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} + \tilde{\mathbf K}_{i+1} \tilde{\mathbf V}_{i+1}^\top \\
+&\triangleq \Rho_i \odot \mathbf S_{i}+ \tilde{\mathbf K}_{i+1}  \tilde{\mathbf V}_{i+1}^\top.
+\end{aligned}
+$$
+后续会在反向传播的时候使用。
+
 
 
 ### Backward
 
+我们考虑$\mathbf {dS}_i$的递推，
 $$
 \begin{aligned}
-\mathbf{dq}_i &=[\mathbf{s}_{i}] \mathbf{do}_i, \\
-\mathbf{ds}_{i}&=  [\lambda_{i+1}\gamma_{i+1}^\top] \odot \mathbf{ds}_{i+1} + \mathbf{do}_{i}, \\
-\mathbf{dk}_i &=[\mathbf{ds}_{i}] \mathbf{v}_i, \\
-\mathbf{dv}_i &=\mathbf{ds}_{i}^\top \mathbf k_i , \\
+\mathbf {dS}_{n+1} & = \mathbf 0 \in \mathbb R^{d\times e}, \\
+\mathbf{d\bar O}_i &= \mathbf{d O}_i \odot \mathbf \Delta_i,  \\
+\mathbf {dS}_{i} &= \mathbf P_{i} \odot \mathbf {dS}_{i+1} + \mathbf{\bar Q}_i^\top \mathbf {d\bar O}_i, \\
+\mathbf {d Q}_i &= \left[\mathbf{d\bar O}_i \mathbf S_i^\top + [[\mathbf{d\bar O}_i \mathbf{\tilde V}_i ]\odot \mathbf M]
+\mathbf{\tilde K_i} \right] \odot \mathbf \Gamma_i, \\
+
+\mathbf {d K}_i &= \left[\mathbf{\bar V}_i \mathbf {dS}_i^\top \right] \odot \mathbf \Theta_i
++ \left[[[\mathbf{d\bar O}_i \mathbf{\tilde V}_i^\top ]\odot \mathbf M] \mathbf {\bar Q}_i\right] / \mathbf \Gamma_i
+,   \\
+\mathbf {d\tilde V}_i &= \left[ \mathbf{\tilde K}_i \mathbf {dS}_i \right] \odot \Psi_i +
+
+\left[ [[\mathbf{\bar Q_i} \mathbf {\tilde K_i}] \odot \mathbf M ] \mathbf{d\bar O}_i \right] /\mathbf \Delta_i.
+
 
 \end{aligned}
-$$
-
-关于第一项，代入前向公式可得：
-$$
-\mathbf {dQ}_i=\left[\left[\left[
-\mathbf {dO}_i \odot \Delta_i
-\right] \mathbf S_i^\top \right] \odot \Gamma_i \right] + \left[\left[\left[
-\mathbf {dO}_i \odot \Delta_i
-\right]  \left[\mathbf V_i / \Delta_i \right]^\top \odot \mathbf M\right] / \Gamma_i \right].
-$$
-对于另外两项，我们记：
-$$
-\mathbf u_{i}=\mathbf{ds}_{n-i}, \\
-\rho_{i}=\mathbf{\alpha}_{n-i}, \\
-\tau_{i}=\mathbf{\beta}_{n-i}, \\
-i=0,\ldots, n.
-$$
-那么：
-$$
-\mathbf{u}_{i}=  [\lambda_{i+1}\gamma_{i+1}^\top] \odot \mathbf{ds}_{i+1} + \mathbf{do}_{i}
 $$
