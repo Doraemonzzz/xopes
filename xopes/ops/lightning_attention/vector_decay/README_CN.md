@@ -54,7 +54,7 @@ $$
 计算：
 $$
 \begin{aligned}
-\mathbf{ds}_{n+1} &\in \mathbb R^{d\times e}, \\
+\mathbf{ds}_{n+1} &=\mathbf 0\in \mathbb R^{d\times e}, \\
  \lambda_{n+1} & = \mathbf 1_d, \\
   \gamma_{n+1} & = \mathbf 1_e, \\
 \mathbf{ds}_{i}&=  [\lambda_{i+1}\gamma_{i+1}^\top] \odot \mathbf{ds}_{i+1} + \mathbf{do}_{i}, \\
@@ -327,7 +327,7 @@ $$
 &= \alpha_{ic}/ \alpha_{(i-1)c+j-1} \\
 \Phi_{i,j} &=  \prod_{s=(i-1)c+j}^{ic}\gamma_s, \\
 &= \beta_{ic}/ \beta_{(i-1)c+j-1} \\
-\frac{\mathbf A_{ic+j}}{\mathbf A_{ic}}
+\frac{\mathbf A_{ic}}{\mathbf A_{(i-1)c +j}}
 &= \Theta_{i,j}\Phi_{i,j}^\top.
 
 \end{aligned}
@@ -339,7 +339,7 @@ $$
 &= \left(\odot_{i=ic+1}^{(i+1)c} \mathbf a_i \right)\odot  \mathbf s_{ic}  + \sum_{j=ic+1}^{(i+1)c} \left(\odot_{t=j+1}^{(i+1)c} \mathbf a_t \right) \odot  \mathbf k_j \mathbf v_j^\top \\
 &= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf s_{ic}  +\sum_{j=1}^{c}  \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic+j}}\odot  \mathbf k_{ic+j}\mathbf v_{ic+j}^\top, \\
 \mathbf S_{i+1} &= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} +
-\sum_{j=1}^{c}    (\mathbf k_{ic+j} \odot  \Theta_{i,j})(\mathbf v_{ic+j}\odot \Psi_{i,j}) ^\top \\
+\sum_{j=1}^{c}    (\mathbf k_{ic+j} \odot  \Theta_{i+1,j})(\mathbf v_{ic+j}\odot \Psi_{i+1,j}) ^\top \\
 &= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} + [\mathbf K_{i+1} \odot \Theta_{i+1}]^\top [\mathbf V_{i+1} \odot \Psi_{i+1}].
 \end{aligned}
 $$
@@ -374,15 +374,15 @@ $$
 \mathbf {dS}_{n+1} & = \mathbf 0 \in \mathbb R^{d\times e}, \\
 \mathbf{d\bar O}_i &= \mathbf{d O}_i \odot \mathbf \Delta_i,  \\
 \mathbf {dS}_{i} &= \mathbf P_{i} \odot \mathbf {dS}_{i+1} + \mathbf{\bar Q}_i^\top \mathbf {d\bar O}_i, \\
-\mathbf {d Q}_i &= \left[\mathbf{d\bar O}_i \mathbf S_i^\top + [[\mathbf{d\bar O}_i \mathbf{\tilde V}_i ]\odot \mathbf M]
-\mathbf{\tilde K_i} \right] \odot \mathbf \Gamma_i, \\
+\mathbf {d Q}_i &= \left[\mathbf{d\bar O}_i \mathbf S_i^\top + [[\mathbf{d\bar O}_i \mathbf{\bar V}_i ^\top]\odot \mathbf M]
+\mathbf{\bar K_i} \right] \odot \mathbf \Gamma_i, \\
 
-\mathbf {d K}_i &= \left[\mathbf{\bar V}_i \mathbf {dS}_i^\top \right] \odot \mathbf \Theta_i
-+ \left[[[\mathbf{d\bar O}_i \mathbf{\tilde V}_i^\top ]\odot \mathbf M] \mathbf {\bar Q}_i\right] / \mathbf \Gamma_i
+\mathbf {d K}_i &= \left[\mathbf{\tilde V}_i \mathbf {dS}_i^\top \right] \odot \mathbf \Theta_i
++ \left[[[\mathbf{d\bar O}_i \mathbf{\bar V}_i^\top ]\odot \mathbf M] \mathbf {\bar Q}_i\right] / \mathbf \Gamma_i
 ,   \\
-\mathbf {d\tilde V}_i &= \left[ \mathbf{\tilde K}_i \mathbf {dS}_i \right] \odot \Psi_i +
+\mathbf {dV}_i &= \left[ \mathbf{\tilde K}_i \mathbf {dS}_i \right] \odot \Psi_i +
 
-\left[ [[\mathbf{\bar Q_i} \mathbf {\tilde K_i}] \odot \mathbf M ] \mathbf{d\bar O}_i \right] /\mathbf \Delta_i.
+\left[ [[\mathbf{\bar Q}_i \mathbf {\bar K}_i] \odot \mathbf M ] \mathbf{d\bar O}_i \right] /\mathbf \Delta_i.
 
 
 \end{aligned}
