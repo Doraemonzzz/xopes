@@ -3,6 +3,8 @@ from typing import Optional, Tuple
 import torch
 from einops import repeat
 
+from xopes.utils import contiguous
+
 
 def rev_cumsum(x: torch.Tensor, dim: int) -> torch.Tensor:
     return torch.flip(torch.cumsum(torch.flip(x, dims=[dim]), dim=dim), dims=[dim])
@@ -10,6 +12,7 @@ def rev_cumsum(x: torch.Tensor, dim: int) -> torch.Tensor:
 
 class LavdChunkFunction(torch.autograd.Function):
     @staticmethod
+    @contiguous
     def forward(ctx, q, ldk, ldv, k=None, v=None, state=None, chunk_size=128):
         dtype = q.dtype
         q = q.float()
@@ -60,8 +63,10 @@ class LavdChunkFunction(torch.autograd.Function):
             # preprocess
             log_gamma = torch.cumsum(ldk_i, dim=1)
             log_delta = torch.cumsum(ldv_i, dim=1)
-            log_theta = rev_cumsum(ldk_i, dim=1)
-            log_phi = rev_cumsum(ldv_i, dim=1)
+            # log_theta = rev_cumsum(ldk_i, dim=1)
+            # log_phi = rev_cumsum(ldv_i, dim=1)
+            log_theta = log_gamma[:, -1:, :, :] - log_gamma[:, :, :]
+            log_phi = log_delta[:, -1:, :, :] - log_delta[:, :, :]
             gamma = torch.exp(log_gamma)
             delta = torch.exp(log_delta)
             theta = torch.exp(log_theta)
@@ -99,6 +104,7 @@ class LavdChunkFunction(torch.autograd.Function):
         return o.to(dtype), state.to(dtype)
 
     @staticmethod
+    @contiguous
     def backward(ctx, do, dstate):
         q, ldk, ldv, k, v, state, states = ctx.saved_tensors
         chunk_size = ctx.chunk_size
@@ -250,7 +256,6 @@ class LavdChunkFunction(torch.autograd.Function):
         dldv_ = do * dv - v * dv
         dldk = rev_cumsum(dldk_, dim=1)
         dldv = rev_cumsum(dldv_, dim=1)
-
         # k = 1 - exp(ldk)
         if k is None:
             dldk = dldk - torch.exp(ldk) * dk

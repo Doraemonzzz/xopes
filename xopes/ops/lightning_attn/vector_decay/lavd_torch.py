@@ -58,7 +58,7 @@ def lavd_torch(
         else:
             vi = 1 - dv_i
 
-        state = ki.unsqueeze(-1) * state * vi.unsqueeze(-2) + torch.einsum(
+        state = dk_i.unsqueeze(-1) * state * dv_i.unsqueeze(-2) + torch.einsum(
             "b h d, b h e -> b h d e", ki, vi
         )
         oi = torch.einsum("b h d, b h d e -> b h e", qi, state)

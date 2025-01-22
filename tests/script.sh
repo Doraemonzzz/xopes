@@ -55,6 +55,9 @@ folder=linear_cross_entropy
 ##### lce 250119
 folder=linear_cross_entropy
 
+##### lavd 250122
+folder=lightning_attn/vector_decay
+
 mkdir -p $folder/log
 
 
