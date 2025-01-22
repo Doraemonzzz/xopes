@@ -82,7 +82,7 @@ $$
 $$
 所以：
 $$
-\mathbf {ds}_0 = \sum_{j=1}^n 
+\mathbf {ds}_0 = \sum_{j=1}^n
 [\mathbf q_j\mathbf {do}_j^\top ] \odot [\alpha_j \beta_j^\top ]
 =\sum_{j=1}^n [\mathbf q_j \odot \alpha_j] [\mathbf {do}_j \odot \beta_j]^\top.
 $$
@@ -406,7 +406,7 @@ $$
 $$
 注意到：
 $$
-\mathbf {ds}_0 = \sum_{j=1}^n 
+\mathbf {ds}_0 = \sum_{j=1}^n
 [\mathbf q_j\mathbf {do}_j^\top ] \odot [\alpha_j \beta_j^\top ]
 =\sum_{j=1}^n [\mathbf q_j \odot \alpha_j] [\mathbf {do}_j \odot \beta_j]^\top.
 $$
