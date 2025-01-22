@@ -71,6 +71,23 @@ $$
 \end{aligned}
 $$
 
+注意到：
+$$
+\begin{aligned}
+\mathbf o_t
+&= \mathbf q_t^\top [ \alpha_t \beta_t^\top \odot \mathbf s_0] +  \mathbf {\bar o}_t.
+
+
+\end{aligned}
+$$
+所以：
+$$
+\mathbf {ds}_0 = \sum_{j=1}^n 
+[\mathbf q_j\mathbf {do}_j^\top ] \odot [\alpha_j \beta_j^\top ]
+=\sum_{j=1}^n [\mathbf q_j \odot \alpha_j] [\mathbf {do}_j \odot \beta_j]^\top.
+$$
+
+
 
 
 #### 解析计算
@@ -386,4 +403,14 @@ $$
 
 
 \end{aligned}
+$$
+注意到：
+$$
+\mathbf {ds}_0 = \sum_{j=1}^n 
+[\mathbf q_j\mathbf {do}_j^\top ] \odot [\alpha_j \beta_j^\top ]
+=\sum_{j=1}^n [\mathbf q_j \odot \alpha_j] [\mathbf {do}_j \odot \beta_j]^\top.
+$$
+因此：
+$$
+\mathbf {ds}_0 = [\mathbf Q \odot \Alpha]^\top [\mathbf{dO}\odot \Beta].
 $$

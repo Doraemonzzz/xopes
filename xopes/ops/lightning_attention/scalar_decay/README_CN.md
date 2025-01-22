@@ -259,11 +259,11 @@ $$
 &= \mathbf{d{\bar M}} \odot \mathbf  M(\mathbf \Gamma) \odot \mathbf  M(\Delta),  \\
 
 \mathbf {dK} &= \left[ \mathbf{d{\bar M}} \odot \mathbf  M(\mathbf \Gamma) \odot \mathbf  M(\Delta)\right]^\top \mathbf Q \\
-&= \left[ [\mathbf{dO}\mathbf V^\top ] \odot \mathbf  M(\mathbf \Gamma) \odot \mathbf  M(\Delta)\right]^\top \mathbf Q \\
+&= \left[ [\mathbf{dO}\mathbf V^\top ] \odot \mathbf  M(\mathbf \Gamma) \odot \mathbf  M(\Delta)\right]^\top \mathbf Q, \\
 
-\mathbf {dQ} &= [ \mathbf{dO}\mathbf S_0^\top] \odot \mathbf \Gamma \odot \mathbf \Delta + \left[ [\mathbf{dO}\mathbf V^\top ] \odot \mathbf  M(\mathbf \Gamma) \odot \mathbf  M(\Delta)\right] \mathbf K.
+\mathbf {dQ} &= [ \mathbf{dO}\mathbf S_0^\top] \odot \mathbf \Gamma \odot \mathbf \Delta + \left[ [\mathbf{dO}\mathbf V^\top ] \odot \mathbf  M(\mathbf \Gamma) \odot \mathbf  M(\Delta)\right] \mathbf K, \\
 
-
+\mathbf {ds}_0 &= [\mathbf Q \odot \Alpha]^\top [\mathbf{dO}\odot \Beta].
 
 
 
@@ -348,7 +348,10 @@ $$
 \mathbf M(\mathbf \Gamma_i)
 \odot \mathbf M(\mathbf \Delta_i)
 \right]
-\mathbf K_j.
+\mathbf K_j, \\
+
+
+\mathbf {ds}_0 &= [\mathbf Q \odot \Alpha]^\top [\mathbf{dO}\odot \Beta].
 
 
 \end{aligned}
