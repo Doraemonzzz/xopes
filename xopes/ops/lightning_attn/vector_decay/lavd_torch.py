@@ -33,11 +33,16 @@ def lavd_torch(
     ldv = ldv.float()
     if k is not None:
         k = k.float()
+    else:
+        k = 1 - torch.exp(ldk)
+
     if v is not None:
         v = v.float()
+    else:
+        v = 1 - torch.exp(ldv)
 
     b, n, h, d = q.shape
-    e = v.shape[-1]
+    e = ldv.shape[-1]
 
     o = torch.zeros((b, n, h, e), dtype=q.dtype, device=q.device)
 
@@ -48,15 +53,8 @@ def lavd_torch(
         qi = q[:, i]
         dk_i = torch.exp(ldk[:, i])
         dv_i = torch.exp(ldv[:, i])
-        if k is not None:
-            ki = k[:, i]
-        else:
-            ki = 1 - dk_i
-
-        if v is not None:
-            vi = v[:, i]
-        else:
-            vi = 1 - dv_i
+        ki = k[:, i]
+        vi = v[:, i]
 
         state = dk_i.unsqueeze(-1) * state * dv_i.unsqueeze(-2) + torch.einsum(
             "b h d, b h e -> b h d e", ki, vi
