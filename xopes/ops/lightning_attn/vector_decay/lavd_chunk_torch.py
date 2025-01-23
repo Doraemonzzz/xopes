@@ -136,6 +136,10 @@ class LavdChunkFunction(torch.autograd.Function):
         dv = torch.empty_like(dldv, dtype=torch.float32)
         if dstate is None:
             dstate = torch.zeros((b, h, d, e), dtype=torch.float32, device=q.device)
+        else:
+            # for compute dldk
+            dstate_ = dstate.clone()
+            state_ = state.clone()
         array = torch.arange(c, device=q.device, dtype=torch.int32)
         mask = torch.where(array[:, None] - array[None, :] >= 0, 1, 0)
         dstates = []
@@ -275,13 +279,6 @@ class LavdChunkFunction(torch.autograd.Function):
         else:
             dldv_ = o * do - (1 - torch.exp(ldv)) * dv
 
-        # if state_requires_grad:
-        #     t1 = torch.einsum("b n h e, b h d e -> b n h d", torch.exp(ldv), ds)
-        #     t2 = torch.einsum("b n h d, b n h d -> b n h", q, torch.exp(ldk)).unsqueeze(-1)
-        #     t3 = torch.einsum("b n h d, b h d e -> b n h d", t2, ds)
-        #     dldk_ += torch.einsum("b n h e, b h d e -> b n h d", ldv, ds_) * torch.exp(ldk)
-        #     dldv_ += torch.einsum("b n h d, b h d e -> b n h e", ldk, ds_) * torch.exp(ldv)
-
         dldk = rev_cumsum(dldk_, dim=1)
         dldv = rev_cumsum(dldv_, dim=1)
 
@@ -294,6 +291,10 @@ class LavdChunkFunction(torch.autograd.Function):
         if v is None:
             dldv = dldv - torch.exp(ldv) * dv
             dv = None
+
+        if state_requires_grad:
+            dldk_ += (dstate_ * state_).sum(dim=-2, keepdim=True)
+            dldv_ += (dstate_ * state_).sum(dim=-1, keepdim=True)
 
         dq = dq.to(dtype)
         dldk = dldk.to(dtype)

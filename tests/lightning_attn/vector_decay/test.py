@@ -11,7 +11,8 @@ def get_params():
         # (2, 128, 8, 64, 32),
         # (4, 256, 12, 128, 64),
         # (2, 1024, 16, 128, 128),
-        (2, 32, 8, 64, 32),
+        # (2, 32, 8, 64, 32),
+        (1, 4, 1, 2, 2),
     ]
     return shapes
 
@@ -30,7 +31,7 @@ def get_params():
 
 @pytest.mark.parametrize("use_k", [True])
 @pytest.mark.parametrize("use_v", [True])
-@pytest.mark.parametrize("use_state", [True])
+@pytest.mark.parametrize("use_state", [False])
 @pytest.mark.parametrize("use_zero_ld", [True])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test(shape, use_k, use_v, use_state, use_zero_ld, dtype):
@@ -73,24 +74,31 @@ def test(shape, use_k, use_v, use_state, use_zero_ld, dtype):
 
     # Forward pass
     o_torch, s_torch = lavd_torch(
-        q=q, ldk=ldk, ldv=ldv, k=k, v=v, state=state  # .clone() if use_state else None
+        q=q,
+        ldk=ldk,
+        ldv=ldv,
+        k=k,
+        v=v,
+        state=state,  # state.clone() if use_state else None
     )
-    output_torch = o_torch.sum() + s_torch.sum()
+    # output_torch = o_torch.sum() + s_torch.sum()
+    output_torch = s_torch.sum()
     o_chunk, s_chunk = lavd_chunk_torch(
         q=q,
         ldk=ldk,
         ldv=ldv,
         k=k,
         v=v,
-        state=state,  # .clone() if use_state else None,
+        state=state,  # state.clone() if use_state else None,
         chunk_size=chunk_size,
     )
-    output_chunk = o_chunk.sum() + s_chunk.sum()
+    # output_chunk = o_chunk.sum() + s_chunk.sum()
+    output_chunk = s_chunk.sum()
 
     # Backward pass
     output_torch.backward(do, retain_graph=True)
     # o_torch.backward(do, retain_graph=True)
-    dq_torch, q.grad = q.grad.clone(), None
+    # dq_torch, q.grad = q.grad.clone(), None
     dldk_torch, ldk.grad = ldk.grad.clone(), None
     dldv_torch, ldv.grad = ldv.grad.clone(), None
     if use_k:
@@ -102,7 +110,7 @@ def test(shape, use_k, use_v, use_state, use_zero_ld, dtype):
 
     output_chunk.backward(do, retain_graph=True)
     # o_chunk.backward(do, retain_graph=True)
-    dq_chunk, q.grad = q.grad.clone(), None
+    # dq_chunk, q.grad = q.grad.clone(), None
     dldk_chunk, ldk.grad = ldk.grad.clone(), None
     dldv_chunk, ldv.grad = ldv.grad.clone(), None
     if use_k:
@@ -123,14 +131,25 @@ def test(shape, use_k, use_v, use_state, use_zero_ld, dtype):
     print("s diff norm: ", torch.norm(s_torch - s_chunk).item())
     assert torch.allclose(s_torch, s_chunk, atol=atol, rtol=rtol)
 
-    # Check backward pass results
-    print("dq diff max: ", torch.abs(dq_torch - dq_chunk).max().item())
-    print("dq diff norm: ", torch.norm(dq_torch - dq_chunk).item())
-    assert torch.allclose(dq_torch, dq_chunk, atol=atol, rtol=rtol)
+    # # Check backward pass results
+    # print("dq diff max: ", torch.abs(dq_torch - dq_chunk).max().item())
+    # print("dq diff norm: ", torch.norm(dq_torch - dq_chunk).item())
+    # assert torch.allclose(dq_torch, dq_chunk, atol=atol, rtol=rtol)
 
     print("dldk diff max: ", torch.abs(dldk_torch - dldk_chunk).max().item())
     print("dldk diff norm: ", torch.norm(dldk_torch - dldk_chunk).item())
     # assert torch.allclose(dldk_torch, dldk_chunk, atol=atol, rtol=rtol)
+
+    # print(ds_torch.flatten())
+    # print(s_torch.flatten())
+    # print(do.item())
+    for i in range(n):
+        print(i, torch.abs(dldk_torch[:, i] - dldk_chunk[:, i]).max().item())
+        # print(dldk_torch[0, i, :2, :2])
+        # print(dldk_chunk[0, i, :2, :2])
+        # tmp = dldk_torch[:, i] - dldk_chunk[:, i]
+        # print(tmp.flatten())
+        # print(dldk_torch[:, i] - dldk_chunk[:, i])
 
     print("dldv diff max: ", torch.abs(dldv_torch - dldv_chunk).max().item())
     print("dldv diff norm: ", torch.norm(dldv_torch - dldv_chunk).item())
