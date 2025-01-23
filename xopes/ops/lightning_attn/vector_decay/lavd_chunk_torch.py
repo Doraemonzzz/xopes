@@ -130,12 +130,19 @@ class LavdChunkFunction(torch.autograd.Function):
 
         # Initialize gradient tensors
         dq = torch.empty_like(q, dtype=torch.float32)
-        dldk = torch.empty_like(ldk, dtype=torch.float32)
-        dldv = torch.empty_like(ldv, dtype=torch.float32)
+        dldk = torch.zeros_like(ldk, dtype=torch.float32)
+        dldv = torch.zeros_like(ldv, dtype=torch.float32)
         dk = torch.empty_like(dldk, dtype=torch.float32)
         dv = torch.empty_like(dldv, dtype=torch.float32)
         if dstate is None:
             dstate = torch.zeros((b, h, d, e), dtype=torch.float32, device=q.device)
+            dstate_clone = torch.zeros_like(dstate)
+            state_clone = torch.zeros_like(state)
+        else:
+            # for compute dldk
+            dstate_clone = dstate.clone()
+            state_clone = state.clone()
+
         array = torch.arange(c, device=q.device, dtype=torch.int32)
         mask = torch.where(array[:, None] - array[None, :] >= 0, 1, 0)
         dstates = []
@@ -275,13 +282,6 @@ class LavdChunkFunction(torch.autograd.Function):
         else:
             dldv_ = o * do - (1 - torch.exp(ldv)) * dv
 
-        # if state_requires_grad:
-        #     t1 = torch.einsum("b n h e, b h d e -> b n h d", torch.exp(ldv), ds)
-        #     t2 = torch.einsum("b n h d, b n h d -> b n h", q, torch.exp(ldk)).unsqueeze(-1)
-        #     t3 = torch.einsum("b n h d, b h d e -> b n h d", t2, ds)
-        #     dldk_ += torch.einsum("b n h e, b h d e -> b n h d", ldv, ds_) * torch.exp(ldk)
-        #     dldv_ += torch.einsum("b n h d, b h d e -> b n h e", ldk, ds_) * torch.exp(ldv)
-
         dldk = rev_cumsum(dldk_, dim=1)
         dldv = rev_cumsum(dldv_, dim=1)
 
@@ -294,6 +294,11 @@ class LavdChunkFunction(torch.autograd.Function):
         if v is None:
             dldv = dldv - torch.exp(ldv) * dv
             dv = None
+
+        # b h d e -> b h d -> b 1 h d
+        dldk += (dstate_clone * state_clone).sum(dim=-1).unsqueeze(1)
+        # b h d e -> b h e -> b 1 h e
+        dldv += (dstate_clone * state_clone).sum(dim=-2).unsqueeze(1)
 
         dq = dq.to(dtype)
         dldk = dldk.to(dtype)
