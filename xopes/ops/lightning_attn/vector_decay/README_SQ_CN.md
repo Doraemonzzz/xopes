@@ -229,7 +229,22 @@ $$
 $$
 注意，上式是$\mathbf {ds}_n$部分对于梯度的贡献，为了进行区分，我们添加了上划线。
 
+最后，我们补充$\mathbf {ds}_0$：
+$$
+\begin{aligned}
+\frac{\partial [\mathbf s_n]_{ij}}{\partial [\mathbf s_0]_{st}}
+&= [\alpha_n]_s [\beta_n]_t 1_{i=s}1_{j=t}, \\
+[\mathbf {d\bar s}_0]_{st}
 
+&= \sum_{ij} [\mathbf {ds}_n]_{ij} \frac{\partial [\mathbf s_n]_{ij}}{\partial [\mathbf s_0]_{st}} \\
+
+&= \sum_{ij} [\mathbf {ds}_n]_{ij} [\alpha_n]_s [\beta_n]_t 1_{i=s}1_{j=t} \\
+&= [\mathbf {ds}_n]_{st} [\alpha_n]_s [\beta_n]_t , \\
+
+\mathbf {d\bar s}_0 &= [\mathbf {ds}_n] \odot [\alpha_n\beta_n^\top].
+
+\end{aligned}
+$$
 
 ### $\mathbf d{\log}\alpha_t$
 
@@ -588,32 +603,51 @@ $$
 \end{aligned}
 $$
 
+###  $\mathbf {ds}_0$
+
+$$
+\begin{aligned}
+\mathbf{ds}_0
+
+&= \sum_{s=1}^n \frac{\partial \mathbf o_s}{\partial \mathbf s_0} \frac{\partial l}{\partial \mathbf o_s}
++\mathbf{d\bar s}_0 \\
+&=   \sum_{s=1}^n [\alpha_s\beta_s^\top] \odot[\mathbf {q}_s  \mathbf {do_s}^\top]
++   [\mathbf {ds}_n] \odot [\alpha_n\beta_n^\top]
+\end{aligned}
+$$
 
 ### 化简
 
-最后，我们考虑对$\mathbf {dk}_t, \mathbf {dv}_t$进行化简：
+最后，我们考虑对$\mathbf {dk}_t, \mathbf {dv}_t$进行化简，我们假设$\mathbf{ds}_{n+1}\triangleq \mathbf{ds}_{n},\lambda_{n+1}=\mathbf 1_d, \gamma_{n+1}=\mathbf 1_e,\mathbf q_0=\mathbf 0_d, \mathbf{do}_0 = \mathbf 0_e$，考虑如下递推：
 $$
 \begin{aligned}
 \mathbf {ds}_t
 & = [\lambda_{t+1}\gamma_{t+1}^\top] \odot \mathbf{ds}_{t+1} + \mathbf{q}_t\mathbf {do}^\top_t \\
 & = [\lambda_{t+1}\gamma_{t+1}^\top] \odot
 \left(
- [\lambda_{t+2}\gamma_{t+2}^\top] \odot \mathbf{ds}_{t+1}
+ [\lambda_{t+2}\gamma_{t+2}^\top] \odot \mathbf{ds}_{t+2}
 +  \mathbf{q}_{t+1} \mathbf {do}^\top_{t+1}
 \right)
 + \mathbf{q}_t\mathbf {do}^\top_t \\
 
 &=  [\alpha_{t+2}\beta_{t+2}^\top / \alpha_{t}\beta_{t}]
-\odot \mathbf{ds}_{t+1}  +  [\alpha_{t+1}\beta_{t+1}^\top / \alpha_{t}\beta_{t}]\odot [\mathbf{q}_{t+1}\mathbf {do}^\top_{t+1}]
+\odot \mathbf{ds}_{t+2}  +  [\alpha_{t+1}\beta_{t+1}^\top / \alpha_{t}\beta_{t}]\odot [\mathbf{q}_{t+1}\mathbf {do}^\top_{t+1}]
 +  \mathbf{q}_t\mathbf {do}^\top_t \\
 
-&=   [\alpha_{n}\beta_{n}^\top / \alpha_{t}\beta_{t}] \odot \mathbf{ds}_n
- + \sum_{j\ge t}[\alpha_{j}\beta_{j}^\top / \alpha_{t}\beta_{t}]   \odot [\mathbf{q}_{j}\mathbf {do}^\top_{j}]  \\
+&= \ldots \\
 
-&= 1/ (\alpha_{t}\beta_{t}^\top)
-\odot
-\left[[\alpha_n \beta_n^\top]  \odot \mathbf{ds}_n
-+ \sum_{j\ge t }(\mathbf q_j \odot \alpha_j)(\mathbf{do}_j \odot \beta_j)^\top \right].
+&=   [\alpha_{n+1}\beta_{n+1}^\top / \alpha_{t}\beta_{t}] \odot \mathbf{ds}_{n+1}
+ + \sum_{j=t}^{n}[\alpha_{j}\beta_{j}^\top / \alpha_{t}\beta_{t}]   \odot [\mathbf{q}_{j}\mathbf {do}^\top_{j}]  \\
+
+&=   [\alpha_{n}\beta_{n}^\top / \alpha_{t}\beta_{t}] \odot \mathbf{ds}_{n}
+ + \sum_{j=t}^{n}[\alpha_{j}\beta_{j}^\top / \alpha_{t}\beta_{t}]   \odot [\mathbf{q}_{j}\mathbf {do}^\top_{j}],  \\
+
+ \mathbf {ds}_0
+ &= [\alpha_{n}\beta_{n}^\top / \alpha_{0}\beta_{0}] \odot \mathbf{ds}_{n}
+ + \sum_{j=0}^{n} [\alpha_{j}\beta_{j}^\top / \alpha_{0}\beta_{0}]   \odot [\mathbf{q}_{j}\mathbf {do}^\top_{j}] \\
+
+ &=  [\alpha_{n}\beta_{n}^\top ] \odot \mathbf{ds}_{n}
+ +  \sum_{j=1}^{n} [\alpha_{j}\beta_{j}^\top]   \odot [\mathbf{q}_{j}\mathbf {do}^\top_{j}].
 
 \end{aligned}
 $$
