@@ -130,16 +130,19 @@ class LavdChunkFunction(torch.autograd.Function):
 
         # Initialize gradient tensors
         dq = torch.empty_like(q, dtype=torch.float32)
-        dldk = torch.empty_like(ldk, dtype=torch.float32)
-        dldv = torch.empty_like(ldv, dtype=torch.float32)
+        dldk = torch.zeros_like(ldk, dtype=torch.float32)
+        dldv = torch.zeros_like(ldv, dtype=torch.float32)
         dk = torch.empty_like(dldk, dtype=torch.float32)
         dv = torch.empty_like(dldv, dtype=torch.float32)
         if dstate is None:
             dstate = torch.zeros((b, h, d, e), dtype=torch.float32, device=q.device)
+            dstate_clone = torch.zeros_like(dstate)
+            state_clone = torch.zeros_like(state)
         else:
             # for compute dldk
-            dstate_ = dstate.clone()
-            state_ = state.clone()
+            dstate_clone = dstate.clone()
+            state_clone = state.clone()
+
         array = torch.arange(c, device=q.device, dtype=torch.int32)
         mask = torch.where(array[:, None] - array[None, :] >= 0, 1, 0)
         dstates = []
@@ -292,9 +295,10 @@ class LavdChunkFunction(torch.autograd.Function):
             dldv = dldv - torch.exp(ldv) * dv
             dv = None
 
-        if state_requires_grad:
-            dldk_ += (dstate_ * state_).sum(dim=-2, keepdim=True)
-            dldv_ += (dstate_ * state_).sum(dim=-1, keepdim=True)
+        # b h d e -> b h d -> b 1 h d
+        dldk += (dstate_clone * state_clone).sum(dim=-1).unsqueeze(1)
+        # b h d e -> b h e -> b 1 h e
+        dldv += (dstate_clone * state_clone).sum(dim=-2).unsqueeze(1)
 
         dq = dq.to(dtype)
         dldk = dldk.to(dtype)
