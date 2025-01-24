@@ -62,37 +62,38 @@ class LavdChunkFunction(torch.autograd.Function):
             states.append(state)
 
             # preprocess
-            log_gamma = torch.cumsum(ldk_i, dim=1)
-            log_delta = torch.cumsum(ldv_i, dim=1)
-            log_gamma_ = log_gamma[:, -1:, :, :]
-            log_delta_ = log_delta[:, -1:, :, :]
-            log_theta = log_gamma_ - log_gamma
-            log_phi = log_delta_ - log_delta
-            gamma = torch.exp(log_gamma)
-            delta = torch.exp(log_delta)
+            log_pi = torch.cumsum(ldk_i, dim=1)
+            log_rho = torch.cumsum(ldv_i, dim=1)
+            log_pi_ = log_pi[:, -1:, :, :]
+            log_rho_ = log_rho[:, -1:, :, :]
+            log_theta = log_pi_ - log_pi
+            log_phi = log_rho_ - log_rho
+            pi = torch.exp(log_pi)
+            rho = torch.exp(log_rho)
             theta = torch.exp(log_theta)
             phi = torch.exp(log_phi)
-            gamma_ = torch.exp(log_gamma_).squeeze(1)
-            delta_ = torch.exp(log_delta_).squeeze(1)
+            pi_ = torch.exp(log_pi_).squeeze(1)
+            rho_ = torch.exp(log_rho_).squeeze(1)
             # update
-            qi_ = qi * gamma
-            ki_ = ki / gamma
-            vi_ = vi / delta
+            qi_ = qi * pi
+            ki_ = ki / pi
+            vi_ = vi / rho
             ki__ = ki * theta
             vi__ = vi * phi
 
             # intra
-            oi_intra = torch.einsum("b c h d, b h d e -> b c h e", qi_, state)
-            # inter
             energy = (
                 torch.einsum("b c h d, b n h d -> b h c n", qi_, ki_) * mask[:l, :l]
             )
-            oi_inter = torch.einsum("b h c n, b n h e -> b c h e", energy, vi_)
-            oi = (oi_intra + oi_inter) * delta
+            oi_intra = torch.einsum("b h c n, b n h e -> b c h e", energy, vi_)
+            # inter
+            oi_inter = torch.einsum("b c h d, b h d e -> b c h e", qi_, state)
+
+            oi = (oi_intra + oi_inter) * rho
             o[:, start:end] = oi
 
             # update
-            state = gamma_.unsqueeze(-1) * state * delta_.unsqueeze(-2) + torch.einsum(
+            state = pi_.unsqueeze(-1) * state * rho_.unsqueeze(-2) + torch.einsum(
                 "b c h d, b c h e -> b h d e", ki__, vi__
             )
 
@@ -146,8 +147,6 @@ class LavdChunkFunction(torch.autograd.Function):
         array = torch.arange(c, device=q.device, dtype=torch.int32)
         mask = torch.where(array[:, None] - array[None, :] >= 0, 1, 0)
         dstates = []
-        log_gammas = []
-        log_deltas = []
 
         # first pass, compute dk, dv intra and dq
         for i in range(m):
@@ -169,19 +168,19 @@ class LavdChunkFunction(torch.autograd.Function):
             state = states[i]
 
             # preprocess
-            log_gamma = torch.cumsum(ldk_i, dim=1)
-            log_delta = torch.cumsum(ldv_i, dim=1)
-            log_theta = log_gamma[:, -1:, :, :] - log_gamma
-            log_phi = log_delta[:, -1:, :, :] - log_delta
-            gamma = torch.exp(log_gamma)
-            delta = torch.exp(log_delta)
+            log_pi = torch.cumsum(ldk_i, dim=1)
+            log_rho = torch.cumsum(ldv_i, dim=1)
+            log_theta = log_pi[:, -1:, :, :] - log_pi
+            log_phi = log_rho[:, -1:, :, :] - log_rho
+            pi = torch.exp(log_pi)
+            rho = torch.exp(log_rho)
             theta = torch.exp(log_theta)
             phi = torch.exp(log_phi)
             # update
-            qi_ = qi * gamma
-            ki_ = ki / gamma
-            vi_ = vi / delta
-            doi_ = doi * delta
+            qi_ = qi * pi
+            ki_ = ki / pi
+            vi_ = vi / rho
+            doi_ = doi * rho
 
             # intra
             energy_qk = (
@@ -190,23 +189,17 @@ class LavdChunkFunction(torch.autograd.Function):
             energy_v = (
                 torch.einsum("b c h d, b n h d -> b h c n", qi_, ki_) * mask[:l, :l]
             )
-            dqi_intra = (
-                torch.einsum("b h c n, b n h d -> b c h d", energy_qk, ki_) * gamma
-            )
-            dki_intra = (
-                torch.einsum("b h c n, b c h d -> b n h d", energy_qk, qi_) / gamma
-            )
+            dqi_intra = torch.einsum("b h c n, b n h d -> b c h d", energy_qk, ki_) * pi
+            dki_intra = torch.einsum("b h c n, b c h d -> b n h d", energy_qk, qi_) / pi
             dvi_intra = (
-                torch.einsum("b h c n, b c h d -> b n h d", energy_v, doi_) / delta
+                torch.einsum("b h c n, b c h d -> b n h d", energy_v, doi_) / rho
             )
 
             # inter
-            dqi_inter = torch.einsum("b c h e, b h d e -> b c h d", doi_, state) * gamma
+            dqi_inter = torch.einsum("b c h e, b h d e -> b c h d", doi_, state) * pi
 
             # local dstate
             dstate_ = torch.einsum("b c h d, b c h e -> b h d e", qi_, doi_)
-            log_gammas.append(log_gamma[:, -1, :, :])
-            log_deltas.append(log_delta[:, -1, :, :])
             dstates.append(dstate_)
 
             # save
@@ -232,18 +225,18 @@ class LavdChunkFunction(torch.autograd.Function):
                 vi = 1 - torch.exp(ldv_i)
 
             dstate_ = dstates[i]
-            log_gamma = torch.cumsum(ldk_i, dim=1)
-            log_delta = torch.cumsum(ldv_i, dim=1)
-            log_gamma_ = log_gamma[:, -1:, :, :]
-            log_delta_ = log_delta[:, -1:, :, :]
-            log_theta = log_gamma_ - log_gamma
-            log_phi = log_delta_ - log_delta
-            gamma = torch.exp(log_gamma)
-            delta = torch.exp(log_delta)
+            log_pi = torch.cumsum(ldk_i, dim=1)
+            log_rho = torch.cumsum(ldv_i, dim=1)
+            log_pi_ = log_pi[:, -1:, :, :]
+            log_rho_ = log_rho[:, -1:, :, :]
+            log_theta = log_pi_ - log_pi
+            log_phi = log_rho_ - log_rho
+            pi = torch.exp(log_pi)
+            rho = torch.exp(log_rho)
             theta = torch.exp(log_theta)
             phi = torch.exp(log_phi)
-            gamma_ = torch.exp(log_gamma_).squeeze(1)
-            delta_ = torch.exp(log_delta_).squeeze(1)
+            pi_ = torch.exp(log_pi_).squeeze(1)
+            rho_ = torch.exp(log_rho_).squeeze(1)
             ki__ = ki * theta
             vi__ = vi * phi
 
@@ -252,7 +245,7 @@ class LavdChunkFunction(torch.autograd.Function):
                 torch.einsum("b c h e, b h d e -> b c h d", vi__, dstate) * theta
             )
             dvi_inter = torch.einsum("b c h d, b h d e -> b c h e", ki__, dstate) * phi
-            dstate = gamma_.unsqueeze(-1) * dstate * delta_.unsqueeze(-2) + dstate_
+            dstate = pi_.unsqueeze(-1) * dstate * rho_.unsqueeze(-2) + dstate_
 
             # save
             dk[:, start:end] = dk[:, start:end] + dki_inter
