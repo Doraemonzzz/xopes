@@ -193,8 +193,8 @@ $$
 &= \left(\odot_{i=ic+1}^{(i+1)c} \mathbf a_i \right)\odot  \mathbf s_{ic}  + \sum_{j=ic+1}^{(i+1)c} \left(\odot_{t=j+1}^{(i+1)c} \mathbf a_t \right) \odot  \mathbf k_j \mathbf v_j^\top \\
 &= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf s_{ic}  +\sum_{j=1}^{c}  \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic+j}}\odot  \mathbf k_{ic+j}\mathbf v_{ic+j}^\top, \\
 \mathbf S_{i+1} &= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} +
-\sum_{j=1}^{c}    (\mathbf k_{ic+j} \odot  \Theta_{i+1,j})(\mathbf v_{ic+j}\odot \Psi_{i+1,j}) ^\top \\
-&= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} + [\mathbf K_{i+1} \odot \Theta_{i+1}]^\top [\mathbf V_{i+1} \odot \Psi_{i+1}].
+\sum_{j=1}^{c}    (\mathbf k_{ic+j} \odot  \Theta_{i+1,j})(\mathbf v_{ic+j}\odot \Phi_{i+1,j}) ^\top \\
+&= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} + [\mathbf K_{i+1} \odot \Theta_{i+1}]^\top [\mathbf V_{i+1} \odot \Phi_{i+1}].
 \end{aligned}
 $$
 
@@ -207,7 +207,7 @@ $$
 \bar{\mathbf V}_i &=  \mathbf V_i / \mathbf \Rho_i,  \\
 
 \tilde{\mathbf K}_i &=  \mathbf K_i \odot \mathbf \Theta_i,  \\
-\tilde{\mathbf V}_i &=  \mathbf V_i \odot \mathbf \Psi_i,  \\
+\tilde{\mathbf V}_i &=  \mathbf V_i \odot \mathbf \Phi_i,  \\
 
 \bar{\mathbf O}_i&=  \bar{\mathbf Q}_i  \mathbf S_i  + [ [\bar{\mathbf Q}_i \bar{\mathbf K}_i^\top] \odot \mathbf M ]
 \bar{\mathbf V}_i, \\
@@ -234,7 +234,7 @@ $$
 \mathbf {d K}_i &= \left[\mathbf{\tilde V}_i \mathbf {dS}_i^\top \right] \odot \mathbf \Theta_i
 + \left[[[\mathbf{d\bar O}_i \mathbf{\bar V}_i^\top ]\odot \mathbf M]^\top \mathbf {\bar Q}_i\right] / \mathbf \Pi_i
 ,   \\
-\mathbf {dV}_i &= \left[ \mathbf{\tilde K}_i \mathbf {dS}_i \right] \odot \Psi_i +
+\mathbf {dV}_i &= \left[ \mathbf{\tilde K}_i \mathbf {dS}_i \right] \odot \Phi_i +
 
 \left[ [[\mathbf{\bar Q}_i \mathbf {\bar K}_i] \odot \mathbf M ] \mathbf{d\bar O}_i \right] /\mathbf \Rho_i, \\
 
