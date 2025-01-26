@@ -227,7 +227,7 @@ $$
 \begin{aligned}
 \mathbf {dS}_{n+1} &\in \mathbb R^{d\times e}, \\
 \mathbf{d\bar O}_i &= \mathbf{d O}_i \odot \mathbf \Rho_i,  \\
-\mathbf {dS}_{i} &= \mathbf P_{i} \odot \mathbf {dS}_{i+1} + \mathbf{\bar Q}_i^\top \mathbf {d\bar O}_i, \\
+\mathbf {dS}_{i} &= \mathbf T_{i} \odot \mathbf {dS}_{i+1} + \mathbf{\bar Q}_i^\top \mathbf {d\bar O}_i, \\
 \mathbf {d Q}_i &= \left[\mathbf{d\bar O}_i \mathbf S_i^\top + [[\mathbf{d\bar O}_i \mathbf{\bar V}_i ^\top]\odot \mathbf M]
 \mathbf{\bar K_i} \right] \odot \mathbf \Pi_i, \\
 
