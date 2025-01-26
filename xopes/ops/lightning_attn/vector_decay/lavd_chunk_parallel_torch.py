@@ -56,6 +56,8 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         if v is not None:
             v = F.pad(v, (0, 0, 0, 0, 0, l))
             v = rearrange(v, "b (m c) h d -> b m c h d", m=m)
+        log_pi = torch.cumsum(ldk, dim=2)
+        log_rho = torch.cumsum(ldv, dim=2)
 
         # prepare
         o = torch.zeros((b, m, c, h, e), dtype=torch.float32, device=q.device)
@@ -96,7 +98,6 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         states.append(state)
         # b (m + 1) h d e
         states = torch.concat(states, dim=1)
-
         state = states[:, 0]
 
         ##### update state
@@ -124,18 +125,16 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             state_ = states[:, i + 1]
 
             # preprocess
-            log_pi = torch.sum(ldk_i, dim=1)
-            log_rho = torch.sum(ldv_i, dim=1)
-            pi_ = torch.exp(log_pi).unsqueeze(-1)
-            rho_ = torch.exp(log_rho).unsqueeze(-2)
+            log_pi_ = log_pi[:, i, -1]
+            log_rho_ = log_rho[:, i, -1]
+            pi_ = torch.exp(log_pi_).unsqueeze(-1)
+            rho_ = torch.exp(log_rho_).unsqueeze(-2)
 
             # update
             state = pi_ * state * rho_ + state_
             states[:, i + 1] = state
 
         ##### compute inter
-        log_pi = torch.cumsum(ldk, dim=2)
-        log_rho = torch.cumsum(ldv, dim=2)
         pi = torch.exp(log_pi)
         rho = torch.exp(log_rho)
         # update
@@ -202,6 +201,8 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             # for compute dldk
             dstate_clone = dstate.clone()
             state_clone = state.clone()
+        log_pi = torch.cumsum(ldk, dim=2)
+        log_rho = torch.cumsum(ldv, dim=2)
 
         array = torch.arange(c, device=q.device, dtype=torch.int32)
         mask = torch.where(array[:, None] - array[None, :] >= 0, 1, 0)
@@ -280,18 +281,16 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             dstate_ = dstates[:, i]
 
             # preprocess
-            log_pi = torch.sum(ldk_i, dim=1)
-            log_rho = torch.sum(ldv_i, dim=1)
-            pi_ = torch.exp(log_pi).unsqueeze(-1)
-            rho_ = torch.exp(log_rho).unsqueeze(-2)
+            log_pi_ = log_pi[:, i, -1]
+            log_rho_ = log_rho[:, i, -1]
+            pi_ = torch.exp(log_pi_).unsqueeze(-1)
+            rho_ = torch.exp(log_rho_).unsqueeze(-2)
 
             # b m h d e
             dstate = pi_ * dstate * rho_ + dstate_
             dstates[:, i] = dstate
 
         ##### compute inter
-        log_pi = torch.cumsum(ldk, dim=2)
-        log_rho = torch.cumsum(ldv, dim=2)
         log_theta = log_pi[:, :, -1:] - log_pi
         log_phi = (
             log_rho[

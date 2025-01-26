@@ -26,16 +26,15 @@ def get_params():
 # @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 
 
-# @pytest.mark.parametrize("use_k", [True, False])
-# @pytest.mark.parametrize("use_v", [True, False])
-# @pytest.mark.parametrize("use_state", [True, False])
-# @pytest.mark.parametrize("use_zero_ld", [True, False])
+@pytest.mark.parametrize("use_k", [True, False])
+@pytest.mark.parametrize("use_v", [True, False])
+@pytest.mark.parametrize("use_state", [True, False])
+@pytest.mark.parametrize("use_zero_ld", [True, False])
 
-
-@pytest.mark.parametrize("use_k", [True])
-@pytest.mark.parametrize("use_v", [True])
-@pytest.mark.parametrize("use_state", [True])
-@pytest.mark.parametrize("use_zero_ld", [True])
+# @pytest.mark.parametrize("use_k", [True])
+# @pytest.mark.parametrize("use_v", [True])
+# @pytest.mark.parametrize("use_state", [True])
+# @pytest.mark.parametrize("use_zero_ld", [True])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test(shape, use_k, use_v, use_state, use_zero_ld, dtype):
     torch.manual_seed(2024)
