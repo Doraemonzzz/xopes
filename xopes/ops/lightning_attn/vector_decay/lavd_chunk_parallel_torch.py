@@ -68,7 +68,8 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         )
         array = torch.arange(c, device=q.device, dtype=torch.int32)
         mask = torch.where(array[:, None] - array[None, :] >= 0, 1, 0)
-        # compute intra in parallel with loop
+
+        ##### compute intra
         for i in range(c):
             qi = q[:, :, i]
             ldk_i = ldk[:, :, i]
@@ -98,7 +99,7 @@ class LavdChunkParallelFunction(torch.autograd.Function):
 
         state = states[:, 0]
 
-        # reduce state
+        ##### update state
         for i in range(m):
             qi = q[:, i]
             # b c h d
@@ -120,26 +121,29 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             else:
                 vi = 1 - torch.exp(ldv_i)
 
-            states[:, i] = state
             state_ = states[:, i + 1]
 
             # preprocess
-            log_pi = torch.cumsum(ldk_i, dim=1)
-            log_rho = torch.cumsum(ldv_i, dim=1)
-            pi = torch.exp(log_pi)
-            rho = torch.exp(log_rho)
-            pi_ = pi[:, -1].unsqueeze(-1)
-            rho_ = rho[:, -1].unsqueeze(-2)
-            # update
-            qi_ = qi * pi
-            oi_inter = torch.einsum("b c h d, b h d e -> b c h e", qi_, state) * rho
-            o[:, i] = o[:, i] + oi_inter
+            log_pi = torch.sum(ldk_i, dim=1)
+            log_rho = torch.sum(ldv_i, dim=1)
+            pi_ = torch.exp(log_pi).unsqueeze(-1)
+            rho_ = torch.exp(log_rho).unsqueeze(-2)
 
             # update
             state = pi_ * state * rho_ + state_
+            states[:, i + 1] = state
 
-        states[:, -1] = state
-        o = rearrange(o, "b m c h e -> b (m c) h e")[:, :n]
+        ##### compute inter
+        log_pi = torch.cumsum(ldk, dim=2)
+        log_rho = torch.cumsum(ldv, dim=2)
+        pi = torch.exp(log_pi)
+        rho = torch.exp(log_rho)
+        # update
+        q_ = q * pi
+        o_inter = (
+            torch.einsum("b m c h d, b m h d e -> b m c h e", q_, states[:, :m]) * rho
+        )
+        o += o_inter
 
         # Save inputs for backward pass
         ctx.save_for_backward(q, ldk, ldv, k, v, state, o, states)
@@ -147,6 +151,9 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         ctx.static_state = static_state
         ctx.state_requires_grad = state_requires_grad
         ctx.dtype = dtype
+        ctx.n = n
+
+        o = rearrange(o, "b m c h e -> b (m c) h e")[:, :n]
 
         return o.to(dtype), state.to(dtype)
 
@@ -154,22 +161,32 @@ class LavdChunkParallelFunction(torch.autograd.Function):
     @contiguous
     def backward(ctx, do, dstate):
         q, ldk, ldv, k, v, state, o, states = ctx.saved_tensors
-        chunk_size = ctx.chunk_size
+        ctx.chunk_size
         static_state = ctx.static_state
         state_requires_grad = ctx.state_requires_grad
         dtype = q.dtype
+        n = ctx.n
+        k_is_none = k is None
+        v_is_none = v is None
+
         q = q.float()
         ldk = ldk.float()
         ldv = ldv.float()
         if k is not None:
             k = k.float()
+        else:
+            k = 1 - torch.exp(ldk)
         if v is not None:
             v = v.float()
+        else:
+            v = 1 - torch.exp(ldv)
 
-        b, n, h, d = q.shape
+        b, m, c, h, d = q.shape
         e = ldv.shape[-1]
-        c = chunk_size
-        m = (n + c - 1) // c
+        n = do.shape[1]
+        l = (c - n % c) % c
+        do = F.pad(do, (0, 0, 0, 0, 0, l))
+        do = rearrange(do, "b (m c) h d -> b m c h d", m=m)
 
         # Initialize gradient tensors
         dq = torch.empty_like(q, dtype=torch.float32)
@@ -188,110 +205,118 @@ class LavdChunkParallelFunction(torch.autograd.Function):
 
         array = torch.arange(c, device=q.device, dtype=torch.int32)
         mask = torch.where(array[:, None] - array[None, :] >= 0, 1, 0)
-        dstates = []
+        dstates = [dstate.unsqueeze(1)]
 
-        # first pass, compute dk, dv intra and dq
-        for i in range(m):
-            start = i * c
-            end = min(start + c, n)
-            l = end - start
-            qi = q[:, start:end]
-            ldk_i = ldk[:, start:end]
-            ldv_i = ldv[:, start:end]
-            if k is not None:
-                ki = k[:, start:end]
-            else:
-                ki = 1 - torch.exp(ldk_i)
-            if v is not None:
-                vi = v[:, start:end]
-            else:
-                vi = 1 - torch.exp(ldv_i)
-            doi = do[:, start:end]
-            state = states[i]
+        ##### compute intra
+        # !!! important, the initial state is 0 for intra
+        state = torch.cat(
+            [torch.zeros((b, m, h, d, e), dtype=torch.float32, device=q.device)], dim=1
+        )
+        for i in range(c):
+            qi = q[:, :, i]
+            ldk_i = ldk[:, :, i]
+            ldv_i = ldv[:, :, i]
+            ki = k[:, :, i]
+            vi = v[:, :, i]
+            doi = do[:, :, i]
+
+            # b m h d -> b m h d 1
+            lambda_i = torch.exp(ldk_i).unsqueeze(-1)
+            # b m h e -> b m h 1 e
+            gamma_i = torch.exp(ldv_i).unsqueeze(-2)
+            # b m h d e
+            state = lambda_i * state * gamma_i + ki.unsqueeze(-1) * vi.unsqueeze(-2)
+
+            # compute
+            dqi_intra = torch.einsum("... h e, ... h d e -> ... h d", doi, state)
+            dq[:, :, i] = dqi_intra
+
+        # !!! important, the initial dstate is 0 for intra
+        dstate = torch.cat(
+            [torch.zeros((b, m, h, d, e), dtype=torch.float32, device=q.device)]
+        )
+        for i in range(c - 1, -1, -1):
+            qi = q[:, :, i]
+            ki = k[:, :, i]
+            vi = v[:, :, i]
+            doi = do[:, :, i]
+            ldk_i = ldk[:, :, i + 1] if i != c - 1 else torch.zeros_like(ldk_i)
+            ldv_i = ldv[:, :, i + 1] if i != c - 1 else torch.zeros_like(ldv_i)
+
+            # b m h d -> b m h d 1
+            lambda_i = torch.exp(ldk_i).unsqueeze(-1)
+            # b m h e -> b m h 1 e
+            gamma_i = torch.exp(ldv_i).unsqueeze(-2)
+            dstate = lambda_i * dstate * gamma_i + qi.unsqueeze(-1) * doi.unsqueeze(-2)
+
+            # compute
+            dki_intra = torch.einsum("... h e, ... h d e -> ... h d", vi, dstate)
+            dvi_intra = torch.einsum("... h d, ... h d e -> ... h e", ki, dstate)
+            dk[:, :, i] = dki_intra
+            dv[:, :, i] = dvi_intra
+
+            # !!! important
+            if i == 0:
+                ldk_i = ldk[:, :, i]
+                ldv_i = ldv[:, :, i]
+                # b m h d -> b m h d 1
+                lambda_i = torch.exp(ldk_i).unsqueeze(-1)
+                # b m h e -> b m h 1 e
+                gamma_i = torch.exp(ldv_i).unsqueeze(-2)
+                dstate = lambda_i * dstate * gamma_i
+
+        dstates.insert(0, dstate)
+        # b (m + 1) h d e
+        dstates = torch.concat(dstates, dim=1)
+
+        # update dstate
+        dstate = dstates[:, -1]
+        for i in range(m - 1, -1, -1):
+            # b c h d
+            ldk_i = ldk[:, i]
+            # b c h e
+            ldv_i = ldv[:, i]
+
+            dstate_ = dstates[:, i]
 
             # preprocess
-            log_pi = torch.cumsum(ldk_i, dim=1)
-            log_rho = torch.cumsum(ldv_i, dim=1)
-            log_theta = log_pi[:, -1:, :, :] - log_pi
-            log_phi = log_rho[:, -1:, :, :] - log_rho
-            pi = torch.exp(log_pi)
-            rho = torch.exp(log_rho)
-            theta = torch.exp(log_theta)
-            phi = torch.exp(log_phi)
-            # update
-            qi_ = qi * pi
-            ki_ = ki / pi
-            vi_ = vi / rho
-            doi_ = doi * rho
+            log_pi = torch.sum(ldk_i, dim=1)
+            log_rho = torch.sum(ldv_i, dim=1)
+            pi_ = torch.exp(log_pi).unsqueeze(-1)
+            rho_ = torch.exp(log_rho).unsqueeze(-2)
 
-            # intra
-            energy_qk = (
-                torch.einsum("b c h d, b n h d -> b h c n", doi_, vi_) * mask[:l, :l]
-            )
-            energy_v = (
-                torch.einsum("b c h d, b n h d -> b h c n", qi_, ki_) * mask[:l, :l]
-            )
-            dqi_intra = torch.einsum("b h c n, b n h d -> b c h d", energy_qk, ki_) * pi
-            dki_intra = torch.einsum("b h c n, b c h d -> b n h d", energy_qk, qi_) / pi
-            dvi_intra = (
-                torch.einsum("b h c n, b c h d -> b n h d", energy_v, doi_) / rho
-            )
+            # b m h d e
+            dstate = pi_ * dstate * rho_ + dstate_
+            dstates[:, i] = dstate
 
-            # inter
-            dqi_inter = torch.einsum("b c h e, b h d e -> b c h d", doi_, state) * pi
-
-            # local dstate
-            dstate_ = torch.einsum("b c h d, b c h e -> b h d e", qi_, doi_)
-            dstates.append(dstate_)
-
-            # save
-            dq[:, start:end] = dqi_intra + dqi_inter
-            dk[:, start:end] = dki_intra
-            dv[:, start:end] = dvi_intra
-
-        # second pass, reduce and compute intra
-        for i in range(m - 1, -1, -1):
-            start = i * c
-            end = min(start + c, n)
-            l = end - start
-            qi = q[:, start:end]
-            ldk_i = ldk[:, start:end]
-            ldv_i = ldv[:, start:end]
-            if k is not None:
-                ki = k[:, start:end]
-            else:
-                ki = 1 - torch.exp(ldk_i)
-            if v is not None:
-                vi = v[:, start:end]
-            else:
-                vi = 1 - torch.exp(ldv_i)
-
-            dstate_ = dstates[i]
-            log_pi = torch.cumsum(ldk_i, dim=1)
-            log_rho = torch.cumsum(ldv_i, dim=1)
-            log_pi_ = log_pi[:, -1:, :, :]
-            log_rho_ = log_rho[:, -1:, :, :]
-            log_theta = log_pi_ - log_pi
-            log_phi = log_rho_ - log_rho
-            pi = torch.exp(log_pi)
-            rho = torch.exp(log_rho)
-            theta = torch.exp(log_theta)
-            phi = torch.exp(log_phi)
-            pi_ = torch.exp(log_pi_).squeeze(1)
-            rho_ = torch.exp(log_rho_).squeeze(1)
-            ki__ = ki * theta
-            vi__ = vi * phi
-
-            # update
-            dki_inter = (
-                torch.einsum("b c h e, b h d e -> b c h d", vi__, dstate) * theta
-            )
-            dvi_inter = torch.einsum("b c h d, b h d e -> b c h e", ki__, dstate) * phi
-            dstate = pi_.unsqueeze(-1) * dstate * rho_.unsqueeze(-2) + dstate_
-
-            # save
-            dk[:, start:end] = dk[:, start:end] + dki_inter
-            dv[:, start:end] = dv[:, start:end] + dvi_inter
+        ##### compute inter
+        log_pi = torch.cumsum(ldk, dim=2)
+        log_rho = torch.cumsum(ldv, dim=2)
+        log_theta = log_pi[:, :, -1:] - log_pi
+        log_phi = (
+            log_rho[
+                :,
+                :,
+                -1:,
+            ]
+            - log_rho
+        )
+        pi = torch.exp(log_pi)
+        rho = torch.exp(log_rho)
+        theta = torch.exp(log_theta)
+        phi = torch.exp(log_phi)
+        # update
+        k_ = k * theta
+        v_ = v * phi
+        do_ = do * rho
+        dq += torch.einsum("b m c h e, b m h d e -> b m c h d", do_, states[:, :m]) * pi
+        dk += (
+            torch.einsum("b m c h e, b m h d e -> b m c h d", v_, dstates[:, 1:])
+            * theta
+        )
+        dv += (
+            torch.einsum("b m c h d, b m h d e -> b m c h e", k_, dstates[:, 1:]) * phi
+        )
 
         if state is not None and state_requires_grad:
             # The following is the correct formula, but it is not used because it is slower
@@ -317,16 +342,29 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         else:
             dldv_ = o * do - (1 - torch.exp(ldv)) * dv
 
+        # reshape
+        dq = rearrange(dq, "b m c h d -> b (m c) h d")[:, :n]
+        dldk_ = rearrange(dldk_, "b m c h d -> b (m c) h d")[:, :n]
+        dldv_ = rearrange(dldv_, "b m c h d -> b (m c) h d")[:, :n]
+        dk = (
+            rearrange(dk, "b m c h d -> b (m c) h d")[:, :n] if dk is not None else None
+        )
+        dv = (
+            rearrange(dv, "b m c h d -> b (m c) h d")[:, :n] if dv is not None else None
+        )
+        ldk = rearrange(ldk, "b m c h d -> b (m c) h d")[:, :n]
+        ldv = rearrange(ldv, "b m c h d -> b (m c) h d")[:, :n]
+
         dldk = rev_cumsum(dldk_, dim=1)
         dldv = rev_cumsum(dldv_, dim=1)
 
         # k = 1 - exp(ldk)
-        if k is None:
+        if k_is_none:
             dldk = dldk - torch.exp(ldk) * dk
             dk = None
 
         # v = 1 - exp(ldv)
-        if v is None:
+        if v_is_none:
             dldv = dldv - torch.exp(ldv) * dv
             dv = None
 
