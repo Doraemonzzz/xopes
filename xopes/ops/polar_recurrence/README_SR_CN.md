@@ -1,4 +1,4 @@
-# Polar RNN(Sequential Recurrence)
+# Polar Recurrence(Sequential Recurrence)
 
 给定输入$\mathbf Q\in \mathbb R^{n\times d_1}, \mathbf \Alpha \in \mathbb R^{n\times d_1}, \mathbf \Beta\in \mathbb R^{n\times d_2}, \mathbf R \in \mathbb R^{n\times d_2}, \mathbf S\in \mathbb R^{n\times d_3}$，初起始state $\mathbf u_0, \mathbf p_0$，以及模长参数$\Gamma \in \mathbb R^{n\times }$和Decay $\Lambda\in \mathbb R^{n\times d}$，我们执行如下递归：
 $$
