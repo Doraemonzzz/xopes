@@ -80,7 +80,7 @@ $$
 
 首先计算第二组递推的梯度：
 $$
-\begin{aligned} 
+\begin{aligned}
 \mathbf {dp}_n & = \mathbf {dp}_{n+1}  +  \mathbf {h}_n \mathbf{do}_n^\top \in \mathbb R^{d_2\times d_3},   \\
 \mathbf {dp}_i & = \mathrm{diag}\{\lambda_{i+1}\} \mathbf {dp}_{i+1}  +  \mathbf {h}_i \mathbf{do}_i^\top    \in \mathbb R^{d_2\times d_3} \\
 
@@ -105,16 +105,16 @@ $$
 接着计算第二组rnn的梯度：
 $$
 \begin{aligned}
-\mathbf {du}_i 
+\mathbf {du}_i
 & = \mathbf {du}_{i+1}  +  \mathbf {q}_i \mathbf{dh}_i^\top  \in \mathbb R^{d_1\times d_2},  \\
 
-\mathbf {d\alpha}_i 
+\mathbf {d\alpha}_i
 & = \mathbf {du}_i  \eta_i \in \mathbb R^{d_1},  \\
 
-\mathbf {d\eta}_i 
+\mathbf {d\eta}_i
 & = \mathbf {du}_i^\top  \alpha_i\in \mathbb R^{d_2},  \\
 
-\mathbf {d\beta}_i 
+\mathbf {d\beta}_i
 & = \mathbf {u}_{i-1}^\top \mathbf {d\eta}_i \in \mathbb R^{d_2}, \\
 
 \mathbf {dq}_i &=   \mathbf {u}_i \mathbf {dh}_i  \in \mathbb R^{d_1}.
@@ -144,11 +144,11 @@ $$
 &=\mathbf r_{n-1} +  \beta_n \mathbf k_n \mathbf k_n^\top \mathbf r_{n-1} \\
 
 &= \mathbf I + \sum_{i=1}^{n-1} \mathbf k_i \mathbf w_i^\top
-+ \beta_n \mathbf k_n \mathbf k_n^\top 
++ \beta_n \mathbf k_n \mathbf k_n^\top
 \left(\mathbf I +\sum_{i=1}^{n-1} \mathbf k_i \mathbf w_i^\top\right) \\
 
-&=  \mathbf I + \sum_{i=1}^{n-1} \mathbf k_i \mathbf w_i^\top + \mathbf k_n \left( 
-\beta_n \mathbf k_n  +\beta_n\sum_{i=1}^{n-1} \mathbf w_i(\mathbf k_i^\top \mathbf k_n) 
+&=  \mathbf I + \sum_{i=1}^{n-1} \mathbf k_i \mathbf w_i^\top + \mathbf k_n \left(
+\beta_n \mathbf k_n  +\beta_n\sum_{i=1}^{n-1} \mathbf w_i(\mathbf k_i^\top \mathbf k_n)
 \right)^\top \\
 &\triangleq \mathbf I+\sum_{i=1}^{n} \mathbf k_i \mathbf w_i^\top.
 
@@ -158,5 +158,3 @@ $$
 $$
 \mathbf w_n=\beta_n \mathbf k_n  +\beta_n\sum_{i=1}^{n-1} \mathbf w_i(\mathbf k_i^\top \mathbf k_n) .
 $$
-
-

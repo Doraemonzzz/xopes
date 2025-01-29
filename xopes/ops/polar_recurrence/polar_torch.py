@@ -4,6 +4,8 @@ import torch
 import torch.nn.functional as F
 
 from xopes.ops.act import act_torch
+
+
 def polar_torch(
     q: torch.Tensor,
     alpha: torch.Tensor,
@@ -44,14 +46,19 @@ def polar_torch(
         Final U state tensor (B, H, D, D)
         Final P state tensor (B, H, D, E)
     """
-    assert alpha_act in ["none", "relu", "sigmoid", "silu"], "Invalid alpha activation function"
+    assert alpha_act in [
+        "none",
+        "relu",
+        "sigmoid",
+        "silu",
+    ], "Invalid alpha activation function"
     assert r_act in ["none", "relu", "sigmoid", "silu"], "Invalid r activation function"
-    
+
     dtype = q.dtype
     device = q.device
     b, n, h, d = q.shape
     e = s.shape[-1] if s is not None else d
-    
+
     # Convert to float32 for better numerical stability
     q = q.float()
     alpha = alpha.float()
@@ -60,7 +67,7 @@ def polar_torch(
     r = r.float()
     if s is not None:
         s = s.float()
-    
+
     q = act_torch(q, alpha_act)
     alpha = act_torch(alpha, alpha_act)
     if beta is not None:
@@ -78,7 +85,7 @@ def polar_torch(
             .repeat(b, h, 1, 1)
         )
     u_state = u_state.float()
-    
+
     if p_state is None:
         p_state = torch.zeros((b, h, d, e), dtype=torch.float32, device=device)
     p_state = p_state.float()
@@ -119,10 +126,10 @@ def polar_torch(
             beta = F.normalize(beta, dim=-1)
         if s is not None:
             s = F.normalize(s, dim=-1)
-            
+
     if beta is None:
         beta = alpha
-    
+
     if s is None:
         s = r
 
