@@ -1,19 +1,22 @@
 from typing import Optional, Tuple
+
 import torch
 import torch.nn.functional as F
 
-
+from xopes.ops.act import act_torch
 def polar_torch(
     q: torch.Tensor,
     alpha: torch.Tensor,
     r: torch.Tensor,
-    norm_style: str = 'none',
+    norm_style: str = "none",
     beta: Optional[torch.Tensor] = None,
     s: Optional[torch.Tensor] = None,
     gamma: Optional[torch.Tensor] = None,
     log_decay: Optional[torch.Tensor] = None,
     u_state: Optional[torch.Tensor] = None,
     p_state: Optional[torch.Tensor] = None,
+    alpha_act: str = "none",
+    r_act: str = "none",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Applies Polar Recurrence (Sequential Recurrence) in PyTorch.
@@ -22,7 +25,7 @@ def polar_torch(
         q: Query tensor (B, N, H, D)
         alpha: Alpha tensor (B, N, H, D)
         r: R tensor (B, N, H, D)
-        norm_style: Normalization style, choose from ['none', 'alpha', 'r', 'alpha_r'], 
+        norm_style: Normalization style, choose from ['none', 'alpha', 'r', 'alpha_r'],
                     if 'none', no normalization is applied;
                     if 'alpha', alpha and beta are normalized;
                     if 'r', r and s are normalized;
@@ -33,30 +36,53 @@ def polar_torch(
         log_decay: Log decay tensor (B, N, H, D) or (B, N, H)
         u_state: Initial U state tensor (B, H, D, E), optional
         p_state: Initial P state tensor (B, H, D, E), optional
+        alpha_act: Activation function for alpha, choose from ['none', 'relu', 'sigmoid', 'silu']
+        r_act: Activation function for r, choose from ['none', 'relu', 'sigmoid', 'silu']
 
     Returns:
         Output tensor (B, N, H, E)
         Final U state tensor (B, H, D, D)
         Final P state tensor (B, H, D, E)
     """
+    assert alpha_act in ["none", "relu", "sigmoid", "silu"], "Invalid alpha activation function"
+    assert r_act in ["none", "relu", "sigmoid", "silu"], "Invalid r activation function"
+    
     dtype = q.dtype
     device = q.device
     b, n, h, d = q.shape
     e = s.shape[-1] if s is not None else d
-
+    
     # Convert to float32 for better numerical stability
     q = q.float()
     alpha = alpha.float()
-    beta = beta.float()
+    if beta is not None:
+        beta = beta.float()
     r = r.float()
-    s = s.float()
+    if s is not None:
+        s = s.float()
+    
+    q = act_torch(q, alpha_act)
+    alpha = act_torch(alpha, alpha_act)
+    if beta is not None:
+        beta = act_torch(beta, alpha_act)
+    r = act_torch(r, r_act)
+    if s is not None:
+        s = act_torch(s, r_act)
 
     # Initialize states if not provided
     if u_state is None:
-        u_state = torch.eye(d, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0).repeat(b, h, 1, 1)
+        u_state = (
+            torch.eye(d, dtype=torch.float32, device=device)
+            .unsqueeze(0)
+            .unsqueeze(0)
+            .repeat(b, h, 1, 1)
+        )
+    u_state = u_state.float()
+    
     if p_state is None:
         p_state = torch.zeros((b, h, d, e), dtype=torch.float32, device=device)
-    
+    p_state = p_state.float()
+
     # Initialize output tensor
     o = torch.zeros((b, n, h, e), dtype=torch.float32, device=device)
 
@@ -65,62 +91,62 @@ def polar_torch(
         gamma = gamma.float()
     else:
         gamma = torch.ones((b, n, h, d), dtype=torch.float32, device=device)
-        
+
     if len(gamma.shape) == 3:
         gamma = gamma.unsqueeze(-1)
-    
+
     if log_decay is not None:
         log_decay = log_decay.float()
     else:
         log_decay = torch.zeros((b, n, h, d), dtype=torch.float32, device=device)
-        
+
     if len(log_decay.shape) == 3:
         log_decay = log_decay.unsqueeze(-1)
-        
+
     # normalize vectors
-    if norm_style == 'alpha':
+    if norm_style == "alpha":
         alpha = F.normalize(alpha, dim=-1)
         if beta is not None:
             beta = F.normalize(beta, dim=-1)
-        else:
-            beta = alpha
-    elif norm_style == 'r':
+    elif norm_style == "r":
         r = F.normalize(r, dim=-1)
         if s is not None:
             s = F.normalize(s, dim=-1)
-        else:
-            s = r
-    elif norm_style == 'alpha_r':
+    elif norm_style == "alpha_r":
         alpha = F.normalize(alpha, dim=-1)
         r = F.normalize(r, dim=-1)
         if beta is not None:
             beta = F.normalize(beta, dim=-1)
-        else:
-            beta = alpha
         if s is not None:
             s = F.normalize(s, dim=-1)
-        else:
-            s = r
+            
+    if beta is None:
+        beta = alpha
+    
+    if s is None:
+        s = r
 
     for i in range(n):
         # Get current step tensors
-        alpha_i = alpha[:, i] * gamma[:, i] # b h d
-        beta_i = beta[:, i] # b h d
-        r_i = r[:, i] # b h d
-        s_i = s[:, i] # b h e
-        decay_i = torch.exp(log_decay[:, i]) # b h d
-        q_i = q[:, i] # b h d
+        alpha_i = alpha[:, i] * gamma[:, i]  # b h d
+        beta_i = beta[:, i]  # b h d
+        r_i = r[:, i]  # b h d
+        s_i = s[:, i]  # b h e
+        decay_i = torch.exp(log_decay[:, i])  # b h d
+        q_i = q[:, i]  # b h d
 
         # Update u state
-        eta_i = torch.einsum("... d e, ... d -> ... e", u_state, beta_i) # b h d
-        u_state += torch.einsum("... d, ... e -> ... d e", alpha_i, eta_i) # b h d e
+        eta_i = torch.einsum("... d e, ... d -> ... e", u_state, beta_i)  # b h d
+        u_state += torch.einsum("... d, ... e -> ... d e", alpha_i, eta_i)  # b h d e
 
         # Update p state
-        p_state = decay_i.unsqueeze(-1) * p_state + torch.einsum("... d, ... e -> ... d e", r_i, s_i)
+        p_state = decay_i.unsqueeze(-1) * p_state + torch.einsum(
+            "... d, ... e -> ... d e", r_i, s_i
+        )
 
         # Compute output
-        h_i = torch.einsum("... d e, ... d -> ... e", u_state, q_i) # b h d
-        o_i = torch.einsum("... d e, ... d -> ... e", p_state, h_i) # b h e
+        h_i = torch.einsum("... d e, ... d -> ... e", u_state, q_i)  # b h d
+        o_i = torch.einsum("... d e, ... d -> ... e", p_state, h_i)  # b h e
         o[:, i] = o_i
 
     return o.to(dtype), u_state.to(dtype), p_state.to(dtype)
@@ -132,7 +158,7 @@ if __name__ == "__main__":
     d = 128
     e = 64
     dtype = torch.float32
-    
+
     q = torch.randn((b, n, h, d), dtype=dtype).cuda()
     alpha = torch.randn((b, n, h, d), dtype=dtype).cuda()
     beta = torch.randn((b, n, h, d), dtype=dtype).cuda()
@@ -142,14 +168,18 @@ if __name__ == "__main__":
     log_decay = torch.randn((b, n, h, d), dtype=dtype).cuda()
     u_state = torch.randn((b, h, d, d), dtype=dtype).cuda()
     p_state = torch.randn((b, h, d, e), dtype=dtype).cuda()
-    
+
     o, u_state, p_state = polar_torch(
-        q=q, alpha=alpha, beta=beta, r=r, s=s,
-        norm_style='alpha_r',
+        q=q,
+        alpha=alpha,
+        beta=beta,
+        r=r,
+        s=s,
+        norm_style="alpha_r",
         gamma=gamma,
         log_decay=log_decay,
         u_state=u_state,
-        p_state=p_state
+        p_state=p_state,
     )
     print(f"Output shape: {o.shape}")
     print(f"U state shape: {u_state.shape}")

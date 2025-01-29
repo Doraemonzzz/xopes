@@ -1,4 +1,4 @@
-# Polar Recurrence(Sequential Recurrence)
+# Polar RNN(Sequential Recurrence)
 
 给定输入$\mathbf Q\in \mathbb R^{n\times d_1}, \mathbf \Alpha \in \mathbb R^{n\times d_1}, \mathbf \Beta\in \mathbb R^{n\times d_2}, \mathbf R \in \mathbb R^{n\times d_2}, \mathbf S\in \mathbb R^{n\times d_3}$，初起始state $\mathbf u_0, \mathbf p_0$，以及模长参数$\Gamma \in \mathbb R^{n\times }$和Decay $\Lambda\in \mathbb R^{n\times d}$，我们执行如下递归：
 $$
@@ -7,8 +7,9 @@ $$
 \mathbf p_0&\in \mathbb R^{d_2\times d_3}, \\
 \alpha_i & = \gamma_i \odot \alpha_i,   \\
 \mathbf u_i &= (\mathbf I + \alpha_i \beta_i^\top) \mathbf u_{i-1}, \\
-\mathbf p_i &= \mathrm{diag}\{\lambda_i\} \mathbf p_{i-1} +\mathbf s_i \mathbf t_i^\top, \\
-\mathbf o_i^\top&= \mathbf q_i^\top \mathbf u_i  \mathbf p_i.
+\mathbf h_i^\top&= \mathbf q_i^\top \mathbf u_i , \\
+\mathbf p_i &= \mathrm{diag}\{\lambda_i\} \mathbf p_{i-1} +\mathbf r_i \mathbf s_i^\top, \\
+\mathbf o_i^\top&= \mathbf h_i^\top   \mathbf p_i.
 \end{aligned}
 $$
 返回：
@@ -49,8 +50,9 @@ $$
 \mathbf \eta_i &=   \mathbf u_{i-1}^\top \beta_i \in \mathbb R^{d_2},\\
 \mathbf u_i &= (\mathbf I + \alpha_i\beta_i^\top) \mathbf u_{i-1} \\
 &= \mathbf u_{i-1} + \alpha_i\eta_i^\top , \\
-\mathbf p_i &= \mathrm{diag}\{\lambda_i\} \mathbf p_{i-1} +\mathbf r_i \mathbf s_i^\top \in \mathbb R^{d_2\times d_3}, \\
 \mathbf h_i&=  \mathbf u_i^\top \mathbf q_i \in \mathbb R^{d_2},  \\
+\mathbf p_i &= \mathrm{diag}\{\lambda_i\} \mathbf p_{i-1} +\mathbf r_i \mathbf s_i^\top \in \mathbb R^{d_2\times d_3}, \\
+
 \mathbf o_i &= \mathbf p_i^\top \mathbf h_i\in \mathbb R^{d_3}.
 \end{aligned}
 $$
@@ -63,38 +65,59 @@ $$
 \end{matrix} \right]\in \mathbb R^{n\times d_3}.
 $$
 
+所以我们可以将上述递推视为两组RNN：
+
+- 第一组递推角度；
+- 第二组递推模长；
+
+
+
 
 
 ## Backward
 
 给定$\mathbf {do}_1,\ldots, \mathbf {do}_n, \mathbf {du}_n, \mathbf {dp}_n$，计算：
+
+首先计算第二组递推的梯度：
 $$
-\begin{aligned}
-\mathbf {dp}_n & = \mathbf {dp}_n  +  \mathbf {h}_n \mathbf{do}_n^\top \in \mathbb R^{d_2\times d_3},   \\
-
-\mathbf {du}_n & = \mathbf {du}_n  +  \mathbf {q}_n \mathbf{dh}_n^\top  \in \mathbb R^{d_1\times d_2},  \\
-
-\mathbf {dp}_i & = \mathrm{diag}\{\lambda_{i+1}\} \mathbf {dp}_{i+1}  +  \mathbf {h}_i \mathbf{do}_i^\top,    \in \mathbb R^{d_2\times d_3} \\
-
-\mathbf {du}_i
-& = \mathbf {du}_{i+1}  +  \mathbf {q}_i \mathbf{dh}_i^\top  \in \mathbb R^{d_1\times d_2},  \\
-
-\mathbf {dh}_i &=   \mathbf {p}_i \mathbf {do}_i \in \mathbb R^{d_2},  \\
-
-\mathbf {dq}_i &=   \mathbf {u}_i \mathbf {dh}_i  \in \mathbb R^{d_1}, \\
+\begin{aligned} 
+\mathbf {dp}_n & = \mathbf {dp}_{n+1}  +  \mathbf {h}_n \mathbf{do}_n^\top \in \mathbb R^{d_2\times d_3},   \\
+\mathbf {dp}_i & = \mathrm{diag}\{\lambda_{i+1}\} \mathbf {dp}_{i+1}  +  \mathbf {h}_i \mathbf{do}_i^\top    \in \mathbb R^{d_2\times d_3} \\
 
 \mathbf {dr}_i &= \mathbf {dp}_i \mathbf s_i \in \mathbb R^{d_2}, \\
 
-\mathbf {ds}_i &= \mathbf {dp}_i^\top \mathbf s_i \in \mathbb R^{d_3}, \\
+\mathbf {ds}_i &= \mathbf {dp}_i^\top \mathbf r_i \in \mathbb R^{d_3}, \\
 
-\mathbf {d\alpha}_i
+\mathbf {dh}_i &=   \mathbf {p}_i \mathbf {do}_i \in \mathbb R^{d_2}.
+
+\end{aligned}
+$$
+复用lightning attention的结论，我们有：
+$$
+\begin{aligned}
+\mathbf {d}\log \alpha_t
+& =\mathbf h_t \odot  \mathbf {dh}_t -  \mathbf r_t \odot  \mathbf {dr}_t,  \\
+\mathbf d \log \lambda_t
+&= [\mathbf p_n \odot \mathbf {dp}_n]\mathbf 1 + \sum_{j\ge t} \mathbf d \log \alpha_j.
+
+\end{aligned}
+$$
+接着计算第二组rnn的梯度：
+$$
+\begin{aligned}
+\mathbf {du}_i 
+& = \mathbf {du}_{i+1}  +  \mathbf {q}_i \mathbf{dh}_i^\top  \in \mathbb R^{d_1\times d_2},  \\
+
+\mathbf {d\alpha}_i 
 & = \mathbf {du}_i  \eta_i \in \mathbb R^{d_1},  \\
 
-\mathbf {d\eta}_i
+\mathbf {d\eta}_i 
 & = \mathbf {du}_i^\top  \alpha_i\in \mathbb R^{d_2},  \\
 
-\mathbf {d\beta}_i
-& = \mathbf {u}_{i-1}  \mathbf {d\eta}_i^\top \in \mathbb R^{d_2} . \\
+\mathbf {d\beta}_i 
+& = \mathbf {u}_{i-1}^\top \mathbf {d\eta}_i \in \mathbb R^{d_2}, \\
+
+\mathbf {dq}_i &=   \mathbf {u}_i \mathbf {dh}_i  \in \mathbb R^{d_1}.
 \end{aligned}
 $$
 
@@ -121,11 +144,11 @@ $$
 &=\mathbf r_{n-1} +  \beta_n \mathbf k_n \mathbf k_n^\top \mathbf r_{n-1} \\
 
 &= \mathbf I + \sum_{i=1}^{n-1} \mathbf k_i \mathbf w_i^\top
-+ \beta_n \mathbf k_n \mathbf k_n^\top
++ \beta_n \mathbf k_n \mathbf k_n^\top 
 \left(\mathbf I +\sum_{i=1}^{n-1} \mathbf k_i \mathbf w_i^\top\right) \\
 
-&=  \mathbf I + \sum_{i=1}^{n-1} \mathbf k_i \mathbf w_i^\top + \mathbf k_n \left(
-\beta_n \mathbf k_n  +\beta_n\sum_{i=1}^{n-1} \mathbf w_i(\mathbf k_i^\top \mathbf k_n)
+&=  \mathbf I + \sum_{i=1}^{n-1} \mathbf k_i \mathbf w_i^\top + \mathbf k_n \left( 
+\beta_n \mathbf k_n  +\beta_n\sum_{i=1}^{n-1} \mathbf w_i(\mathbf k_i^\top \mathbf k_n) 
 \right)^\top \\
 &\triangleq \mathbf I+\sum_{i=1}^{n} \mathbf k_i \mathbf w_i^\top.
 
@@ -135,3 +158,5 @@ $$
 $$
 \mathbf w_n=\beta_n \mathbf k_n  +\beta_n\sum_{i=1}^{n-1} \mathbf w_i(\mathbf k_i^\top \mathbf k_n) .
 $$
+
+
