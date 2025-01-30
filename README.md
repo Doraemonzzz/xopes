@@ -3,6 +3,8 @@
 Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 # Plan
+- cumsum
+  - [x] 250130
 - polar_recurrence vector decay
   - [x] 20250129 add document
 - Update b h d -> B H D
