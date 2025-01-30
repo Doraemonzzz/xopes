@@ -6,11 +6,7 @@ from xopes.utils import get_threshold
 
 
 def get_params():
-    shapes = [
-        (6, 128), 
-        (4, 8, 256), 
-         (4, 1024, 4096),
-         (12, 32, 15)]
+    shapes = [(6, 128), (4, 8, 256), (4, 1024, 4096), (12, 32, 15)]
 
     return shapes
 
@@ -53,9 +49,7 @@ def test(shape, dim, reverse, dtype):
         "o diff norm: ",
         torch.norm(o_cumsum_torch - o_cumsum_triton).item(),
     )
-    assert torch.allclose(
-        o_cumsum_torch, o_cumsum_triton, atol=atol, rtol=rtol
-    )
+    assert torch.allclose(o_cumsum_torch, o_cumsum_triton, atol=atol, rtol=rtol)
 
     # backward check
     print(
@@ -66,6 +60,4 @@ def test(shape, dim, reverse, dtype):
         "dx diff norm: ",
         torch.norm(dx_cumsum_torch - dx_cumsum_triton).item(),
     )
-    assert torch.allclose(
-        dx_cumsum_torch, dx_cumsum_triton, atol=atol, rtol=rtol
-    )
+    assert torch.allclose(dx_cumsum_torch, dx_cumsum_triton, atol=atol, rtol=rtol)

@@ -11,7 +11,11 @@ from xopes.utils import contiguous, generate_configs
             "num_warps": [1, 2, 4, 8],
         }
     ),
-    key=["B", "N", "REVERSE",],
+    key=[
+        "B",
+        "N",
+        "REVERSE",
+    ],
 )
 @triton.jit
 def _cumsum(
@@ -44,7 +48,7 @@ def _cumsum(
 
     # compute cumsum
     o = tl.cumsum(x)
-    
+
     # store
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
 
