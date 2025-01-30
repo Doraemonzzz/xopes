@@ -13,9 +13,11 @@ def cumsum_torch(x, dim=-1, reverse=False):
     Returns:
         The cumulative sum of the input tensor.
     """
+    dtype = x.dtype
+    x = x.float()
     if reverse:
         x = torch.flip(x, [dim])
     o = torch.cumsum(x, dim)
     if reverse:
         o = torch.flip(o, [dim])
-    return o
+    return o.to(dtype)

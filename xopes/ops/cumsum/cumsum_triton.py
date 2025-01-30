@@ -11,7 +11,7 @@ from xopes.utils import contiguous, generate_configs
             "num_warps": [1, 2, 4, 8],
         }
     ),
-    key=["B", "N", "REVERSE", "BACKWARD"],
+    key=["B", "N", "REVERSE",],
 )
 @triton.jit
 def _cumsum(
@@ -21,7 +21,6 @@ def _cumsum(
     B: tl.constexpr,
     N: tl.constexpr,
     REVERSE: tl.constexpr,  # if True, o[i] = x[n] + x[n-1] + ... + x[n - i + 1]
-    BACKWARD: tl.constexpr,  # if True, save o[i] to o[n - i - 1]
 ):
     off_b = tl.program_id(0)
 
@@ -29,28 +28,25 @@ def _cumsum(
     offset = off_b * N
 
     # mask
-    array_x = tl.arange(0, BLOCK_N)
-    mask_x = array_x < N
+    if REVERSE:
+        array = BLOCK_N - 1 - tl.arange(0, BLOCK_N) - (BLOCK_N - N) % BLOCK_N
+        mask = array >= 0
+    else:
+        array = tl.arange(0, BLOCK_N)
+        mask = array < N
 
     # compute block ptr
-    x_block_ptr = X + offset + array_x
-    if BACKWARD:
-        array_o = N - BLOCK_N + array_x
-        o_block_ptr = O + offset + array_o
-        mask_o = array_o > 0
-    else:
-        array_o = array_x
-        o_block_ptr = O + offset + array_o
-        mask_o = array_o < N
+    x_block_ptr = X + offset + array
+    o_block_ptr = O + offset + array
 
     # load
-    x = tl.load(x_block_ptr, mask=mask_x, other=0.0).to(tl.float32)
+    x = tl.load(x_block_ptr, mask=mask, other=0.0).to(tl.float32)
 
     # compute cumsum
-    o = tl.cumsum(x, reverse=REVERSE)
-
+    o = tl.cumsum(x)
+    
     # store
-    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_o)
+    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
 
 
 class CumSumTriton(torch.autograd.Function):
@@ -81,7 +77,6 @@ class CumSumTriton(torch.autograd.Function):
             B=b,
             N=n,
             REVERSE=reverse,
-            BACKWARD=False,
         )
 
         ctx.dim = dim
@@ -92,7 +87,7 @@ class CumSumTriton(torch.autograd.Function):
         if dim != -1:
             o = o.transpose(dim, -1)
 
-        return o
+        return o.contiguous()
 
     @staticmethod
     @contiguous
@@ -116,14 +111,13 @@ class CumSumTriton(torch.autograd.Function):
             raise RuntimeError("CumSum doesn't support sequence length >= 64KB.")
 
         grid = (b,)
-        _cumsum_bwd[grid](
-            DO=do_,
-            DX=dx,
+        _cumsum[grid](
+            X=do_,
+            O=dx,
             BLOCK_N=BLOCK_N,
             B=b,
             N=n,
             REVERSE=not reverse,
-            BACKWARD=True,
         )
 
         dx = dx.reshape_as(do)
@@ -131,7 +125,7 @@ class CumSumTriton(torch.autograd.Function):
         if dim != -1:
             dx = dx.transpose(dim, -1)
 
-        return dx, None, None
+        return dx.contiguous(), None, None
 
 
 def cumsum_triton(

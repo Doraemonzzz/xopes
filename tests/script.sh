@@ -58,6 +58,9 @@ folder=linear_cross_entropy
 ##### lavd 250122
 folder=lightning_attn/vector_decay
 
+##### cumsum 250129
+folder=cumsum
+
 mkdir -p $folder/log
 
 
