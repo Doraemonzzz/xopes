@@ -44,6 +44,9 @@ folder=linear_cross_entropy/batch_size
 # ##### act 250116
 # folder=act
 
+# ##### cumsum 250130
+folder=cumsum
+
 mkdir -p $folder/log
 
 # CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
