@@ -2,6 +2,11 @@
 
 Xopes: Toolbox for Accelerating Deep Learning Operators.
 
+# Act related kernel
+- lrpe
+- act
+- gate_linear
+
 # Plan
 - cumsum
   - [x] 250130
