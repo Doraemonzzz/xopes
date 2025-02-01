@@ -44,10 +44,14 @@ folder=linear_cross_entropy/batch_size
 # ##### act 250116
 # folder=act
 
-# ##### cumsum 250130
+##### cumsum 250130
 folder=cumsum
+
+##### gate_linear 250201
+folder=gate_linear/hidden_dim
+folder=gate_linear/batch_size
 
 mkdir -p $folder/log
 
-# CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
-CUDA_VISIBLE_DEVICES=0 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
+CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
+# CUDA_VISIBLE_DEVICES=0 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
