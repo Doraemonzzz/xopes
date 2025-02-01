@@ -43,23 +43,23 @@ folder=linear_cross_entropy
 # ##### oplr 250109
 # folder=out_product_linear_recurrence/data_dependent_decay
 
-# ##### lrpe 250114
-# folder=lrpe/cosine/_1d
-# folder=lrpe/cosine/_1d_mpa
+##### lrpe 250114
+folder=lrpe/cosine/_1d
+folder=lrpe/cosine/_1d_mpa
 # folder=lrpe/rotate/_1d
 # folder=lrpe/rotate/_1d_mpa
 
 # ##### act 250116
 # folder=act
 
-##### lce 250119
-folder=linear_cross_entropy
+# ##### lce 250119
+# folder=linear_cross_entropy
 
-##### lavd 250122
-folder=lightning_attn/vector_decay
+# ##### lavd 250122
+# folder=lightning_attn/vector_decay
 
-##### cumsum 250129
-folder=cumsum
+# ##### cumsum 250129
+# folder=cumsum
 
 mkdir -p $folder/log
 

@@ -101,8 +101,8 @@ def _lrpe_rotate_1d_sp_fwd_triton(
 @triton.jit
 def _lrpe_rotate_1d_sp_bwd_triton(
     X,  # B N H D
-    THETA,  # H D / H 1 / 1 D
-    DO,  # B N H 2D
+    THETA,  # H D / 1 D
+    DO,  # B N H D
     DX,  # B N H D
     OFFSET: tl.constexpr,
     THETA_TYPE: tl.constexpr,
@@ -203,6 +203,7 @@ class LrpeRotate1dSpTriton(torch.autograd.Function):
         if not has_head:  # b n d -> b n h d
             assert theta.shape[0] == 1, "theta must be (1, E)"
             x = x.unsqueeze(-2)
+        shape = x.shape
 
         o = lrpe_rotate_1d_sp_fwd_triton(
             x=x,
@@ -215,11 +216,17 @@ class LrpeRotate1dSpTriton(torch.autograd.Function):
         if not has_head:
             o = o.squeeze(-2)
 
+        if act in [
+            "none",
+        ]:
+            x = None
+
         ctx.save_for_backward(x, theta)
         ctx.offset = offset
         ctx.act = act
         ctx.dim = dim
         ctx.has_head = has_head
+        ctx.shape = shape
 
         return o
 
@@ -231,6 +238,7 @@ class LrpeRotate1dSpTriton(torch.autograd.Function):
         act = ctx.act
         dim = ctx.dim
         has_head = ctx.has_head
+        shape = ctx.shape
 
         dx = lrpe_rotate_1d_sp_bwd_triton(
             x=x,
@@ -239,6 +247,7 @@ class LrpeRotate1dSpTriton(torch.autograd.Function):
             offset=offset,
             act=act,
             dim=dim,
+            shape=shape,
         )
 
         if not has_head:
@@ -295,9 +304,9 @@ def lrpe_rotate_1d_sp_fwd_triton(
 
 
 def lrpe_rotate_1d_sp_bwd_triton(
-    x, theta, do, offset=0, start_dim=0, act="none", dim=None, **kwargs
+    x, theta, do, offset=0, start_dim=0, act="none", dim=None, shape=None, **kwargs
 ):
-    b, n, h, d = x.shape
+    b, n, h, d = shape
     h_t, d_t = theta.shape
     # When d_t != d // 2, we need to pad the theta with zeros, this makes the kernel much simpler
     if d_t != 1 and d_t != d // 2:
@@ -311,7 +320,7 @@ def lrpe_rotate_1d_sp_bwd_triton(
     # update shape
     h_t, d_t = theta.shape
 
-    dx = torch.empty_like(x)
+    dx = torch.empty((b, n, h, d), dtype=do.dtype, device=do.device)
     BLOCK_D = next_power_of_two(d_t)
 
     def grid(meta):

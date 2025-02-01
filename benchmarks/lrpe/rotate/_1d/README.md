@@ -1,9 +1,5 @@
 # A800
 
-## Summary
-
-In summary, use `Triton Bp` when `dim=-2` and `act=softmax`; otherwise, use `Triton Sp`.
-
 ## Notation
 
 - Tr: Triton

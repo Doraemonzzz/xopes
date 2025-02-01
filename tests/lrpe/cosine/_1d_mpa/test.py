@@ -22,8 +22,8 @@ def get_params():
 
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("offset", [0, 10])
-# # without dim
-# @pytest.mark.parametrize("act", ["none"])
+# without dim
+# @pytest.mark.parametrize("act", ["none", "relu", "sigmoid", "silu"])
 # @pytest.mark.parametrize("dim", [None])
 # @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 # with dim
