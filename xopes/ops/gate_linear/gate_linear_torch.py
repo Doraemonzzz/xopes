@@ -1,4 +1,7 @@
+from typing import Optional
+
 import torch
+import torch.nn.functional as F
 
 from xopes.ops.act.act_torch import act_torch
 
@@ -29,3 +32,16 @@ def gate_linear_torch(
         o = o + residual
 
     return o
+
+
+if __name__ == "__main__":
+    b, d1, d2 = 4, 64, 32
+    device = "cuda"
+    x1 = torch.randn(b, d1).to(device).requires_grad_(True)
+    x2 = torch.randn(b, d1).to(device).requires_grad_(True)
+    weight = torch.randn(d2, d1).to(device).requires_grad_(True)
+    bias = torch.randn(d2).to(device).requires_grad_(True)
+    residual = torch.randn(b, d2).to(device).requires_grad_(True)
+    act = "relu"
+    o = gate_linear_torch(x1, x2, weight, bias, residual, act)
+    o.sum().backward()

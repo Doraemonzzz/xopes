@@ -61,6 +61,9 @@ folder=lrpe/cosine/_1d_mpa
 # ##### cumsum 250129
 # folder=cumsum
 
+##### gate_linear 250201
+folder=gate_linear
+
 mkdir -p $folder/log
 
 

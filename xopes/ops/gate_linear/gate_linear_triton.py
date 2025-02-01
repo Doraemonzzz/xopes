@@ -10,7 +10,7 @@ from xopes.utils import contiguous, generate_configs
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [1, 2, 4, 8, 16, 32],
+            "num_warps": [4, 8, 16, 32],
             "BLOCK_B": [32, 64, 128],
             "BLOCK_D1": [32, 64, 128],
             "BLOCK_D2": [32, 64, 128],
@@ -37,30 +37,24 @@ def _gate_linear_fwd(
     ACT: tl.constexpr,
 ):
     off_b = tl.program_id(0)
-    off_d2 = tl.program_id(2)
+    off_d2 = tl.program_id(1)
     # compute offset
     offset_b = off_b * BLOCK_B
     offset_d2 = off_d2 * BLOCK_D2
     # compute block pointer
-    array_b = tl.arange(0, BLOCK_B)
+    array_b = offset_b + tl.arange(0, BLOCK_B)
     array_d1 = tl.arange(0, BLOCK_D1)
     array_d2 = offset_d2 + tl.arange(0, BLOCK_D2)
     # BLOCK_B, BLOCK_D1
-    x1_block_ptr = X1 + offset_b + array_b[:, None] * D1 + array_d1[None, :]
-    x2_block_ptr = X2 + offset_b + array_b[:, None] * D1 + array_d1[None, :]
-    # BLOCK_D2, BLOCK_D1
-    # weight_block_ptr = WEIGHT + array_d2[:, None] * D1 + array_d1[None, :]
+    x1_block_ptr = X1 + array_b[:, None] * D1 + array_d1[None, :]
+    x2_block_ptr = X2 + array_b[:, None] * D1 + array_d1[None, :]
     # BLOCK_D1, BLOCK_D2
-    weight_block_ptr = WEIGHT + array_d1[:, None] * D2 + array_d2[None, :]
+    weight_block_ptr = WEIGHT + array_d2[None, :] * D1 + array_d1[:, None]
     if USE_BIAS:
         bias_block_ptr = BIAS + array_d2
     if USE_RESIDUAL:
-        residual_block_ptr = (
-            RESIDUAL + offset_b + array_b[:, None] * D2 + array_d2[None, :]
-        )
-    else:
-        residual_block_ptr = None
-    o_block_ptr = O + offset_b + array_b[:, None] * D2 + array_d2[None, :]
+        residual_block_ptr = RESIDUAL + array_b[:, None] * D2 + array_d2[None, :]
+    o_block_ptr = O + array_b[:, None] * D2 + array_d2[None, :]
 
     mask_b = array_b < B
     mask_d2 = array_d2 < D2
@@ -79,26 +73,25 @@ def _gate_linear_fwd(
         if ACT == "relu":
             x1 = tl.where(x1 >= 0, x1, 0)
         elif ACT == "sigmoid":
-            x1 = tl.sigmoid(x1)
+            x1 = tl.sigmoid(x1.to(tl.float32))
         elif ACT == "silu":
-            x1 = x1 * tl.sigmoid(x1)
+            x1 = x1 * tl.sigmoid(x1.to(tl.float32))
 
-        y = x1 * x2
+        y = x1.to(x2.dtype) * x2
         acc = tl.dot(y, weight, acc=acc)
 
-        if USE_BIAS:
-            bias = tl.load(bias_block_ptr, mask=mask_d2, other=0.0)
-            acc += bias
-
-        if USE_RESIDUAL:
-            residual = tl.load(residual_block_ptr, mask=mask, other=0.0)
-            acc += residual
-            residual_block_ptr += BLOCK_B * D2
-
-        x1_block_ptr += BLOCK_B * D1
-        x2_block_ptr += BLOCK_B * D1
-        weight_block_ptr += BLOCK_D1 * D2
+        x1_block_ptr += BLOCK_D1
+        x2_block_ptr += BLOCK_D1
+        weight_block_ptr += BLOCK_D1
         array_d1 += BLOCK_D1
+
+    if USE_BIAS:
+        bias = tl.load(bias_block_ptr, mask=mask_d2, other=0.0)
+        acc += bias
+
+    if USE_RESIDUAL:
+        residual = tl.load(residual_block_ptr, mask=mask, other=0.0)
+        acc += residual
 
     tl.store(o_block_ptr, acc.to(o_block_ptr.dtype.element_ty), mask=mask)
 
@@ -143,11 +136,11 @@ def _gate_fn(
     if ACT == "relu":
         x1 = tl.where(x1 >= 0, x1, 0)
     elif ACT == "sigmoid":
-        x1 = tl.sigmoid(x1)
+        x1 = tl.sigmoid(x1.to(tl.float32))
     elif ACT == "silu":
-        x1 = x1 * tl.sigmoid(x1)
+        x1 = x1 * tl.sigmoid(x1.to(tl.float32))
 
-    o = x1 * x2
+    o = x1.to(x2.dtype) * x2
 
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
 
@@ -197,24 +190,25 @@ def _gate_linear_bwd(
     if ACT == "relu":
         x1_ = tl.where(x1 >= 0, x1, 0)
     elif ACT == "sigmoid":
-        x1_ = tl.sigmoid(x1)
+        x1_ = tl.sigmoid(x1.to(tl.float32))
     elif ACT == "silu":
-        x1_ = x1 * tl.sigmoid(x1)
+        x1_ = x1 * tl.sigmoid(x1.to(tl.float32))
     else:
         x1_ = x1
 
-    dx2 = x1_ * dy
+    dx2 = x1_.to(dy.dtype) * dy
+    dx1 = x2 * dy
 
-    if ACT == "relu":
-        dx1 = tl.where(x1 >= 0, 1, 0)
-    elif ACT == "sigmoid":
-        sigmoid = tl.sigmoid(x1)
-        dx1 = sigmoid * (1 - sigmoid)
-    elif ACT == "silu":
-        sigmoid = tl.sigmoid(x1)
-        dx1 = sigmoid * (1 + x1 * (1 - sigmoid))
-
-    dx1 = dx1 * x2 * dy
+    if ACT != "none":
+        if ACT == "relu":
+            dx1_ = tl.where(x1 >= 0, 1, 0)
+        elif ACT == "sigmoid":
+            sigmoid = tl.sigmoid(x1.to(tl.float32))
+            dx1_ = sigmoid * (1 - sigmoid)
+        elif ACT == "silu":
+            sigmoid = tl.sigmoid(x1.to(tl.float32))
+            dx1_ = sigmoid * (1 + x1 * (1 - sigmoid))
+        dx1 = dx1 * dx1_.to(dx1.dtype)
 
     tl.store(dx1_block_ptr, dx1.to(dx1_block_ptr.dtype.element_ty), mask=mask)
     tl.store(dx2_block_ptr, dx2.to(dx2_block_ptr.dtype.element_ty), mask=mask)
@@ -358,6 +352,7 @@ def gate_linear_triton(
     Returns:
         Output tensor, ... d2
     """
+    # weight = weight.T
     return GateLinearTriton.apply(x1, x2, weight, bias, residual, act)
 
 
