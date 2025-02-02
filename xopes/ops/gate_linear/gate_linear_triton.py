@@ -342,7 +342,6 @@ def gate_linear_triton(
     Returns:
         Output tensor, ... d2
     """
-    # weight = weight.T
     return GateLinearTriton.apply(x1, x2, weight, bias, residual, act)
 
 
