@@ -7,6 +7,8 @@ import triton
 from xopes.ops.gate_linear import gate_linear_torch, gate_linear_triton
 from xopes.utils import get_memory
 
+torch._functorch.config.donated_buffer = False
+
 device = torch.device("cuda")
 
 dtype_map = {
@@ -100,7 +102,8 @@ def benchmark(
 
     try:
         fn = lambda: module(x1, x2, weight, bias, residual, act)
-    except:
+    except Exception as e:
+        print(e)
         fn = None
 
     if mode == "bwd":
@@ -108,13 +111,15 @@ def benchmark(
             o = fn()
             do = torch.randn((b, d2), dtype=dtype, device=device)
             fn = lambda: o.backward(do, retain_graph=True)
-        except:
+        except Exception as e:
+            print(e)
             fn = None
 
     if bench_type == "speed":
         try:
             ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-        except:
+        except Exception as e:
+            print(e)
             ms = -1
         return ms
     else:
@@ -126,7 +131,8 @@ def benchmark(
                 fn()
                 mb_arr.append(get_memory(device))
             mb = np.mean(mb_arr)
-        except:
+        except Exception as e:
+            print(e)
             mb = -1
         return mb
 
