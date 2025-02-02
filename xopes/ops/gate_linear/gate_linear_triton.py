@@ -4,17 +4,158 @@ import torch
 import triton
 import triton.language as tl
 
-from xopes.utils import contiguous, generate_configs
+from xopes.utils import contiguous, filter_configs, generate_configs
 
 
 @triton.autotune(
-    generate_configs(
-        {
-            "num_warps": [4, 8, 16, 32],
-            "BLOCK_B": [32, 64, 128],
-            "BLOCK_D1": [32, 64, 128],
-            "BLOCK_D2": [32, 64, 128],
-        }
+    filter_configs(
+        [
+            triton.Config(
+                {
+                    "BLOCK_B": 128,
+                    "BLOCK_D2": 256,
+                    "BLOCK_D1": 64,
+                },
+                num_stages=3,
+                num_warps=8,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 64,
+                    "BLOCK_D2": 256,
+                    "BLOCK_D1": 32,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 128,
+                    "BLOCK_D2": 128,
+                    "BLOCK_D1": 32,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 128,
+                    "BLOCK_D2": 64,
+                    "BLOCK_D1": 32,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 64,
+                    "BLOCK_D2": 128,
+                    "BLOCK_D1": 32,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 128,
+                    "BLOCK_D2": 32,
+                    "BLOCK_D1": 32,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 64,
+                    "BLOCK_D2": 32,
+                    "BLOCK_D1": 32,
+                },
+                num_stages=5,
+                num_warps=2,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 32,
+                    "BLOCK_D2": 64,
+                    "BLOCK_D1": 32,
+                },
+                num_stages=5,
+                num_warps=2,
+            ),
+            # Good config for fp8 inputs.
+            triton.Config(
+                {
+                    "BLOCK_B": 128,
+                    "BLOCK_D2": 256,
+                    "BLOCK_D1": 128,
+                },
+                num_stages=3,
+                num_warps=8,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 256,
+                    "BLOCK_D2": 128,
+                    "BLOCK_D1": 128,
+                },
+                num_stages=3,
+                num_warps=8,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 256,
+                    "BLOCK_D2": 64,
+                    "BLOCK_D1": 128,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 64,
+                    "BLOCK_D2": 256,
+                    "BLOCK_D1": 128,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 128,
+                    "BLOCK_D2": 128,
+                    "BLOCK_D1": 128,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 128,
+                    "BLOCK_D2": 64,
+                    "BLOCK_D1": 64,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 64,
+                    "BLOCK_D2": 128,
+                    "BLOCK_D1": 64,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_B": 128,
+                    "BLOCK_D2": 32,
+                    "BLOCK_D1": 64,
+                },
+                num_stages=4,
+                num_warps=4,
+            ),
+        ]
     ),
     key=["B", "D1", "D2"],
 )
@@ -99,7 +240,7 @@ def _gate_linear_fwd(
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [1, 2, 4, 8, 16, 32],
+            "num_warps": [4, 8, 16, 32],
             "BLOCK_B": [32, 64, 128, 256, 512],
         }
     ),
@@ -148,7 +289,7 @@ def _gate_fn(
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [1, 2, 4, 8, 16, 32],
+            "num_warps": [4, 8, 16, 32],
             "BLOCK_B": [32, 64, 128, 256, 512],
         }
     ),
@@ -343,7 +484,7 @@ def gate_linear_triton(
 
     Args:
         x1: Input tensor, ... d1
-        x2: Input tensor, ... d2
+        x2: Input tensor, ... d1
         weight: Weight tensor, d2 d1
         bias: Bias tensor, d2
         residual: Residual tensor, ... d2

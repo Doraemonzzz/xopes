@@ -2,6 +2,7 @@ from .constant import ACT_SET, HEAD_DIM
 from .op_utils import transpose
 from .utils import (
     contiguous,
+    filter_configs,
     generate_configs,
     get_memory,
     get_threshold,

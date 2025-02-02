@@ -92,6 +92,14 @@ def generate_configs(input_dict):
         return configs
 
 
+def filter_configs(array):
+    # we only need one config for debug
+    if XOPES_DEBUG:
+        return array[:1]
+    else:
+        return array
+
+
 def get_threshold(dtype):
     assert dtype in [
         torch.float16,

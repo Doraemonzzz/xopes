@@ -24,7 +24,8 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["d1"],
-        x_vals=[2**i for i in range(8, 14)],  # Testing different sequence lengths
+        # x_vals=[2**i for i in range(8, 14)],
+        x_vals=[2**i for i in range(8, 10)],
         xlabel="Hidden Dimension",
         ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory (MB)",
         line_arg="provider",

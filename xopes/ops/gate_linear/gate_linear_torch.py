@@ -19,7 +19,7 @@ def gate_linear_torch(
 
     Args:
         x1: Input tensor, ... d1
-        x2: Input tensor, ... d2
+        x2: Input tensor, ... d1
         W: Weight tensor, d2 d1
         bias: Bias tensor, d2
         residual: Residual tensor, ... d2
