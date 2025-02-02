@@ -8,6 +8,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - gate_linear
 
 # Plan
+- gate_linear
 - cumsum
   - [x] 250130
 - polar_recurrence vector decay
