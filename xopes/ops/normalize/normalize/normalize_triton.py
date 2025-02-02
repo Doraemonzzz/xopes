@@ -286,7 +286,6 @@ class NormalizeTriton(torch.autograd.Function):
             updated_residual = updated_residual.reshape_as(x)
 
         return o, updated_residual
-        # return mean, updated_residual
 
     @staticmethod
     @contiguous
