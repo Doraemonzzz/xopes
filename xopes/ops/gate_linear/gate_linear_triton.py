@@ -100,6 +100,7 @@ def _gate_linear_fwd(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
+            "num_stages": [2, 3, 4],
         }
     ),
     key=["B", "D"],
@@ -145,6 +146,7 @@ def _gate_fn(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
+            "num_stages": [2, 3, 4],
         }
     ),
     key=["B", "D"],

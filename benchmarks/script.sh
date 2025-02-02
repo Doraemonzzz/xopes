@@ -53,5 +53,5 @@ folder=gate_linear/batch_size
 
 mkdir -p $folder/log
 
-# CUDA_VISIBLE_DEVICES=0 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
-CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
+CUDA_VISIBLE_DEVICES=0 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
+# CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log

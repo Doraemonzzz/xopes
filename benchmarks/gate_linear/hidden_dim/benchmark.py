@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops.gate_linear import gate_linear_torch, gate_linear_triton
+from xopes.ops.gate_linear import gate_linear_ag, gate_linear_torch, gate_linear_triton
 from xopes.utils import get_memory
 
 torch._functorch.config.donated_buffer = False
@@ -19,6 +19,7 @@ dtype_map = {
 
 module_map = {
     "triton": gate_linear_triton,
+    "ag": gate_linear_ag,
     "torch": gate_linear_torch,
     "torch_compile": torch.compile(gate_linear_torch),
 }
@@ -32,14 +33,16 @@ configs = [
         line_arg="provider",
         line_vals=[
             "triton",
+            "ag",
             "torch",
             "torch_compile",
         ],
-        line_names=["tr", "to", "toc"],
+        line_names=["tr", "ag", "to", "toc"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
             ("green", "-"),
+            ("blue", "-"),
         ],
         plot_name=f"gate_linear-{bench_type}-{mode}-batch{b}-{act}-bias_{use_bias}-residual_{use_residual}-{dtype_name}",
         args={
