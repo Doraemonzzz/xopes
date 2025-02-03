@@ -55,14 +55,14 @@ folder=lrpe/cosine/_1d_mpa
 # ##### lce 250119
 # folder=linear_cross_entropy
 
-# ##### lavd 250122
-# folder=lightning_attn/vector_decay
+##### lavd 250122
+folder=lightning_attn/vector_decay
 
 # ##### cumsum 250129
 # folder=cumsum
 
-##### gate_linear 250201
-folder=gate_linear
+# ##### gate_linear 250201
+# folder=gate_linear
 
 mkdir -p $folder/log
 

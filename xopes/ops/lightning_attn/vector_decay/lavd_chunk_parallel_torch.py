@@ -14,31 +14,43 @@ def rev_cumsum(x: torch.Tensor, dim: int) -> torch.Tensor:
 class LavdChunkParallelFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
-    def forward(ctx, q, ldk, ldv, k=None, v=None, state=None, chunk_size=128):
+    def forward(
+        ctx,
+        q,
+        k,
+        v,
+        ldk=None,
+        ldv=None,
+        use_ldk=True,
+        use_ldv=False,
+        initial_state=None,
+        chunk_size=128,
+    ):
+        compute_dldk = use_ldk and ldk is not None
+        compute_dldv = use_ldv and ldv is not None
         dtype = q.dtype
         b, n, h, d = q.shape
-        e = ldv.shape[-1]
+        e = v.shape[-1]
         c = chunk_size
 
         q = q.float()
-        ldk = ldk.float()
-        ldv = ldv.float()
-        if k is not None:
-            k = k.float()
-        if v is not None:
-            v = v.float()
+        k = k.float()
+        v = v.float()
+        if use_ldk and ldk is None:
+            ldk = torch.log(1 - k)
+        if use_ldv and ldv is None:
+            ldv = torch.log(1 - v)
 
-        if state is not None:
-            state = state.float()
+        if initial_state is None:
+            state = torch.zeros((b, h, d, e), dtype=torch.float32, device=q.device)
+        else:
+            state = initial_state.float()
 
-        static_state = state is not None and len(state.shape) == 3
+        static_state = initial_state is not None and len(initial_state.shape) == 3
 
         if static_state:
             # h d e -> b h d e
             state = repeat(state, "h d e -> b h d e")
-
-        if state is None:
-            state = torch.zeros((b, h, d, e), dtype=torch.float32, device=q.device)
 
         # reshape
         l = (c - n % c) % c
@@ -56,8 +68,10 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         if v is not None:
             v = F.pad(v, (0, 0, 0, 0, 0, l))
             v = rearrange(v, "b (m c) h d -> b m c h d", m=m)
-        log_pi = torch.cumsum(ldk, dim=2)
-        log_rho = torch.cumsum(ldv, dim=2)
+        if use_ldk:
+            log_pi = torch.cumsum(ldk, dim=2)
+        if use_ldv:
+            log_rho = torch.cumsum(ldv, dim=2)
 
         # prepare
         o = torch.zeros((b, m, c, h, e), dtype=torch.float32, device=q.device)
@@ -74,23 +88,21 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         ##### compute intra
         for i in range(c):
             qi = q[:, :, i]
-            ldk_i = ldk[:, :, i]
-            ldv_i = ldv[:, :, i]
-            if k is not None:
-                ki = k[:, :, i]
-            else:
-                ki = 1 - torch.exp(ldk_i)
-            if v is not None:
-                vi = v[:, :, i]
-            else:
-                vi = 1 - torch.exp(ldv_i)
+            ki = k[:, :, i]
+            vi = v[:, :, i]
+            ldk_i = ldk[:, :, i] if use_ldk else None
+            ldv_i = ldv[:, :, i] if use_ldv else None
 
-            # b m h d -> b m h d 1
-            lambda_i = torch.exp(ldk_i).unsqueeze(-1)
-            # b m h e -> b m h 1 e
-            gamma_i = torch.exp(ldv_i).unsqueeze(-2)
+            if use_ldk:
+                # b m h d -> b m h d 1
+                lambda_i = torch.exp(ldk_i).unsqueeze(-1)
+                state = lambda_i * state
+            if use_ldv:
+                # b m h e -> b m h 1 e
+                gamma_i = torch.exp(ldv_i).unsqueeze(-2)
+                state = state * gamma_i
             # b m h d e
-            state = lambda_i * state * gamma_i + ki.unsqueeze(-1) * vi.unsqueeze(-2)
+            state = state + ki.unsqueeze(-1) * vi.unsqueeze(-2)
             # b m h d e
             oi_intra = torch.einsum("... h d, ... h d e -> ... h e", qi, state)
             o[:, :, i] = oi_intra
@@ -103,45 +115,44 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         ##### update state
         for i in range(m):
             qi = q[:, i]
+            ki = k[:, i]
+            vi = v[:, i]
             # b c h d
-            ldk_i = ldk[
-                :,
-                i,
-            ]
+            ldk_i = ldk[:, i] if use_ldk else None
             # b c h e
-            ldv_i = ldv[
-                :,
-                i,
-            ]
-            if k is not None:
-                ki = k[:, i]
-            else:
-                ki = 1 - torch.exp(ldk_i)
-            if v is not None:
-                vi = v[:, i]
-            else:
-                vi = 1 - torch.exp(ldv_i)
+            ldv_i = ldv[:, i] if use_ldv else None
 
             state_ = states[:, i + 1]
 
             # preprocess
-            log_pi_ = log_pi[:, i, -1]
-            log_rho_ = log_rho[:, i, -1]
-            pi_ = torch.exp(log_pi_).unsqueeze(-1)
-            rho_ = torch.exp(log_rho_).unsqueeze(-2)
+            if use_ldk:
+                log_pi_ = log_pi[:, i, -1]
+                pi_ = torch.exp(log_pi_).unsqueeze(-1)
+                state = pi_ * state
+
+            if use_ldv:
+                log_rho_ = log_rho[:, i, -1]
+                rho_ = torch.exp(log_rho_).unsqueeze(-2)
+                state = state * rho_
 
             # update
-            state = pi_ * state * rho_ + state_
+            state = state + state_
             states[:, i + 1] = state
 
         ##### compute inter
-        pi = torch.exp(log_pi)
-        rho = torch.exp(log_rho)
-        # update
-        q_ = q * pi
-        o_inter = (
-            torch.einsum("b m c h d, b m h d e -> b m c h e", q_, states[:, :m]) * rho
-        )
+        if use_ldk:
+            pi = torch.exp(log_pi)
+            # update
+            q_ = q * pi
+        else:
+            q_ = q
+
+        if use_ldv:
+            rho = torch.exp(log_rho)
+
+        o_inter = torch.einsum("b m c h d, b m h d e -> b m c h e", q_, states[:, :m])
+        if use_ldv:
+            o_inter = o_inter * rho
         o += o_inter
 
         # Save inputs for backward pass
@@ -149,6 +160,10 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         ctx.chunk_size = chunk_size
         ctx.static_state = static_state
         ctx.state_requires_grad = state_requires_grad
+        ctx.use_ldk = use_ldk
+        ctx.use_ldv = use_ldv
+        ctx.compute_dldk = compute_dldk
+        ctx.compute_dldv = compute_dldv
         ctx.dtype = dtype
         ctx.n = n
 
@@ -163,25 +178,26 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         ctx.chunk_size
         static_state = ctx.static_state
         state_requires_grad = ctx.state_requires_grad
+        use_ldk = ctx.use_ldk
+        use_ldv = ctx.use_ldv
+        compute_dldk = ctx.compute_dldk
+        compute_dldv = ctx.compute_dldv
+
         dtype = q.dtype
         n = ctx.n
-        k_is_none = k is None
-        v_is_none = v is None
+        k is None
+        v is None
 
         q = q.float()
-        ldk = ldk.float()
-        ldv = ldv.float()
-        if k is not None:
-            k = k.float()
-        else:
-            k = 1 - torch.exp(ldk)
-        if v is not None:
-            v = v.float()
-        else:
-            v = 1 - torch.exp(ldv)
+        k = k.float()
+        v = v.float()
+        if use_ldk and ldk is None:
+            ldk = torch.log(1 - k)
+        if use_ldv and ldv is None:
+            ldv = torch.log(1 - v)
 
         b, m, c, h, d = q.shape
-        e = ldv.shape[-1]
+        e = v.shape[-1]
         n = do.shape[1]
         l = (c - n % c) % c
         do = F.pad(do, (0, 0, 0, 0, 0, l))
@@ -189,10 +205,10 @@ class LavdChunkParallelFunction(torch.autograd.Function):
 
         # Initialize gradient tensors
         dq = torch.empty_like(q, dtype=torch.float32)
-        dldk = torch.zeros_like(ldk, dtype=torch.float32)
-        dldv = torch.zeros_like(ldv, dtype=torch.float32)
-        dk = torch.empty_like(dldk, dtype=torch.float32)
-        dv = torch.empty_like(dldv, dtype=torch.float32)
+        dldk = torch.zeros_like(k, dtype=torch.float32)
+        dldv = torch.zeros_like(v, dtype=torch.float32)
+        dk = torch.empty_like(k, dtype=torch.float32)
+        dv = torch.empty_like(v, dtype=torch.float32)
         if dstate is None:
             dstate = torch.zeros((b, h, d, e), dtype=torch.float32, device=q.device)
             dstate_clone = torch.zeros_like(dstate)
@@ -201,8 +217,11 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             # for compute dldk
             dstate_clone = dstate.clone()
             state_clone = state.clone()
-        log_pi = torch.cumsum(ldk, dim=2)
-        log_rho = torch.cumsum(ldv, dim=2)
+
+        if use_ldk:
+            log_pi = torch.cumsum(ldk, dim=2)
+        if use_ldv:
+            log_rho = torch.cumsum(ldv, dim=2)
 
         array = torch.arange(c, device=q.device, dtype=torch.int32)
         mask = torch.where(array[:, None] - array[None, :] >= 0, 1, 0)
@@ -215,18 +234,22 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         )
         for i in range(c):
             qi = q[:, :, i]
-            ldk_i = ldk[:, :, i]
-            ldv_i = ldv[:, :, i]
             ki = k[:, :, i]
             vi = v[:, :, i]
             doi = do[:, :, i]
+            ldk_i = ldk[:, :, i] if use_ldk else None
+            ldv_i = ldv[:, :, i] if use_ldv else None
 
-            # b m h d -> b m h d 1
-            lambda_i = torch.exp(ldk_i).unsqueeze(-1)
-            # b m h e -> b m h 1 e
-            gamma_i = torch.exp(ldv_i).unsqueeze(-2)
+            if use_ldk:
+                # b m h d -> b m h d 1
+                lambda_i = torch.exp(ldk_i).unsqueeze(-1)
+                state = lambda_i * state
+            if use_ldv:
+                # b m h e -> b m h 1 e
+                gamma_i = torch.exp(ldv_i).unsqueeze(-2)
+                state = state * gamma_i
             # b m h d e
-            state = lambda_i * state * gamma_i + ki.unsqueeze(-1) * vi.unsqueeze(-2)
+            state = state + ki.unsqueeze(-1) * vi.unsqueeze(-2)
 
             # compute
             dqi_intra = torch.einsum("... h e, ... h d e -> ... h d", doi, state)
@@ -241,14 +264,22 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             ki = k[:, :, i]
             vi = v[:, :, i]
             doi = do[:, :, i]
-            ldk_i = ldk[:, :, i + 1] if i != c - 1 else torch.zeros_like(ldk_i)
-            ldv_i = ldv[:, :, i + 1] if i != c - 1 else torch.zeros_like(ldv_i)
+            if use_ldk:
+                ldk_i = ldk[:, :, i + 1] if i != c - 1 else torch.zeros_like(ldk_i)
+            if use_ldv:
+                ldv_i = ldv[:, :, i + 1] if i != c - 1 else torch.zeros_like(ldv_i)
 
-            # b m h d -> b m h d 1
-            lambda_i = torch.exp(ldk_i).unsqueeze(-1)
-            # b m h e -> b m h 1 e
-            gamma_i = torch.exp(ldv_i).unsqueeze(-2)
-            dstate = lambda_i * dstate * gamma_i + qi.unsqueeze(-1) * doi.unsqueeze(-2)
+            if use_ldk:
+                # b m h d -> b m h d 1
+                lambda_i = torch.exp(ldk_i).unsqueeze(-1)
+                dstate = lambda_i * dstate
+
+            if use_ldv:
+                # b m h e -> b m h 1 e
+                gamma_i = torch.exp(ldv_i).unsqueeze(-2)
+                dstate = dstate * gamma_i
+
+            dstate = dstate + qi.unsqueeze(-1) * doi.unsqueeze(-2)
 
             # compute
             dki_intra = torch.einsum("... h e, ... h d e -> ... h d", vi, dstate)
@@ -258,13 +289,17 @@ class LavdChunkParallelFunction(torch.autograd.Function):
 
             # !!! important
             if i == 0:
-                ldk_i = ldk[:, :, i]
-                ldv_i = ldv[:, :, i]
-                # b m h d -> b m h d 1
-                lambda_i = torch.exp(ldk_i).unsqueeze(-1)
-                # b m h e -> b m h 1 e
-                gamma_i = torch.exp(ldv_i).unsqueeze(-2)
-                dstate = lambda_i * dstate * gamma_i
+                if use_ldk:
+                    ldk_i = ldk[:, :, i]
+                    # b m h d -> b m h d 1
+                    lambda_i = torch.exp(ldk_i).unsqueeze(-1)
+                    dstate = lambda_i * dstate
+
+                if use_ldv:
+                    ldv_i = ldv[:, :, i]
+                    # b m h e -> b m h 1 e
+                    gamma_i = torch.exp(ldv_i).unsqueeze(-2)
+                    dstate = dstate * gamma_i
 
         dstates.insert(0, dstate)
         # b (m + 1) h d e
@@ -273,49 +308,67 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         # update dstate
         dstate = dstates[:, -1]
         for i in range(m - 1, -1, -1):
-            # b c h d
-            ldk_i = ldk[:, i]
-            # b c h e
-            ldv_i = ldv[:, i]
+            if use_ldk:
+                # b c h d
+                ldk_i = ldk[:, i]
+            if use_ldv:
+                # b c h e
+                ldv_i = ldv[:, i]
 
             dstate_ = dstates[:, i]
 
             # preprocess
-            log_pi_ = log_pi[:, i, -1]
-            log_rho_ = log_rho[:, i, -1]
-            pi_ = torch.exp(log_pi_).unsqueeze(-1)
-            rho_ = torch.exp(log_rho_).unsqueeze(-2)
+            if use_ldk:
+                log_pi_ = log_pi[:, i, -1]
+                pi_ = torch.exp(log_pi_).unsqueeze(-1)
+                dstate = pi_ * dstate
+            if use_ldv:
+                log_rho_ = log_rho[:, i, -1]
+                rho_ = torch.exp(log_rho_).unsqueeze(-2)
+                dstate = dstate * rho_
 
             # b m h d e
-            dstate = pi_ * dstate * rho_ + dstate_
+            dstate = dstate + dstate_
             dstates[:, i] = dstate
 
         ##### compute inter
-        log_theta = log_pi[:, :, -1:] - log_pi
-        log_phi = (
-            log_rho[
-                :,
-                :,
-                -1:,
-            ]
-            - log_rho
-        )
-        pi = torch.exp(log_pi)
-        rho = torch.exp(log_rho)
-        theta = torch.exp(log_theta)
-        phi = torch.exp(log_phi)
-        # update
-        k_ = k * theta
-        v_ = v * phi
-        do_ = do * rho
-        dq += torch.einsum("b m c h e, b m h d e -> b m c h d", do_, states[:, :m]) * pi
-        dk += (
-            torch.einsum("b m c h e, b m h d e -> b m c h d", v_, dstates[:, 1:])
-            * theta
-        )
-        dv += (
-            torch.einsum("b m c h d, b m h d e -> b m c h e", k_, dstates[:, 1:]) * phi
-        )
+        if use_ldk:
+            log_theta = log_pi[:, :, -1:] - log_pi
+            pi = torch.exp(log_pi)
+            theta = torch.exp(log_theta)
+
+        if use_ldv:
+            log_phi = log_rho[:, :, -1:] - log_rho
+            rho = torch.exp(log_rho)
+            phi = torch.exp(log_phi)
+
+        if use_ldk:
+            # update
+            k_ = k * theta
+        else:
+            k_ = k
+
+        if use_ldv:
+            v_ = v * phi
+            do_ = do * rho
+        else:
+            v_ = v
+            do_ = do
+
+        dq_inter = torch.einsum("b m c h e, b m h d e -> b m c h d", do_, states[:, :m])
+        if use_ldk:
+            dq_inter = dq_inter * pi
+        dq += dq_inter
+
+        dk_inter = torch.einsum("b m c h e, b m h d e -> b m c h d", v_, dstates[:, 1:])
+        if use_ldk:
+            dk_inter = dk_inter * theta
+        dk += dk_inter
+
+        dv_inter = torch.einsum("b m c h d, b m h d e -> b m c h e", k_, dstates[:, 1:])
+        if use_ldv:
+            dv_inter = dv_inter * phi
+        dv += dv_inter
 
         if state is not None and state_requires_grad:
             # The following is the correct formula, but it is not used because it is slower
@@ -331,15 +384,8 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         else:
             ds = None
 
-        if k is not None:
-            dldk_ = q * dq - k * dk
-        else:
-            dldk_ = q * dq - (1 - torch.exp(ldk)) * dk
-
-        if v is not None:
-            dldv_ = o * do - v * dv
-        else:
-            dldv_ = o * do - (1 - torch.exp(ldv)) * dv
+        dldk_ = q * dq - k * dk
+        dldv_ = o * do - v * dv
 
         # reshape
         dq = rearrange(dq, "b m c h d -> b (m c) h d")[:, :n]
@@ -353,42 +399,46 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         )
         ldk = rearrange(ldk, "b m c h d -> b (m c) h d")[:, :n]
         ldv = rearrange(ldv, "b m c h d -> b (m c) h d")[:, :n]
+        k = rearrange(k, "b m c h d -> b (m c) h d")[:, :n]
+        v = rearrange(v, "b m c h d -> b (m c) h d")[:, :n]
 
         dldk = rev_cumsum(dldk_, dim=1)
         dldv = rev_cumsum(dldv_, dim=1)
-
-        # k = 1 - exp(ldk)
-        if k_is_none:
-            dldk = dldk - torch.exp(ldk) * dk
-            dk = None
-
-        # v = 1 - exp(ldv)
-        if v_is_none:
-            dldv = dldv - torch.exp(ldv) * dv
-            dv = None
 
         # b h d e -> b h d -> b 1 h d
         dldk += (dstate_clone * state_clone).sum(dim=-1).unsqueeze(1)
         # b h d e -> b h e -> b 1 h e
         dldv += (dstate_clone * state_clone).sum(dim=-2).unsqueeze(1)
 
+        # ldk = log(1 - k)
+        if not compute_dldk:
+            dk = dk - dldk / (1 - k)
+            dldk = None
+
+        # ldv = log(1 - v)
+        if not compute_dldv:
+            dv = dv - dldv / (1 - v)
+            dldv = None
+
         dq = dq.to(dtype)
-        dldk = dldk.to(dtype)
-        dldv = dldv.to(dtype)
-        dk = dk.to(dtype) if dk is not None else None
-        dv = dv.to(dtype) if dv is not None else None
+        dk = dk.to(dtype)
+        dv = dv.to(dtype)
+        dldk = dldk.to(dtype) if compute_dldk else None
+        dldv = dldv.to(dtype) if compute_dldv else None
         ds = ds.to(dtype) if ds is not None else None
 
-        return dq, dldk, dldv, dk, dv, ds, None
+        return dq, dk, dv, dldk, dldv, None, None, ds, None
 
 
 def lavd_chunk_parallel_torch(
     q: torch.Tensor,
-    ldk: torch.Tensor,
-    ldv: torch.Tensor,
-    k: Optional[torch.Tensor] = None,
-    v: Optional[torch.Tensor] = None,
-    state: Optional[torch.Tensor] = None,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    ldk: Optional[torch.Tensor] = None,
+    ldv: Optional[torch.Tensor] = None,
+    use_ldk: bool = True,
+    use_ldv: bool = False,
+    initial_state: Optional[torch.Tensor] = None,
     chunk_size: int = 128,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -396,29 +446,52 @@ def lavd_chunk_parallel_torch(
 
     Args:
         q: Query tensor, shape (B, N, H, D)
-        ldk: Log Decay vector for key, shape (B, N, H, D)
-        ldv: Log Decay vector for value, shape (B, N, H, E)
-        k: Key tensor, if not provided uses 1 - exp(ldk), shape (B, N, H, D)
-        v: Value tensor, if not provided uses 1 - exp(ldv), shape (B, N, H, E)
-        state: State tensor, shape (B, H, D, E) or (H, D, E)
+        k: Key tensor, shape (B, N, H, D)
+        v: Value tensor, shape (B, N, H, E)
+        ldk: Log Decay vector for key, shape (B, N, H, D), if not provided uses log(1 - exp(k))
+        ldv: Log Decay vector for value, shape (B, N, H, E), if not provided uses log(1 - exp(v))
+        use_ldk: Whether to use log decay for key
+        use_ldv: Whether to use log decay for value
+        initial_state: Initial state tensor, shape (B, H, D, E) or (H, D, E)
 
     Returns:
         Output tensor, shape (B, N, H, E)
         State tensor, shape (B, H, D, E)
     """
-    return LavdChunkParallelFunction.apply(q, ldk, ldv, k, v, state, chunk_size)
+    if ldk is not None:
+        use_ldk = True
+    if ldv is not None:
+        use_ldv = True
+
+    assert use_ldk or use_ldv, "At least one of ldk or ldv must be used"
+
+    return LavdChunkParallelFunction.apply(
+        q, k, v, ldk, ldv, use_ldk, use_ldv, initial_state, chunk_size
+    )
 
 
 if __name__ == "__main__":
     b, n, h, d = 2, 129, 12, 128
     e = 64
-    dtype = torch.bfloat16
-    q = torch.randn((b, n, h, d), dtype=dtype).cuda().requires_grad_()
-    ldk = torch.randn((b, n, h, d), dtype=dtype).cuda().requires_grad_()
-    ldv = torch.randn((b, n, h, e), dtype=dtype).cuda().requires_grad_()
-    k = torch.randn((b, n, h, d), dtype=dtype).cuda().requires_grad_()
-    v = torch.randn((b, n, h, e), dtype=dtype).cuda().requires_grad_()
-    state = torch.randn((b, h, d, e), dtype=dtype).cuda().requires_grad_()
-    o, state = lavd_chunk_parallel_torch(q, ldk, ldv, k, v, state)
+    dtype = torch.float32
+    device = "cuda"
+
+    q = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
+    k = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
+    v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
+    ldk = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
+    ldv = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
+    initial_state = torch.randn(
+        (b, h, d, e), dtype=dtype, device=device
+    ).requires_grad_()
+
+    o, state = lavd_chunk_parallel_torch(
+        q=q,
+        k=k,
+        v=v,
+        ldk=ldk,
+        ldv=ldv,
+        initial_state=initial_state,
+    )
     (o.sum() + state.sum()).backward()
     print(o.shape)

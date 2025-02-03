@@ -24,51 +24,62 @@ def get_params():
 
 @pytest.mark.parametrize("shape", get_params())
 # @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-
-
-@pytest.mark.parametrize("use_k", [True, False])
-@pytest.mark.parametrize("use_v", [True, False])
-@pytest.mark.parametrize("use_state", [True, False])
+@pytest.mark.parametrize("share_k", [True, False])
+@pytest.mark.parametrize("share_v", [True, False])
+@pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("use_zero_ld", [True, False])
 
-# @pytest.mark.parametrize("use_k", [True])
-# @pytest.mark.parametrize("use_v", [True])
-# @pytest.mark.parametrize("use_state", [True])
+# @pytest.mark.parametrize("share_k", [True, False])
+# @pytest.mark.parametrize("share_v", [True, False])
+# @pytest.mark.parametrize("use_initial_state", [True])
 # @pytest.mark.parametrize("use_zero_ld", [True])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test(shape, use_k, use_v, use_state, use_zero_ld, dtype):
+def test(shape, share_k, share_v, use_initial_state, use_zero_ld, dtype):
+    use_ldk = True
+    use_ldv = True
     torch.manual_seed(2024)
     device = torch.device("cuda")
     b, n, h, d, e = shape
+    test_chunk = n <= 128
     chunk_size = int(2 ** (int(math.log2(n)) - 1))
 
     # Generate input tensors
     q = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
-    if use_zero_ld:
-        ldk = (torch.zeros((b, n, h, d), dtype=dtype, device=device)).requires_grad_()
-        ldv = (torch.zeros((b, n, h, e), dtype=dtype, device=device)).requires_grad_()
-    else:
-        ldk = F.logsigmoid(
+
+    if share_k:
+        k = F.sigmoid(
             torch.randn((b, n, h, d), dtype=dtype, device=device)
         ).requires_grad_()
-        ldv = F.logsigmoid(
+        ldk = None
+    else:
+        k = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
+        if use_zero_ld:
+            ldk = torch.zeros((b, n, h, d), dtype=dtype, device=device).requires_grad_()
+        else:
+            ldk = F.logsigmoid(
+                torch.randn((b, n, h, d), dtype=dtype, device=device)
+            ).requires_grad_()
+
+    if share_v:
+        v = F.sigmoid(
             torch.randn((b, n, h, e), dtype=dtype, device=device)
         ).requires_grad_()
-
-    if use_k:
-        k = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
+        ldv = None
     else:
-        k = None
-
-    if use_v:
         v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
-    else:
-        v = None
+        if use_zero_ld:
+            ldv = torch.zeros((b, n, h, e), dtype=dtype, device=device).requires_grad_()
+        else:
+            ldv = F.logsigmoid(
+                torch.randn((b, n, h, e), dtype=dtype, device=device)
+            ).requires_grad_()
 
-    if use_state:
-        state = torch.randn((b, h, d, e), dtype=dtype, device=device).requires_grad_()
+    if use_initial_state:
+        initial_state = torch.randn(
+            (b, h, d, e), dtype=dtype, device=device
+        ).requires_grad_()
     else:
-        state = None
+        initial_state = None
 
     do = torch.randn((), dtype=dtype, device=device)
 
@@ -76,34 +87,41 @@ def test(shape, use_k, use_v, use_state, use_zero_ld, dtype):
     # baseline
     o_torch, s_torch = lavd_torch(
         q=q,
-        ldk=ldk,
-        ldv=ldv,
         k=k,
         v=v,
-        state=state,
+        ldk=ldk,
+        ldv=ldv,
+        use_ldk=use_ldk,
+        use_ldv=use_ldv,
+        initial_state=initial_state,
     )
     output_torch = o_torch.sum() + s_torch.sum()
 
-    # chunk torch
-    o_chunk, s_chunk = lavd_chunk_torch(
-        q=q,
-        ldk=ldk,
-        ldv=ldv,
-        k=k,
-        v=v,
-        state=state,
-        chunk_size=chunk_size,
-    )
-    output_chunk = o_chunk.sum() + s_chunk.sum()
+    if test_chunk:
+        # chunk torch
+        o_chunk, s_chunk = lavd_chunk_torch(
+            q=q,
+            k=k,
+            v=v,
+            ldk=ldk,
+            ldv=ldv,
+            use_ldk=use_ldk,
+            use_ldv=use_ldv,
+            initial_state=initial_state,
+            chunk_size=chunk_size,
+        )
+        output_chunk = o_chunk.sum() + s_chunk.sum()
 
     # chunk parallel torch
     o_chunk_parallel, s_chunk_parallel = lavd_chunk_parallel_torch(
         q=q,
-        ldk=ldk,
-        ldv=ldv,
         k=k,
         v=v,
-        state=state,
+        ldk=ldk,
+        ldv=ldv,
+        use_ldk=use_ldk,
+        use_ldv=use_ldv,
+        initial_state=initial_state,
         chunk_size=chunk_size,
     )
     output_chunk_parallel = o_chunk_parallel.sum() + s_chunk_parallel.sum()
@@ -112,157 +130,189 @@ def test(shape, use_k, use_v, use_state, use_zero_ld, dtype):
     # baseline
     output_torch.backward(do, retain_graph=True)
     dq_torch, q.grad = q.grad.clone(), None
-    dldk_torch, ldk.grad = ldk.grad.clone(), None
-    dldv_torch, ldv.grad = ldv.grad.clone(), None
-    if use_k:
-        dk_torch, k.grad = k.grad.clone(), None
-    if use_v:
-        dv_torch, v.grad = v.grad.clone(), None
-    if use_state:
-        ds_torch, state.grad = state.grad.clone(), None
+    dk_torch, k.grad = k.grad.clone(), None
+    dv_torch, v.grad = v.grad.clone(), None
+    if not share_k:
+        dldk_torch, ldk.grad = ldk.grad.clone(), None
+    if not share_v:
+        dldv_torch, ldv.grad = ldv.grad.clone(), None
+    if use_initial_state:
+        ds_torch, initial_state.grad = initial_state.grad.clone(), None
 
-    # chunk torch
-    output_chunk.backward(do, retain_graph=True)
-    dq_chunk, q.grad = q.grad.clone(), None
-    dldk_chunk, ldk.grad = ldk.grad.clone(), None
-    dldv_chunk, ldv.grad = ldv.grad.clone(), None
-    if use_k:
+    if test_chunk:
+        # chunk torch
+        output_chunk.backward(do, retain_graph=True)
+        dq_chunk, q.grad = q.grad.clone(), None
         dk_chunk, k.grad = k.grad.clone(), None
-    if use_v:
         dv_chunk, v.grad = v.grad.clone(), None
-    if use_state:
-        ds_chunk, state.grad = state.grad.clone(), None
+        if not share_k:
+            dldk_chunk, ldk.grad = ldk.grad.clone(), None
+        if not share_v:
+            dldv_chunk, ldv.grad = ldv.grad.clone(), None
+        if use_initial_state:
+            ds_chunk, initial_state.grad = initial_state.grad.clone(), None
 
     # chunk parallel torch
     output_chunk_parallel.backward(do, retain_graph=True)
     dq_chunk_parallel, q.grad = q.grad.clone(), None
-    dldk_chunk_parallel, ldk.grad = ldk.grad.clone(), None
-    dldv_chunk_parallel, ldv.grad = ldv.grad.clone(), None
-    if use_k:
-        dk_chunk_parallel, k.grad = k.grad.clone(), None
-    if use_v:
-        dv_chunk_parallel, v.grad = v.grad.clone(), None
-    if use_state:
-        ds_chunk_parallel, state.grad = state.grad.clone(), None
+    dk_chunk_parallel, k.grad = k.grad.clone(), None
+    dv_chunk_parallel, v.grad = v.grad.clone(), None
+    if not share_k:
+        dldk_chunk_parallel, ldk.grad = ldk.grad.clone(), None
+    if not share_v:
+        dldv_chunk_parallel, ldv.grad = ldv.grad.clone(), None
+    if use_initial_state:
+        ds_chunk_parallel, initial_state.grad = initial_state.grad.clone(), None
 
     atol, rtol = get_threshold(dtype)
 
     ##### Check forward pass results
-    # chunk torch
-    print("o diff max (chunk torch): ", torch.abs(o_torch - o_chunk).max().item())
-    print("o diff norm (chunk torch): ", torch.norm(o_torch - o_chunk).item())
+    if test_chunk:
+        # chunk torch
+        print(
+            "o diff max (Vs chunk torch): ", torch.abs(o_torch - o_chunk).max().item()
+        )
+        print("o diff norm (Vs chunk torch): ", torch.norm(o_torch - o_chunk).item())
+        assert torch.allclose(o_torch, o_chunk, atol=atol, rtol=rtol)
 
-    print("s diff max (chunk torch): ", torch.abs(s_torch - s_chunk).max().item())
-    print("s diff norm (chunk torch): ", torch.norm(s_torch - s_chunk).item())
+        print(
+            "s diff max (Vs chunk torch): ", torch.abs(s_torch - s_chunk).max().item()
+        )
+        print("s diff norm (Vs chunk torch): ", torch.norm(s_torch - s_chunk).item())
+        assert torch.allclose(s_torch, s_chunk, atol=atol, rtol=rtol)
 
     # chunk parallel torch
     print(
-        "o diff max (chunk parallel torch): ",
+        "o diff max (Vs chunk parallel torch): ",
         torch.abs(o_torch - o_chunk_parallel).max().item(),
     )
     print(
-        "o diff norm (chunk parallel torch): ",
+        "o diff norm (Vs chunk parallel torch): ",
         torch.norm(o_torch - o_chunk_parallel).item(),
     )
     assert torch.allclose(o_torch, o_chunk_parallel, atol=atol, rtol=rtol)
 
     print(
-        "s diff max (chunk parallel torch): ",
+        "s diff max (Vs chunk parallel torch): ",
         torch.abs(s_torch - s_chunk_parallel).max().item(),
     )
     print(
-        "s diff norm (chunk parallel torch): ",
+        "s diff norm (Vs chunk parallel torch): ",
         torch.norm(s_torch - s_chunk_parallel).item(),
     )
     assert torch.allclose(s_torch, s_chunk_parallel, atol=atol, rtol=rtol)
 
-    ##### Check backward pass results
-    # chunk torch
-    print("dq diff max (chunk torch): ", torch.abs(dq_torch - dq_chunk).max().item())
-    print("dq diff norm (chunk torch): ", torch.norm(dq_torch - dq_chunk).item())
-
-    print(
-        "dldk diff max (chunk torch): ", torch.abs(dldk_torch - dldk_chunk).max().item()
-    )
-    print("dldk diff norm (chunk torch): ", torch.norm(dldk_torch - dldk_chunk).item())
-
-    print(
-        "dldv diff max (chunk torch): ", torch.abs(dldv_torch - dldv_chunk).max().item()
-    )
-    print("dldv diff norm (chunk torch): ", torch.norm(dldv_torch - dldv_chunk).item())
-
-    if use_k:
+    if test_chunk:
+        ##### Check backward pass results
+        # chunk torch
         print(
-            "dk diff max (chunk torch): ", torch.abs(dk_torch - dk_chunk).max().item()
+            "dq diff max (Vs chunk torch): ",
+            torch.abs(dq_torch - dq_chunk).max().item(),
         )
-        print("dk diff norm (chunk torch): ", torch.norm(dk_torch - dk_chunk).item())
+        print("dq diff norm (Vs chunk torch): ", torch.norm(dq_torch - dq_chunk).item())
 
-    if use_v:
         print(
-            "dv diff max (chunk torch): ", torch.abs(dv_torch - dv_chunk).max().item()
+            "dk diff max (Vs chunk torch): ",
+            torch.abs(dk_torch - dk_chunk).max().item(),
         )
-        print("dv diff norm (chunk torch): ", torch.norm(dv_torch - dv_chunk).item())
+        print("dk diff norm (Vs chunk torch): ", torch.norm(dk_torch - dk_chunk).item())
 
-    if use_state:
         print(
-            "ds diff max (chunk torch): ", torch.abs(ds_torch - ds_chunk).max().item()
+            "dv diff max (Vs chunk torch): ",
+            torch.abs(dv_torch - dv_chunk).max().item(),
         )
-        print("ds diff norm (chunk torch): ", torch.norm(ds_torch - ds_chunk).item())
+        print("dv diff norm (Vs chunk torch): ", torch.norm(dv_torch - dv_chunk).item())
+
+        if not share_k:
+            print(
+                "dldk diff max (Vs chunk torch): ",
+                torch.abs(dldk_torch - dldk_chunk).max().item(),
+            )
+            print(
+                "dldk diff norm (Vs chunk torch): ",
+                torch.norm(dldk_torch - dldk_chunk).item(),
+            )
+
+        if not share_v:
+            print(
+                "dldv diff max (Vs chunk torch): ",
+                torch.abs(dldv_torch - dldv_chunk).max().item(),
+            )
+            print(
+                "dldv diff norm (Vs chunk torch): ",
+                torch.norm(dldv_torch - dldv_chunk).item(),
+            )
+
+        if use_initial_state:
+            print(
+                "ds diff max (Vs chunk torch): ",
+                torch.abs(ds_torch - ds_chunk).max().item(),
+            )
+            print(
+                "ds diff norm (Vs chunk torch): ",
+                torch.norm(ds_torch - ds_chunk).item(),
+            )
 
     # chunk parallel torch
     print(
-        "dq diff max (chunk parallel torch): ",
+        "dq diff max (Vs chunk parallel torch): ",
         torch.abs(dq_torch - dq_chunk_parallel).max().item(),
     )
     print(
-        "dq diff norm (chunk parallel torch): ",
+        "dq diff norm (Vs chunk parallel torch): ",
         torch.norm(dq_torch - dq_chunk_parallel).item(),
     )
     assert torch.allclose(dq_torch, dq_chunk_parallel, atol=atol, rtol=rtol)
 
     print(
-        "dldk diff max (chunk parallel torch): ",
-        torch.abs(dldk_torch - dldk_chunk_parallel).max().item(),
+        "dk diff max (Vs chunk parallel torch): ",
+        torch.abs(dk_torch - dk_chunk_parallel).max().item(),
     )
     print(
-        "dldk diff norm (chunk parallel torch): ",
-        torch.norm(dldk_torch - dldk_chunk_parallel).item(),
+        "dk diff norm (Vs chunk parallel torch): ",
+        torch.norm(dk_torch - dk_chunk_parallel).item(),
     )
-    # assert torch.allclose(dldk_torch, dldk_chunk_parallel, atol=atol, rtol=rtol)
+    assert torch.allclose(dk_torch, dk_chunk_parallel, atol=atol, rtol=rtol)
 
-    # print("dldv diff max (chunk parallel torch): ", torch.abs(dldv_torch - dldv_chunk_parallel).max().item())
-    # print("dldv diff norm (chunk parallel torch): ", torch.norm(dldv_torch - dldv_chunk_parallel).item())
-    # assert torch.allclose(dldv_torch, dldv_chunk_parallel, atol=atol, rtol=rtol)
+    print(
+        "dv diff max (Vs chunk parallel torch): ",
+        torch.abs(dv_torch - dv_chunk_parallel).max().item(),
+    )
+    print(
+        "dv diff norm (Vs chunk parallel torch): ",
+        torch.norm(dv_torch - dv_chunk_parallel).item(),
+    )
+    assert torch.allclose(dv_torch, dv_chunk_parallel, atol=atol, rtol=rtol)
 
-    if use_k:
+    if not share_k:
         print(
-            "dk diff max (chunk parallel torch): ",
-            torch.abs(dk_torch - dk_chunk_parallel).max().item(),
+            "dldk diff max (Vs chunk parallel torch): ",
+            torch.abs(dldk_torch - dldk_chunk_parallel).max().item(),
         )
         print(
-            "dk diff norm (chunk parallel torch): ",
-            torch.norm(dk_torch - dk_chunk_parallel).item(),
+            "dldk diff norm (Vs chunk parallel torch): ",
+            torch.norm(dldk_torch - dldk_chunk_parallel).item(),
         )
-        assert torch.allclose(dk_torch, dk_chunk_parallel, atol=atol, rtol=rtol)
+        assert torch.allclose(dldk_torch, dldk_chunk_parallel, atol=atol, rtol=rtol)
 
-    if use_v:
+    if not share_v:
         print(
-            "dv diff max (chunk parallel torch): ",
-            torch.abs(dv_torch - dv_chunk_parallel).max().item(),
+            "dldv diff max (Vs chunk parallel torch): ",
+            torch.abs(dldv_torch - dldv_chunk_parallel).max().item(),
         )
         print(
-            "dv diff norm (chunk parallel torch): ",
-            torch.norm(dv_torch - dv_chunk_parallel).item(),
+            "dldv diff norm (Vs chunk parallel torch): ",
+            torch.norm(dldv_torch - dldv_chunk_parallel).item(),
         )
-        assert torch.allclose(dv_torch, dv_chunk_parallel, atol=atol, rtol=rtol)
+        assert torch.allclose(dldv_torch, dldv_chunk_parallel, atol=atol, rtol=rtol)
 
-    if use_state:
+    if use_initial_state:
         print(
-            "ds diff max (chunk parallel torch): ",
+            "ds diff max (Vs chunk parallel torch): ",
             torch.abs(ds_torch - ds_chunk_parallel).max().item(),
         )
         print(
-            "ds diff norm (chunk parallel torch): ",
+            "ds diff norm (Vs chunk parallel torch): ",
             torch.norm(ds_torch - ds_chunk_parallel).item(),
         )
         assert torch.allclose(ds_torch, ds_chunk_parallel, atol=atol, rtol=rtol)

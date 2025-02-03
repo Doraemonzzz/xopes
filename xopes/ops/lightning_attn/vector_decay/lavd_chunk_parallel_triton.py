@@ -483,7 +483,9 @@ if __name__ == "__main__":
     v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
     ldk = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
     ldv = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
-    state = torch.randn((b, h, d, e), dtype=dtype, device=device).requires_grad_()
+    initial_state = torch.randn(
+        (b, h, d, e), dtype=dtype, device=device
+    ).requires_grad_()
 
     o, state = lavd_chunk_parallel_triton(
         q=q,
@@ -491,7 +493,7 @@ if __name__ == "__main__":
         v=v,
         ldk=ldk,
         ldv=ldv,
-        initial_state=state,
+        initial_state=initial_state,
     )
     # (o.sum() + state.sum()).backward()
     print(o.shape)
