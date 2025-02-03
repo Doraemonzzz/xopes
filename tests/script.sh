@@ -57,6 +57,7 @@ folder=lrpe/cosine/_1d_mpa
 
 ##### lavd 250122
 folder=lightning_attn/vector_decay
+folder=lightning_attn/vector_decay_unit_test
 
 # ##### cumsum 250129
 # folder=cumsum

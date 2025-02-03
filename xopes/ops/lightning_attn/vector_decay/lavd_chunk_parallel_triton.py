@@ -3,7 +3,6 @@ from typing import Optional, Tuple
 import torch
 import triton
 import triton.language as tl
-from einops import rearrange
 
 from xopes.utils import contiguous, generate_configs
 
@@ -29,7 +28,7 @@ def _lavd_intra_fwd(
     LDK,  # B N H D
     LDV,  # B N H E
     O,  # B N H E
-    STATE,  # B M H D E, store from index 1
+    STATES,  # B M H D E, store from index 1
     LOG_PI,  # B N H D
     LOG_RHO,  # B N H E
     BLOCK_SIZE,  # 1
@@ -58,7 +57,8 @@ def _lavd_intra_fwd(
     offset_e = off_e * BLOCK_E
     offset_qk = off_b * N * H * D + offset_n * H * D + off_h * D
     offset_vo = off_b * N * H * E + offset_n * H * E + off_h * E
-    offset_state = off_b * (M + 1) * H * D * E + (off_c + 1) * H * D * E + off_h * D * E
+    # store from index 1
+    offset_state = off_b * M * H * D * E + (off_c + 1) * H * D * E + off_h * D * E
 
     # compute block ptr
     array_nd = tl.full([BLOCK_D], value=offset_n, dtype=tl.int64)
@@ -75,7 +75,7 @@ def _lavd_intra_fwd(
         ldk_block_ptr = LDK + offset_qk + array_d
     if USE_LDV and HAS_LDV:
         ldv_block_ptr = LDV + offset_vo + array_e
-    state_block_ptr = STATE + offset_state + array_d[:, None] * E + array_e[None, :]
+    state_block_ptr = STATES + offset_state + array_d[:, None] * E + array_e[None, :]
 
     # compute
     state = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
@@ -88,67 +88,70 @@ def _lavd_intra_fwd(
         log_rho_block_ptr = LOG_RHO + offset_vo + array_e
 
     for i in range(BLOCK_N):
-        # mask
-        mask_nd = array_nd < N
-        mask_ne = array_ne < N
-        q = tl.load(q_block_ptr, mask=mask_d, other=0)
-        k = tl.load(k_block_ptr, mask=mask_d, other=0)
-        v = tl.load(v_block_ptr, mask=mask_e, other=0)
-        q = tl.where(mask_nd, q, 0)
-        k = tl.where(mask_nd, k, 0)
-        v = tl.where(mask_ne, v, 0)
-        state_ = k[:, None] * v[None, :]
+        if offset_n < N:
+            # mask
+            mask_nd = array_nd < N
+            mask_ne = array_ne < N
 
-        if USE_LDK:
-            if HAS_LDK:
-                ldk = tl.load(ldk_block_ptr, mask=mask_d).to(tl.float32)
-                log_pi += ldk
-                lambda_ = tl.exp(ldk)
-                ldk_block_ptr += H * D
-            else:
-                lambda_ = 1 - tl.exp(k.to(tl.float32))
-                log_pi += tl.log(lambda_)
-            lambda_ = tl.where(mask_nd, lambda_, 0)
-            log_pi = tl.where(mask_nd, log_pi, 0)
-            state = lambda_[:, None] * state
+            q = tl.load(q_block_ptr, mask=mask_d, other=0)
+            k = tl.load(k_block_ptr, mask=mask_d, other=0)
+            v = tl.load(v_block_ptr, mask=mask_e, other=0)
+            q = tl.where(mask_nd, q, 0)
+            k = tl.where(mask_nd, k, 0)
+            v = tl.where(mask_ne, v, 0)
+            state_ = k[:, None] * v[None, :]
 
-            tl.store(
-                log_pi_block_ptr,
-                log_pi.to(log_pi_block_ptr.dtype.element_ty),
-                mask=mask_d,
-            )
-            log_pi_block_ptr += H * D
+            if USE_LDK:
+                if HAS_LDK:
+                    ldk = tl.load(ldk_block_ptr, mask=mask_d, other=0).to(tl.float32)
+                    log_pi += ldk
+                    lambda_ = tl.exp(ldk)
+                    ldk_block_ptr += H * D
+                else:
+                    lambda_ = 1 - k.to(tl.float32)
+                    log_pi += tl.log(lambda_)
+                lambda_ = tl.where(mask_nd, lambda_, 1)
+                log_pi = tl.where(mask_nd, log_pi, 0)
+                state = lambda_[:, None] * state
 
-        if USE_LDV:
-            if HAS_LDV:
-                ldv = tl.load(ldv_block_ptr, mask=mask_e).to(tl.float32)
-                log_rho += ldv
-                gamma_ = tl.exp(ldv)
-                ldv_block_ptr += H * E
-            else:
-                gamma_ = 1 - tl.exp(v.to(tl.float32))
-                log_rho += tl.log(gamma_)
-            gamma_ = tl.where(mask_ne, gamma_, 0)
-            log_rho = tl.where(mask_ne, log_rho, 0)
-            state = state * gamma_[None, :]
+                tl.store(
+                    log_pi_block_ptr,
+                    log_pi.to(log_pi_block_ptr.dtype.element_ty),
+                    mask=mask_d,
+                )
+                log_pi_block_ptr += H * D
 
-            tl.store(
-                log_rho_block_ptr,
-                log_rho.to(log_rho_block_ptr.dtype.element_ty),
-                mask=mask_e,
-            )
-            log_rho_block_ptr += H * E
+            if USE_LDV:
+                if HAS_LDV:
+                    ldv = tl.load(ldv_block_ptr, mask=mask_e, other=0).to(tl.float32)
+                    log_rho += ldv
+                    gamma_ = tl.exp(ldv)
+                    ldv_block_ptr += H * E
+                else:
+                    gamma_ = 1 - v.to(tl.float32)
+                    log_rho += tl.log(gamma_)
+                gamma_ = tl.where(mask_ne, gamma_, 1)
+                log_rho = tl.where(mask_ne, log_rho, 0)
+                state = state * gamma_[None, :]
 
-        state += state_
-        o = tl.sum(q[:, None] * state, axis=0)
-        tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_e)
+                tl.store(
+                    log_rho_block_ptr,
+                    log_rho.to(log_rho_block_ptr.dtype.element_ty),
+                    mask=mask_e,
+                )
+                log_rho_block_ptr += H * E
 
-        q_block_ptr += H * D
-        k_block_ptr += H * D
-        v_block_ptr += H * E
-        o_block_ptr += H * E
-        array_nd += 1
-        array_ne += 1
+            state += state_
+            o = tl.sum(q[:, None] * state, axis=0)
+            tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_e)
+
+            q_block_ptr += H * D
+            k_block_ptr += H * D
+            v_block_ptr += H * E
+            o_block_ptr += H * E
+            array_nd += 1
+            array_ne += 1
+            offset_n += 1
 
     tl.store(
         state_block_ptr,
@@ -167,61 +170,79 @@ def _lavd_intra_fwd(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_D": [MAX_BLOCK_SIZE, MAX_BLOCK_SIZE // 2, MAX_BLOCK_SIZE // 4],
-            "BLOCK_E": [MAX_BLOCK_SIZE, MAX_BLOCK_SIZE // 2, MAX_BLOCK_SIZE // 4],
+            "BLOCK_D": [128, 64, 32, 16],
+            "BLOCK_E": [16, 32, 64, 128],
         }
     ),
     key=["B", "N", "H", "D", "E"],
 )
 @triton.jit
 def _lavd_state_reduce(
-    STATE,  # B M H D E
+    STATES,  # B M H D E
     LOG_PI,  # B N H D
     LOG_RHO,  # B N H E
     INITIAL_STATE,  # H D E if USE_STATIC_INITIAL_STATE else B H D E
-    BLOCK_SIZE,  # 1
     B: tl.constexpr,
     N: tl.constexpr,
     H: tl.constexpr,
     D: tl.constexpr,
     E: tl.constexpr,
     M: tl.constexpr,
+    USE_LDK: tl.constexpr,
+    USE_LDV: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_STATIC_INITIAL_STATE: tl.constexpr,
+    BLOCK_N: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
 ):
     off_bh = tl.program_id(0)
-    off_e = tl.program_id(1)
-    off_d = tl.program_id(2)
+    off_d = tl.program_id(1)
+    off_e = tl.program_id(2)
     off_b = off_bh // H
     off_h = off_bh % H
 
     # compute offset
-    block_size = tl.load(BLOCK_SIZE)
     offset_d = off_d * BLOCK_D
     offset_e = off_e * BLOCK_E
     array_d = tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
-    offset_state = off_bh * M * D * E + offset_d * E + offset_e
-    offset_log_pi = off_b * N * H * D + block_size * H * D + off_h * D + offset_d
-    offset_log_rho = off_b * N * H * E + block_size * H * E + off_h * E + offset_e
+    # start from index 1
+    offset_state = (
+        off_b * M * H * D * E + H * D * E + off_h * D * E + offset_d * E + offset_e
+    )
+    NUM_BLOCK = tl.cdiv(N, BLOCK_N)
+    offset_log_pi = off_b * N * H * D + off_h * D + offset_d
+    offset_log_rho = off_b * N * H * E + off_h * E + offset_e
+    # !!! important
+    if NUM_BLOCK == 1:
+        if N % BLOCK_N > 0:
+            offset_block = N % BLOCK_N - 1
+        else:
+            offset_block = BLOCK_N - 1
+    else:
+        offset_block = BLOCK_N - 1
+    offset_log_pi = off_b * N * H * D + offset_block * H * D + off_h * D + offset_d
+    offset_log_rho = off_b * N * H * E + offset_block * H * E + off_h * E + offset_e
+
     if USE_INITIAL_STATE:
         if USE_STATIC_INITIAL_STATE:
-            offset_initial_state = off_h * D * E + off_d * E + off_e
+            offset_initial_state = off_h * D * E + offset_d * E + offset_e
         else:
-            offset_initial_state = off_bh * H * D * E + off_d * E + off_e
+            offset_initial_state = off_bh * D * E + offset_d * E + offset_e
 
     # compute block ptr
-    array_n = tl.full([block_size], value=offset_n, dtype=tl.int64)
+    array_nd = tl.full([BLOCK_D], value=0, dtype=tl.int64)
+    array_ne = tl.full([BLOCK_E], value=0, dtype=tl.int64)
     mask_d = (offset_d + array_d) < D
     mask_e = (offset_e + array_e) < E
     mask_state = mask_d[:, None] & mask_e[None, :]
-    state_block_ptr = STATE + offset_state + array_d[:, None] * E + array_e[None, :]
+    state_block_ptr = STATES + offset_state + array_d[:, None] * E + array_e[None, :]
+    state_save_block_ptr = state_block_ptr - H * D * E
     if USE_LDK:
-        log_pi_block_ptr = LOG_PI + offset_log_pi + array_d[:, None]
+        log_pi_block_ptr = LOG_PI + offset_log_pi + array_d
     if USE_LDV:
-        log_rho_block_ptr = LOG_RHO + offset_log_rho + array_e[None, :]
+        log_rho_block_ptr = LOG_RHO + offset_log_rho + array_e
     if USE_INITIAL_STATE:
         initial_state_block_ptr = (
             INITIAL_STATE
@@ -233,32 +254,54 @@ def _lavd_state_reduce(
             tl.float32
         )
     else:
-        state = tl.zeros([BLOCK_D, BLOCK_E]).to(tl.float32)
+        state = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
 
-    for i in tl.cdiv(N, BLOCK_N):
-        mask_n = array_n < N
+    tl.store(
+        state_save_block_ptr,
+        state.to(state_save_block_ptr.dtype.element_ty),
+        mask=mask_state,
+    )
+
+    for i in range(NUM_BLOCK):
+        array_nd < N
+        array_ne < N
         state_ = tl.load(state_block_ptr, mask=mask_state, other=0).to(tl.float32)
         if USE_LDK:
             log_pi = tl.load(log_pi_block_ptr, mask=mask_d, other=0).to(tl.float32)
             pi = tl.exp(log_pi)
-            pi = tl.where(mask_n, pi, 0)
-            state *= pi[None, :]
-            log_pi_block_ptr += block_size * H * D
+            state *= pi[:, None]
+            if i < NUM_BLOCK - 2:
+                log_pi_block_ptr += BLOCK_N * H * D
+            else:
+                if N % BLOCK_N > 0:
+                    log_pi_block_ptr += (N % BLOCK_N) * H * D
+                else:
+                    log_pi_block_ptr += BLOCK_N * H * D
 
         if USE_LDV:
             log_rho = tl.load(log_rho_block_ptr, mask=mask_e, other=0).to(tl.float32)
             rho = tl.exp(log_rho)
-            rho = tl.where(mask_n, rho, 0)
-            state *= rho[:, None]
-            log_rho_block_ptr += block_size * H * E
+            state *= rho[None, :]
+            if i < NUM_BLOCK - 2:
+                log_rho_block_ptr += BLOCK_N * H * E
+            else:
+                if N % BLOCK_N > 0:
+                    log_rho_block_ptr += (N % BLOCK_N) * H * E
+                else:
+                    log_rho_block_ptr += BLOCK_N * H * E
 
         state += state_
-        tl.store(
-            state_block_ptr, state.to(state_block_ptr.dtype.element_ty), mask=mask_state
-        )
 
-        array_n += block_size
+        array_nd += BLOCK_N
+        array_ne += BLOCK_N
         state_block_ptr += H * D * E
+        state_save_block_ptr += H * D * E
+
+        tl.store(
+            state_save_block_ptr,
+            state.to(state_save_block_ptr.dtype.element_ty),
+            mask=mask_state,
+        )
 
 
 class LavdChunkParallelFunction(torch.autograd.Function):
@@ -278,15 +321,16 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         # Get shapes and device
         dtype = q.dtype
         b, n, h, d = q.shape
-        e = ldv.shape[-1]
+        e = v.shape[-1]
         device = q.device
 
         m = (n + MIN_CHUNK_SIZE - 1) // MIN_CHUNK_SIZE + 1
         has_ldk = ldk is not None
         has_ldv = ldv is not None
 
+        static_state = initial_state is not None and len(initial_state.shape) == 3
         o = torch.empty((b, n, h, e), dtype=dtype, device=device)
-        state = torch.empty((b, m, h, d, e), dtype=dtype, device=device)
+        states = torch.empty((b, m, h, d, e), dtype=dtype, device=device)
         if use_ldk:
             log_pi = torch.empty((b, n, h, d), dtype=dtype, device=device)
         else:
@@ -319,7 +363,7 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             LDK=ldk,
             LDV=ldv,
             O=o,
-            STATE=state,
+            STATES=states,
             LOG_PI=log_pi,
             LOG_RHO=log_rho,
             BLOCK_SIZE=block_size,
@@ -337,7 +381,11 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         )
 
         # 2. Compute global state
+        block_n = block_size.item()
+
         def grid(meta):
+            # meta["BLOCK_D"] = min(meta["BLOCK_D"], d)
+            # meta["BLOCK_E"] = min(meta["BLOCK_E"], e)
             return (
                 b * h,
                 triton.cdiv(d, meta["BLOCK_D"]),
@@ -345,50 +393,58 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             )
 
         use_initial_state = initial_state is not None
-        use_static_initial_state = len(initial_state.shape) == 3
+        use_static_initial_state = (
+            initial_state is not None and len(initial_state.shape) == 3
+        )
 
         _lavd_state_reduce[grid](
-            STATE=state,
+            STATES=states,
             LOG_PI=log_pi,
             LOG_RHO=log_rho,
             INITIAL_STATE=initial_state,
-            BLOCK_SIZE=block_size,
             B=b,
             N=n,
             H=h,
             D=d,
             E=e,
             M=m,
+            USE_LDK=use_ldk,
+            USE_LDV=use_ldv,
             USE_INITIAL_STATE=use_initial_state,
             USE_STATIC_INITIAL_STATE=use_static_initial_state,
-            BLOCK_D=block_d,
-            BLOCK_E=block_e,
+            BLOCK_N=block_n,
         )
 
-        # 3. Compute inter
+        # # 3. Compute inter
+        # # c = block_size.item()
+        # # def grid(meta):
+        # #     return (b * h, triton.cdiv(n, c))
         # c = block_size.item()
-        # def grid(meta):
-        #     return (b * h, triton.cdiv(n, c))
-        c = block_size.item()
-        m = (n + c - 1) // c
-        pi = torch.exp(log_pi)
-        rho = torch.exp(log_rho)
-        # update
-        q_ = q * pi
-        q = rearrange(q, "b (m c) h d -> b m c h d", c=c)
-        o_inter = (
-            torch.einsum("b m c h d, b m h d e -> b m c h e", q_, states[:, :m]) * rho
-        )
-        o_inter = rearrange(o_inter, "b m c h e -> b (m c) h e")
-        o += o_inter
+        # m = (n + c - 1) // c
+        # pi = torch.exp(log_pi)
+        # rho = torch.exp(log_rho)
+        # # update
+        # q_ = q * pi
+        # q_ = rearrange(q_, "b (m c) h d -> b m c h d", c=c)
+        # rho = rearrange(rho, "b (m c) h e -> b m c h e", c=c)
+        # # print(q.shape, state.shape, c, n, m, q_.shape, state[:, :m].shape, rho.shape)
+        # print(q_.shape, state[:, :m].contiguous().shape, rho.shape)
+        # o_inter = (
+        #     torch.einsum("b m c h d, b m h d e -> b m c h e", q_, state[:, :m].contiguous())
+        #     * rho
+        # )
+        # o_inter = rearrange(o_inter, "b m c h e -> b (m c) h e")
+        # o += o_inter
 
-        # Save for backward
-        state = states[:, :m].contiguous()
-        ctx.save_for_backward(q, ldk, ldv, k, v, states[:, :m].contiguous())
-        ctx.static_state = static_state
-        ctx.chunk_size = chunk_size
+        # # Save for backward
+        # state = state[:, :m].contiguous()
+        # ctx.save_for_backward(q, ldk, ldv, k, v, state[:, :m].contiguous())
+        # ctx.static_state = static_state
+        # ctx.chunk_size = c
 
-        return o.to(dtype), state.to(dtype)
+        state = None
+
+        return o, state, states[:, :m].contiguous(), log_pi, log_rho
 
     @staticmethod
     @contiguous
