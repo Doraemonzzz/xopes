@@ -534,11 +534,12 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             BLOCK_N=block_n,
         )
 
-        print("aaa", m - 1, block_n, states.shape)
         m = triton.cdiv(n, block_n)
         state = states[:, m].contiguous()
 
-        return o, state  # , states[:, :m].contiguous(), log_pi, log_rho
+        state = None
+
+        return o, state
 
     @staticmethod
     @contiguous

@@ -51,6 +51,9 @@ folder=cumsum
 folder=gate_linear/hidden_dim
 folder=gate_linear/batch_size
 
+##### lavd 250204
+folder=lightning_attention/vector_decay
+
 mkdir -p $folder/log
 
 CUDA_VISIBLE_DEVICES=0 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
