@@ -50,16 +50,22 @@ configs = [
         line_arg="provider",
         line_vals=[
             "lavd_dk",
-            "lavd_dv",
-            "lavd_dk_dv",
+            # "lavd_dv",
+            # "lavd_dk_dv",
             "flash",
             "gla",
         ],
-        line_names=["LAVD_DK", "LAVD_DV", "LAVD_DK_DV", "Flash", "GLA"],
+        line_names=[
+            "LAVD_DK",
+            # "LAVD_DV",
+            # "LAVD_DK_DV",
+            "Flash",
+            "GLA",
+        ],
         styles=[
             ("red", "-"),
-            ("blue", "-"),
-            ("green", "-"),
+            # ("blue", "-"),
+            # ("green", "-"),
             ("orange", "-"),
             ("purple", "-"),
         ],
@@ -74,7 +80,9 @@ configs = [
             "bench_type": bench_type,
         },
     )
-    for bench_type in ["speed", "memory"]
+    for bench_type in [
+        "speed",
+    ]
     for mode in [
         "fwd",
     ]

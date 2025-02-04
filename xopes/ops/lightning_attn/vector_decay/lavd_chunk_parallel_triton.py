@@ -90,15 +90,12 @@ def _lavd_intra_fwd(
     for i in range(BLOCK_N):
         if offset_n < N:
             # mask
-            mask_nd = array_nd < N
-            mask_ne = array_ne < N
+            array_nd < N
+            array_ne < N
 
             q = tl.load(q_block_ptr, mask=mask_d, other=0)
             k = tl.load(k_block_ptr, mask=mask_d, other=0)
             v = tl.load(v_block_ptr, mask=mask_e, other=0)
-            q = tl.where(mask_nd, q, 0)
-            k = tl.where(mask_nd, k, 0)
-            v = tl.where(mask_ne, v, 0)
             state_ = k[:, None] * v[None, :]
 
             if USE_LDK:
@@ -110,8 +107,6 @@ def _lavd_intra_fwd(
                 else:
                     lambda_ = 1 - k.to(tl.float32)
                     log_pi += tl.log(lambda_)
-                lambda_ = tl.where(mask_nd, lambda_, 1)
-                log_pi = tl.where(mask_nd, log_pi, 0)
                 state = lambda_[:, None] * state
 
                 tl.store(
@@ -130,8 +125,6 @@ def _lavd_intra_fwd(
                 else:
                     gamma_ = 1 - v.to(tl.float32)
                     log_rho += tl.log(gamma_)
-                gamma_ = tl.where(mask_ne, gamma_, 1)
-                log_rho = tl.where(mask_ne, log_rho, 0)
                 state = state * gamma_[None, :]
 
                 tl.store(
@@ -536,8 +529,6 @@ class LavdChunkParallelFunction(torch.autograd.Function):
 
         m = triton.cdiv(n, block_n)
         state = states[:, m].contiguous()
-
-        state = None
 
         return o, state
 
