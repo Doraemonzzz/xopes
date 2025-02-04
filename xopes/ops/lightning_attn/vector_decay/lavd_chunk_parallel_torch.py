@@ -26,8 +26,8 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         initial_state=None,
         chunk_size=128,
     ):
-        use_ldk and ldk is not None
-        use_ldv and ldv is not None
+        compute_dldk = use_ldk and ldk is not None
+        compute_dldv = use_ldv and ldv is not None
         dtype = q.dtype
         b, n, h, d = q.shape
         e = v.shape[-1]
@@ -75,7 +75,7 @@ class LavdChunkParallelFunction(torch.autograd.Function):
 
         # prepare
         o = torch.zeros((b, m, c, h, e), dtype=torch.float32, device=q.device)
-        state.requires_grad
+        state_requires_grad = state.requires_grad
         # b 1 h d e
         states = [state.unsqueeze(1)]
         # !!! important, the initial state is 0 for intra
@@ -139,33 +139,33 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             state = state + state_
             states[:, i + 1] = state
 
-        # ##### compute inter
-        # if use_ldk:
-        #     pi = torch.exp(log_pi)
-        #     # update
-        #     q_ = q * pi
-        # else:
-        #     q_ = q
+        ##### compute inter
+        if use_ldk:
+            pi = torch.exp(log_pi)
+            # update
+            q_ = q * pi
+        else:
+            q_ = q
 
-        # if use_ldv:
-        #     rho = torch.exp(log_rho)
+        if use_ldv:
+            rho = torch.exp(log_rho)
 
-        # o_inter = torch.einsum("b m c h d, b m h d e -> b m c h e", q_, states[:, :m])
-        # if use_ldv:
-        #     o_inter = o_inter * rho
-        # o += o_inter
+        o_inter = torch.einsum("b m c h d, b m h d e -> b m c h e", q_, states[:, :m])
+        if use_ldv:
+            o_inter = o_inter * rho
+        o += o_inter
 
-        # # Save inputs for backward pass
-        # ctx.save_for_backward(q, ldk, ldv, k, v, state, o, states)
-        # ctx.chunk_size = chunk_size
-        # ctx.static_state = static_state
-        # ctx.state_requires_grad = state_requires_grad
-        # ctx.use_ldk = use_ldk
-        # ctx.use_ldv = use_ldv
-        # ctx.compute_dldk = compute_dldk
-        # ctx.compute_dldv = compute_dldv
-        # ctx.dtype = dtype
-        # ctx.n = n
+        # Save inputs for backward pass
+        ctx.save_for_backward(q, ldk, ldv, k, v, state, o, states)
+        ctx.chunk_size = chunk_size
+        ctx.static_state = static_state
+        ctx.state_requires_grad = state_requires_grad
+        ctx.use_ldk = use_ldk
+        ctx.use_ldv = use_ldv
+        ctx.compute_dldk = compute_dldk
+        ctx.compute_dldv = compute_dldv
+        ctx.dtype = dtype
+        ctx.n = n
 
         o = rearrange(o, "b m c h e -> b (m c) h e")[:, :n]
 
@@ -179,7 +179,7 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         else:
             log_rho = rearrange(log_rho, "b m c h e -> b (m c) h e")[:, :n]
 
-        return o.to(dtype), state.to(dtype), states, log_pi, log_rho
+        return o.to(dtype), state.to(dtype)  # , states, log_pi, log_rho
 
     @staticmethod
     @contiguous

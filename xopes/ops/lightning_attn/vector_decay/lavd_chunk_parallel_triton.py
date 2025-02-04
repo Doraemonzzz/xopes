@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from xopes.utils import contiguous, generate_configs
+from xopes.utils import XOPES_DTYPE, contiguous, generate_configs
 
 MIN_CHUNK_SIZE = 64
 MAX_BLOCK_SIZE = 128
@@ -304,6 +304,102 @@ def _lavd_state_reduce(
         )
 
 
+@triton.autotune(
+    generate_configs(
+        {
+            "num_warps": [4, 8, 16, 32],
+            "BLOCK_D": [128, 64, 32, 16],
+            "BLOCK_E": [16, 32, 64, 128],
+        }
+    ),
+    key=["B", "N", "H", "D", "E"],
+)
+@triton.jit
+def _lavd_inter_fwd(
+    Q,  # B N H D
+    STATES,  # B M H D E
+    LOG_PI,  # B N H D
+    LOG_RHO,  # B N H E
+    O,  # B N H E
+    B: tl.constexpr,
+    N: tl.constexpr,
+    H: tl.constexpr,
+    D: tl.constexpr,
+    E: tl.constexpr,
+    M: tl.constexpr,
+    USE_LDK: tl.constexpr,
+    USE_LDV: tl.constexpr,
+    XOPES_DTYPE: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
+):
+    off_bh = tl.program_id(0)
+    off_n = tl.program_id(1)
+    off_e = tl.program_id(2)
+    off_b = off_bh // H
+    off_h = off_bh % H
+
+    # compute offset
+    offset_d = 0
+    offset_e = off_e * BLOCK_E
+    offset_n = off_n * BLOCK_N
+    array_d = tl.arange(0, BLOCK_D)
+    array_e = tl.arange(0, BLOCK_E)
+    array_n = tl.arange(0, BLOCK_N)
+    offset_state = off_b * M * H * D * E + off_n * H * D * E + off_h * D * E + offset_e
+    offset_q = off_b * N * H * D + offset_n * H * D + off_h * D
+    offset_o = off_b * N * H * E + offset_n * H * E + off_h * E + offset_e
+
+    # compute mask
+    mask_n = (offset_n + array_n) < N
+    mask_e = (offset_e + array_e) < E
+    mask_ne = mask_n[:, None] & mask_e[None, :]
+
+    # compute block ptr
+    state_block_ptr = STATES + offset_state + array_d[:, None] * E + array_e[None, :]
+    q_block_ptr = Q + offset_q + array_n[:, None] * H * D + array_d[None, :]
+    o_block_ptr = O + offset_o + array_n[:, None] * H * E + array_e[None, :]
+    if USE_LDK:
+        log_pi_block_ptr = (
+            LOG_PI + offset_q + array_n[:, None] * H * D + array_d[None, :]
+        )
+    if USE_LDV:
+        log_rho_block_ptr = (
+            LOG_RHO + offset_o + array_n[:, None] * H * E + array_e[None, :]
+        )
+
+    o_intra = tl.load(o_block_ptr, mask=mask_ne, other=0)
+    o_inter = tl.zeros([BLOCK_N, BLOCK_E], dtype=tl.float32)
+
+    for i in range(tl.cdiv(D, BLOCK_D)):
+        mask_d = (offset_d + array_d) < D
+        mask_nd = mask_n[:, None] & mask_d[None, :]
+        mask_de = mask_d[:, None] & mask_e[None, :]
+
+        q = tl.load(q_block_ptr, mask=mask_nd, other=0)
+        if USE_LDK:
+            log_pi = tl.load(log_pi_block_ptr, mask=mask_nd, other=0).to(tl.float32)
+            pi = tl.exp(log_pi)
+            q *= pi
+            log_pi_block_ptr += BLOCK_D
+
+        state = tl.load(state_block_ptr, mask=mask_de, other=0)
+        o_inter += tl.dot(q, state.to(q.dtype), input_precision=XOPES_DTYPE)
+
+        q_block_ptr += BLOCK_D
+        state_block_ptr += BLOCK_D * E
+        offset_d += BLOCK_D
+
+    if USE_LDV:
+        log_rho = tl.load(log_rho_block_ptr, mask=mask_ne, other=0).to(tl.float32)
+        rho = tl.exp(log_rho)
+        o_inter *= rho
+
+    o = o_intra + o_inter.to(o_intra.dtype)
+    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_ne)
+
+
 class LavdChunkParallelFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
@@ -341,7 +437,6 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             log_rho = None
         block_d = min(triton.next_power_of_2(d), MAX_BLOCK_SIZE)
         block_size = torch.empty((1,), dtype=torch.int32, device=device)
-        # block_e = min(triton.next_power_of_two(e), MAX_BLOCK_SIZE)
 
         ##### Use three pass to compute the output and state
         # 1. Compute intra and local state
@@ -384,8 +479,6 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         block_n = block_size.item()
 
         def grid(meta):
-            # meta["BLOCK_D"] = min(meta["BLOCK_D"], d)
-            # meta["BLOCK_E"] = min(meta["BLOCK_E"], e)
             return (
                 b * h,
                 triton.cdiv(d, meta["BLOCK_D"]),
@@ -415,36 +508,37 @@ class LavdChunkParallelFunction(torch.autograd.Function):
             BLOCK_N=block_n,
         )
 
-        # # 3. Compute inter
-        # # c = block_size.item()
-        # # def grid(meta):
-        # #     return (b * h, triton.cdiv(n, c))
-        # c = block_size.item()
-        # m = (n + c - 1) // c
-        # pi = torch.exp(log_pi)
-        # rho = torch.exp(log_rho)
-        # # update
-        # q_ = q * pi
-        # q_ = rearrange(q_, "b (m c) h d -> b m c h d", c=c)
-        # rho = rearrange(rho, "b (m c) h e -> b m c h e", c=c)
-        # # print(q.shape, state.shape, c, n, m, q_.shape, state[:, :m].shape, rho.shape)
-        # print(q_.shape, state[:, :m].contiguous().shape, rho.shape)
-        # o_inter = (
-        #     torch.einsum("b m c h d, b m h d e -> b m c h e", q_, state[:, :m].contiguous())
-        #     * rho
-        # )
-        # o_inter = rearrange(o_inter, "b m c h e -> b (m c) h e")
-        # o += o_inter
+        # 3. Compute inter
+        def grid(meta):
+            return (
+                b * h,
+                triton.cdiv(n, block_n),
+                triton.cdiv(e, meta["BLOCK_E"]),
+            )
 
-        # # Save for backward
-        # state = state[:, :m].contiguous()
-        # ctx.save_for_backward(q, ldk, ldv, k, v, state[:, :m].contiguous())
-        # ctx.static_state = static_state
-        # ctx.chunk_size = c
+        _lavd_inter_fwd[grid](
+            Q=q,
+            STATES=states,
+            LOG_PI=log_pi,
+            LOG_RHO=log_rho,
+            O=o,
+            B=b,
+            N=n,
+            H=h,
+            D=d,
+            E=e,
+            M=m,
+            XOPES_DTYPE=XOPES_DTYPE,
+            USE_LDK=use_ldk,
+            USE_LDV=use_ldv,
+            BLOCK_N=block_n,
+        )
 
-        state = None
+        print("aaa", m - 1, block_n, states.shape)
+        m = triton.cdiv(n, block_n)
+        state = states[:, m].contiguous()
 
-        return o, state, states[:, :m].contiguous(), log_pi, log_rho
+        return o, state  # , states[:, :m].contiguous(), log_pi, log_rho
 
     @staticmethod
     @contiguous

@@ -1,4 +1,4 @@
-from .constant import ACT_SET, HEAD_DIM
+from .constant import ACT_SET, HEAD_DIM, XOPES_DEBUG, XOPES_DTYPE
 from .op_utils import transpose
 from .utils import (
     contiguous,

@@ -3,7 +3,10 @@ import os
 import torch
 
 XOPES_DEBUG = eval(os.environ.get("XOPES_DEBUG", default="False"))
-
+if XOPES_DEBUG:
+    XOPES_DTYPE = "ieee"
+else:
+    XOPES_DTYPE = "tf32"
 
 HEAD_DIM = 128
 
