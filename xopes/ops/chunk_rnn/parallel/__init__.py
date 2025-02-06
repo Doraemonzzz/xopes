@@ -1,0 +1,1 @@
+from .chunk_rnn_parallel import chunk_rnn_parallel

@@ -5,6 +5,7 @@ from .additive import (
     additive_rule_recurrence_triton,
 )
 from .base import base_rule_recurrence_torch, base_rule_recurrence_triton
+from .chunk_rnn import chunk_rnn_parallel_fn, chunk_rnn_sequential_fn
 from .cumsum import cumsum_fn
 from .flao import flao_non_causal_fn
 from .gate_linear import gate_linear_fn
