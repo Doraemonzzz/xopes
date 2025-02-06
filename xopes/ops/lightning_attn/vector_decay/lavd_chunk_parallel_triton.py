@@ -90,9 +90,6 @@ def _lavd_intra_fwd(
     for i in range(BLOCK_N):
         if offset_n < N:
             # mask
-            array_nd < N
-            array_ne < N
-
             q = tl.load(q_block_ptr, mask=mask_d, other=0)
             k = tl.load(k_block_ptr, mask=mask_d, other=0)
             v = tl.load(v_block_ptr, mask=mask_e, other=0)
@@ -142,8 +139,6 @@ def _lavd_intra_fwd(
             k_block_ptr += H * D
             v_block_ptr += H * E
             o_block_ptr += H * E
-            array_nd += 1
-            array_ne += 1
             offset_n += 1
 
     tl.store(
