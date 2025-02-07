@@ -76,8 +76,12 @@ def chunk_rnn_sequential(
         oi_intra = flash_attn_func(qi, ki, gi, causal=True)
         oi_inter = torch.einsum("b c h d, b h d e -> b c h e", ki, state)
         oi = oi_intra + oi_inter
+        if log_f is not None:
+            ki = ki * torch.exp(log_f[:, start:end, :, :])
         state_ = torch.einsum("b n h d, b n h e -> b h d e", ki, gi)
         o.append(oi)
+        torch.exp(log_fi)
+
         if log_f is not None:
             state = state + state_
         else:

@@ -104,7 +104,8 @@ def chunk_rnn_parallel(
             :,
             i,
         ] = state
-    o_inter = torch.einsum("b m c h d, b m h d e -> b m c h e", q, states)
+    states = torch.cat([state.unsqueeze(1), states], dim=1)
+    o_inter = torch.einsum("b m c h d, b m h d e -> b m c h e", q, states[:, :m])
     o_inter = rearrange(o_inter, "b m c h d -> b (m c) h d", m=m)
 
     o = (o_intra + o_inter)[

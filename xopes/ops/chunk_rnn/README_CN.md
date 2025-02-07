@@ -99,7 +99,7 @@ $$
 $$
 \begin{aligned}
 \mathbf s_{t} &=
-\gamma_t \mathbf s_0 + \sum_{j=1}^t \gamma_i /\gamma_j
+\gamma_t \mathbf s_0 + \sum_{j=1}^t \gamma_t /\gamma_j
 \mathbf k_j
 \mathbf p_j^\top,  \\
 \gamma_j &= \prod_{i=1}^j \lambda_i.
