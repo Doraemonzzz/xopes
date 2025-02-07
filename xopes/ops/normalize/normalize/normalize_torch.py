@@ -41,7 +41,8 @@ def normalize_torch(
         weight = weight.float()
     if bias is not None:
         bias = bias.float()
-    if residual is not None:
+    use_residual = residual is not None
+    if use_residual:
         residual = residual.float()
         x = x + residual
         # update residual
@@ -70,4 +71,7 @@ def normalize_torch(
         if return_residual:
             residual = x.to(dtype)
 
-    return o, residual
+    if use_residual or return_residual:
+        return o, residual
+    else:
+        return o

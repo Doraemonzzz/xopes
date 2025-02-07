@@ -10,8 +10,8 @@ folder=lrpe/cosine/_1d
 # folder=flao/fal_non_causal
 # folder=multinomial
 
-# ##### normalize 241231
-# folder=normalize/srms_norm
+##### normalize 241231
+folder=normalize/srms_norm
 # folder=normalize/rms_norm
 # folder=normalize/group_norm
 # folder=normalize/layer_norm
@@ -22,10 +22,10 @@ folder=lrpe/cosine/_1d
 # ##### logsumexp 250103
 # folder=logsumexp
 
-##### linear_cross_entropy 250104
-folder=linear_cross_entropy/vocab_size
-folder=linear_cross_entropy/hidden_dim
-folder=linear_cross_entropy/batch_size
+# ##### linear_cross_entropy 250104
+# folder=linear_cross_entropy/vocab_size
+# folder=linear_cross_entropy/hidden_dim
+# folder=linear_cross_entropy/batch_size
 
 # ##### cross_entropy 250105
 # folder=cross_entropy
@@ -44,17 +44,19 @@ folder=linear_cross_entropy/batch_size
 # ##### act 250116
 # folder=act
 
-##### cumsum 250130
-folder=cumsum
+# ##### cumsum 250130
+# folder=cumsum
 
-##### gate_linear 250201
-folder=gate_linear/hidden_dim
-folder=gate_linear/batch_size
+# ##### gate_linear 250201
+# folder=gate_linear/hidden_dim
+# folder=gate_linear/batch_size
 
-##### lavd 250204
-folder=lightning_attention/vector_decay
+# ##### lavd 250204
+# folder=lightning_attention/vector_decay
 
 mkdir -p $folder/log
 
-CUDA_VISIBLE_DEVICES=0 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
-# CUDA_VISIBLE_DEVICES=1 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
+export CUDA_VISIBLE_DEVICES=0
+# export CUDA_VISIBLE_DEVICES=1
+
+python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log

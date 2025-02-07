@@ -24,14 +24,14 @@ folder=normalize/group_norm
 folder=normalize/group_rms_norm
 folder=normalize/group_srms_norm
 
-##### householder 250101
-folder=householder
+# ##### householder 250101
+# folder=householder
 
 # ##### logsumexp 250103
 # folder=logsumexp
 
-##### linear_cross_entropy 250105
-folder=linear_cross_entropy
+# ##### linear_cross_entropy 250105
+# folder=linear_cross_entropy
 
 # ##### cross_entropy 250106
 # folder=cross_entropy
@@ -43,9 +43,9 @@ folder=linear_cross_entropy
 # ##### oplr 250109
 # folder=out_product_linear_recurrence/data_dependent_decay
 
-##### lrpe 250114
-folder=lrpe/cosine/_1d
-folder=lrpe/cosine/_1d_mpa
+# ##### lrpe 250114
+# folder=lrpe/cosine/_1d
+# folder=lrpe/cosine/_1d_mpa
 # folder=lrpe/rotate/_1d
 # folder=lrpe/rotate/_1d_mpa
 
@@ -55,9 +55,9 @@ folder=lrpe/cosine/_1d_mpa
 # ##### lce 250119
 # folder=linear_cross_entropy
 
-##### lavd 250122
-folder=lightning_attn/vector_decay
-folder=lightning_attn/vector_decay_unit_test
+# ##### lavd 250122
+# folder=lightning_attn/vector_decay
+# folder=lightning_attn/vector_decay_unit_test
 
 # ##### cumsum 250129
 # folder=cumsum
@@ -69,6 +69,8 @@ mkdir -p $folder/log
 
 
 export XOPES_DEBUG=True
+export CUDA_VISIBLE_DEVICES=0
+# export CUDA_VISIBLE_DEVICES=1
 # export TRITON_INTERPRET=1
 
 pytest $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log

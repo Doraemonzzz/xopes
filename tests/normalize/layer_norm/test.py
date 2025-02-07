@@ -32,7 +32,7 @@ def test(shape, use_residual, return_residual, c, eps, dtype):
         residual = None
 
     # forward
-    o_layer_norm_torch, o_update_residual_torch = layer_norm_torch(
+    o_torch = layer_norm_torch(
         x,
         weight=weight,
         bias=bias,
@@ -41,10 +41,17 @@ def test(shape, use_residual, return_residual, c, eps, dtype):
         residual=residual,
         return_residual=return_residual,
     )
+
+    if isinstance(o_torch, tuple):
+        o_layer_norm_torch, o_update_residual_torch = o_torch
+    else:
+        o_layer_norm_torch = o_torch
+        o_update_residual_torch = None
+
     if use_residual and return_residual:
         o_layer_norm_torch = o_layer_norm_torch + o_update_residual_torch
 
-    o_layer_norm_triton, o_update_residual_triton = layer_norm_triton(
+    o_triton = layer_norm_triton(
         x,
         weight=weight,
         bias=bias,
@@ -53,6 +60,13 @@ def test(shape, use_residual, return_residual, c, eps, dtype):
         residual=residual,
         return_residual=return_residual,
     )
+
+    if isinstance(o_triton, tuple):
+        o_layer_norm_triton, o_update_residual_triton = o_triton
+    else:
+        o_layer_norm_triton = o_triton
+        o_update_residual_triton = None
+
     if use_residual and return_residual:
         o_layer_norm_triton = o_layer_norm_triton + o_update_residual_triton
 

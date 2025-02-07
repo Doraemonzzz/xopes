@@ -11,29 +11,29 @@ def get_params():
     return shape
 
 
-# ##### return_residual = False
-# @pytest.mark.parametrize("shape", get_params())
-# @pytest.mark.parametrize("num_groups", [1, 4])
-# @pytest.mark.parametrize("use_mean", [True, False])
-# @pytest.mark.parametrize("use_weight", [True, False])
-# @pytest.mark.parametrize("use_bias", [True, False])
-# @pytest.mark.parametrize("use_residual", [True, False])
-# @pytest.mark.parametrize("return_residual", [False])
-# @pytest.mark.parametrize("c", [1, 16])
-# @pytest.mark.parametrize("eps", [1e-5])
-# @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-
-##### return_residual = True
+##### return_residual = False
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("num_groups", [1, 4])
 @pytest.mark.parametrize("use_mean", [True, False])
 @pytest.mark.parametrize("use_weight", [True, False])
 @pytest.mark.parametrize("use_bias", [True, False])
-@pytest.mark.parametrize("use_residual", [False])
-@pytest.mark.parametrize("return_residual", [True])
+@pytest.mark.parametrize("use_residual", [True, False])
+@pytest.mark.parametrize("return_residual", [False])
 @pytest.mark.parametrize("c", [1, 16])
 @pytest.mark.parametrize("eps", [1e-5])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+
+# ##### return_residual = True
+# @pytest.mark.parametrize("shape", get_params())
+# @pytest.mark.parametrize("num_groups", [1, 4])
+# @pytest.mark.parametrize("use_mean", [True, False])
+# @pytest.mark.parametrize("use_weight", [True, False])
+# @pytest.mark.parametrize("use_bias", [True, False])
+# @pytest.mark.parametrize("use_residual", [False])
+# @pytest.mark.parametrize("return_residual", [True])
+# @pytest.mark.parametrize("c", [1, 16])
+# @pytest.mark.parametrize("eps", [1e-5])
+# @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test(
     shape,
     num_groups,
@@ -68,7 +68,7 @@ def test(
         residual = None
 
     # forward
-    o_normalize_torch, o_update_residual_torch = normalize_torch(
+    o_torch = normalize_torch(
         x,
         weight=weight,
         bias=bias,
@@ -79,10 +79,17 @@ def test(
         num_groups=num_groups,
         return_residual=return_residual,
     )
+
+    if isinstance(o_torch, tuple):
+        o_normalize_torch, o_update_residual_torch = o_torch
+    else:
+        o_normalize_torch = o_torch
+        o_update_residual_torch = None
+
     if use_residual or return_residual:
         o_normalize_torch = o_normalize_torch + o_update_residual_torch
 
-    o_normalize_triton, o_update_residual_triton = normalize_triton(
+    o_triton = normalize_triton(
         x,
         weight=weight,
         bias=bias,
@@ -93,6 +100,13 @@ def test(
         num_groups=num_groups,
         return_residual=return_residual,
     )
+
+    if isinstance(o_triton, tuple):
+        o_normalize_triton, o_update_residual_triton = o_triton
+    else:
+        o_normalize_triton = o_triton
+        o_update_residual_triton = None
+
     if use_residual or return_residual:
         o_normalize_triton = o_normalize_triton + o_update_residual_triton
 

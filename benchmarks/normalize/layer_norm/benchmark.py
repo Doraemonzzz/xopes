@@ -122,21 +122,26 @@ def benchmark(
             num_groups=num_groups,
             use_mean=use_mean,
         )
-    except:
+    except Exception as e:
+        print(f"Error setting up {provider}: {e}")
         fn = None
 
     if mode == "bwd":
         try:
-            o = fn()[0]
+            o = fn()
+            if isinstance(o, tuple):
+                o = o[0]
             do = torch.randn(shape, dtype=dtype, device=device)
             fn = lambda: o.backward(do, retain_graph=True)
-        except:
+        except Exception as e:
+            print(f"Error in speed benchmark for {provider}: {e}")
             fn = None
 
     if bench_type == "speed":
         try:
             ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-        except:
+        except Exception as e:
+            print(f"Error in speed benchmark for {provider}: {e}")
             ms = -1
 
         return ms
@@ -149,7 +154,8 @@ def benchmark(
                 fn()
                 mb_arr.append(get_memory(device))
             mb = np.mean(mb_arr)
-        except:
+        except Exception as e:
+            print(f"Error in memory benchmark for {provider}: {e}")
             mb = -1
 
         return mb

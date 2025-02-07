@@ -60,10 +60,7 @@ def test(shape, use_residual, return_residual, eps, dtype, num_groups):
         residual = None
 
     # forward
-    (
-        o_group_norm_torch_official,
-        o_update_residual_torch_official,
-    ) = group_norm_torch_official(
+    o_torch_official = group_norm_torch_official(
         x,
         num_groups=num_groups,
         weight=weight,
@@ -73,12 +70,19 @@ def test(shape, use_residual, return_residual, eps, dtype, num_groups):
         residual=residual,
         return_residual=return_residual,
     )
+
+    if isinstance(o_torch_official, tuple):
+        o_group_norm_torch_official, o_update_residual_torch_official = o_torch_official
+    else:
+        o_group_norm_torch_official = o_torch_official
+        o_update_residual_torch_official = None
+
     if use_residual and return_residual:
         o_group_norm_torch_official = (
             o_group_norm_torch_official + o_update_residual_torch_official
         )
 
-    o_group_norm_torch, o_update_residual_torch = group_norm_torch(
+    o_torch = group_norm_torch(
         x,
         weight=weight,
         bias=bias,
@@ -88,10 +92,17 @@ def test(shape, use_residual, return_residual, eps, dtype, num_groups):
         return_residual=return_residual,
         num_groups=num_groups,
     )
+
+    if isinstance(o_torch, tuple):
+        o_group_norm_torch, o_update_residual_torch = o_torch
+    else:
+        o_group_norm_torch = o_torch
+        o_update_residual_torch = None
+
     if use_residual and return_residual:
         o_group_norm_torch = o_group_norm_torch + o_update_residual_torch
 
-    o_group_norm_triton, o_update_residual_triton = group_norm_triton(
+    o_triton = group_norm_triton(
         x,
         weight=weight,
         bias=bias,
@@ -101,6 +112,13 @@ def test(shape, use_residual, return_residual, eps, dtype, num_groups):
         return_residual=return_residual,
         num_groups=num_groups,
     )
+
+    if isinstance(o_triton, tuple):
+        o_group_norm_triton, o_update_residual_triton = o_triton
+    else:
+        o_group_norm_triton = o_triton
+        o_update_residual_triton = None
+
     if use_residual and return_residual:
         o_group_norm_triton = o_group_norm_triton + o_update_residual_triton
 

@@ -29,7 +29,7 @@ def test(shape, use_residual, return_residual, eps, dtype, num_groups):
         residual = None
 
     # forward
-    o_group_srms_norm_torch, o_update_residual_torch = group_srms_norm_torch(
+    o_torch = group_srms_norm_torch(
         x,
         dim=d,
         eps=eps,
@@ -37,10 +37,17 @@ def test(shape, use_residual, return_residual, eps, dtype, num_groups):
         return_residual=return_residual,
         num_groups=num_groups,
     )
+
+    if isinstance(o_torch, tuple):
+        o_group_srms_norm_torch, o_update_residual_torch = o_torch
+    else:
+        o_group_srms_norm_torch = o_torch
+        o_update_residual_torch = None
+
     if use_residual and return_residual:
         o_group_srms_norm_torch = o_group_srms_norm_torch + o_update_residual_torch
 
-    o_group_srms_norm_triton, o_update_residual_triton = group_srms_norm_triton(
+    o_triton = group_srms_norm_triton(
         x,
         dim=d,
         eps=eps,
@@ -48,6 +55,13 @@ def test(shape, use_residual, return_residual, eps, dtype, num_groups):
         return_residual=return_residual,
         num_groups=num_groups,
     )
+
+    if isinstance(o_triton, tuple):
+        o_group_srms_norm_triton, o_update_residual_triton = o_triton
+    else:
+        o_group_srms_norm_triton = o_triton
+        o_update_residual_triton = None
+
     if use_residual and return_residual:
         o_group_srms_norm_triton = o_group_srms_norm_triton + o_update_residual_triton
 

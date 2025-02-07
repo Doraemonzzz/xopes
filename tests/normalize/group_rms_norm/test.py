@@ -31,7 +31,7 @@ def test(shape, use_residual, return_residual, eps, dtype, num_groups):
         residual = None
 
     # forward
-    o_rms_norm_torch, o_update_residual_torch = group_rms_norm_torch(
+    o_torch = group_rms_norm_torch(
         x,
         weight=weight,
         bias=bias,
@@ -41,10 +41,17 @@ def test(shape, use_residual, return_residual, eps, dtype, num_groups):
         return_residual=return_residual,
         num_groups=num_groups,
     )
-    if use_residual and return_residual:
-        o_rms_norm_torch = o_rms_norm_torch + o_update_residual_torch
 
-    o_rms_norm_triton, o_update_residual_triton = group_rms_norm_triton(
+    if isinstance(o_torch, tuple):
+        o_group_rms_norm_torch, o_update_residual_torch = o_torch
+    else:
+        o_group_rms_norm_torch = o_torch
+        o_update_residual_torch = None
+
+    if use_residual and return_residual:
+        o_group_rms_norm_torch = o_group_rms_norm_torch + o_update_residual_torch
+
+    o_triton = group_rms_norm_triton(
         x,
         weight=weight,
         bias=bias,
@@ -54,74 +61,98 @@ def test(shape, use_residual, return_residual, eps, dtype, num_groups):
         return_residual=return_residual,
         num_groups=num_groups,
     )
+
+    if isinstance(o_triton, tuple):
+        o_group_rms_norm_triton, o_update_residual_triton = o_triton
+    else:
+        o_group_rms_norm_triton = o_triton
+        o_update_residual_triton = None
+
     if use_residual and return_residual:
-        o_rms_norm_triton = o_rms_norm_triton + o_update_residual_triton
+        o_group_rms_norm_triton = o_group_rms_norm_triton + o_update_residual_triton
 
     # backward
-    o_rms_norm_torch.backward(do, retain_graph=True)
-    dx_rms_norm_torch, x.grad = x.grad.clone(), None
-    dw_rms_norm_torch, weight.grad = weight.grad.clone(), None
-    db_rms_norm_torch, bias.grad = bias.grad.clone(), None
+    o_group_rms_norm_torch.backward(do, retain_graph=True)
+    dx_group_rms_norm_torch, x.grad = x.grad.clone(), None
+    dw_group_rms_norm_torch, weight.grad = weight.grad.clone(), None
+    db_group_rms_norm_torch, bias.grad = bias.grad.clone(), None
 
     if use_residual:
-        dr_rms_norm_torch, residual.grad = residual.grad.clone(), None
+        dr_group_rms_norm_torch, residual.grad = residual.grad.clone(), None
     else:
-        dr_rms_norm_torch = None
+        dr_group_rms_norm_torch = None
 
-    o_rms_norm_triton.backward(do, retain_graph=True)
-    dx_rms_norm_triton, x.grad = x.grad.clone(), None
-    dw_rms_norm_triton, weight.grad = weight.grad.clone(), None
-    db_rms_norm_triton, bias.grad = bias.grad.clone(), None
+    o_group_rms_norm_triton.backward(do, retain_graph=True)
+    dx_group_rms_norm_triton, x.grad = x.grad.clone(), None
+    dw_group_rms_norm_triton, weight.grad = weight.grad.clone(), None
+    db_group_rms_norm_triton, bias.grad = bias.grad.clone(), None
 
     if use_residual:
-        dr_rms_norm_triton, residual.grad = residual.grad.clone(), None
+        dr_group_rms_norm_triton, residual.grad = residual.grad.clone(), None
     else:
-        dr_rms_norm_triton = None
+        dr_group_rms_norm_triton = None
 
     atol, rtol = get_threshold(dtype)
 
     ##### fwd
-    print("o diff max: ", torch.abs(o_rms_norm_torch - o_rms_norm_triton).max().item())
-    print("o diff norm: ", torch.norm(o_rms_norm_torch - o_rms_norm_triton).item())
-    assert torch.allclose(o_rms_norm_torch, o_rms_norm_triton, atol=atol, rtol=rtol)
+    print(
+        "o diff max: ",
+        torch.abs(o_group_rms_norm_torch - o_group_rms_norm_triton).max().item(),
+    )
+    print(
+        "o diff norm: ",
+        torch.norm(o_group_rms_norm_torch - o_group_rms_norm_triton).item(),
+    )
+    assert torch.allclose(
+        o_group_rms_norm_torch, o_group_rms_norm_triton, atol=atol, rtol=rtol
+    )
 
     ##### bwd
     print(
         "dx diff max: ",
-        torch.abs(dx_rms_norm_torch - dx_rms_norm_triton).max().item(),
+        torch.abs(dx_group_rms_norm_torch - dx_group_rms_norm_triton).max().item(),
     )
-    print("dx diff norm: ", torch.norm(dx_rms_norm_torch - dx_rms_norm_triton).item())
-    assert torch.allclose(dx_rms_norm_torch, dx_rms_norm_triton, atol=atol, rtol=rtol)
+    print(
+        "dx diff norm: ",
+        torch.norm(dx_group_rms_norm_torch - dx_group_rms_norm_triton).item(),
+    )
+    assert torch.allclose(
+        dx_group_rms_norm_torch, dx_group_rms_norm_triton, atol=atol, rtol=rtol
+    )
 
     print(
         "dw diff max: ",
-        torch.abs(dw_rms_norm_torch - dw_rms_norm_triton).max().item(),
+        torch.abs(dw_group_rms_norm_torch - dw_group_rms_norm_triton).max().item(),
     )
     print(
         "dw diff norm: ",
-        torch.norm(dw_rms_norm_torch - dw_rms_norm_triton).item(),
+        torch.norm(dw_group_rms_norm_torch - dw_group_rms_norm_triton).item(),
     )
-    assert torch.allclose(dw_rms_norm_torch, dw_rms_norm_triton, atol=atol, rtol=rtol)
+    assert torch.allclose(
+        dw_group_rms_norm_torch, dw_group_rms_norm_triton, atol=atol, rtol=rtol
+    )
 
     print(
         "db diff max: ",
-        torch.abs(db_rms_norm_torch - db_rms_norm_triton).max().item(),
+        torch.abs(db_group_rms_norm_torch - db_group_rms_norm_triton).max().item(),
     )
     print(
         "db diff norm: ",
-        torch.norm(db_rms_norm_torch - db_rms_norm_triton).item(),
+        torch.norm(db_group_rms_norm_torch - db_group_rms_norm_triton).item(),
     )
-    assert torch.allclose(db_rms_norm_torch, db_rms_norm_triton, atol=atol, rtol=rtol)
+    assert torch.allclose(
+        db_group_rms_norm_torch, db_group_rms_norm_triton, atol=atol, rtol=rtol
+    )
 
     if use_residual:
         print(
             "dr diff max: ",
-            torch.abs(dr_rms_norm_torch - dr_rms_norm_triton).max().item(),
+            torch.abs(dr_group_rms_norm_torch - dr_group_rms_norm_triton).max().item(),
         )
         print(
             "dr diff norm: ",
-            torch.norm(dr_rms_norm_torch - dr_rms_norm_triton).item(),
+            torch.norm(dr_group_rms_norm_torch - dr_group_rms_norm_triton).item(),
         )
         assert torch.allclose(
-            dr_rms_norm_torch, dr_rms_norm_triton, atol=atol, rtol=rtol
+            dr_group_rms_norm_torch, dr_group_rms_norm_triton, atol=atol, rtol=rtol
         )
