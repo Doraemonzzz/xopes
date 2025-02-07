@@ -78,7 +78,6 @@ class GateLinearAutograd(torch.autograd.Function):
             BLOCK_D=BLOCK_D,
         )
 
-        @torch.compile
         def f(do_, y, weight):
             # b d2, b d1 -> d2 d1
             dw = torch.matmul(do_.T, y)

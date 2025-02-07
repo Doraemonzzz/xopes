@@ -284,15 +284,16 @@ class NormalizeTriton(torch.autograd.Function):
         o = o.reshape_as(x)
         if use_residual or return_residual:
             updated_residual = updated_residual.reshape_as(x)
-
-        return o, updated_residual
+            return o, updated_residual
+        else:
+            return o
 
     @staticmethod
     @contiguous
     def backward(
         ctx,
         do,
-        dur,  # gradient of update residual
+        dur=None,  # gradient of update residual
     ):
         x, weight, bias, residual, mean, sigma = ctx.saved_tensors
         c = ctx.c
@@ -309,7 +310,7 @@ class NormalizeTriton(torch.autograd.Function):
         # reshape input data into 2D tensor
         x_ = x.reshape(-1, x.shape[-1])
         do = do.reshape(-1, do.shape[-1]).contiguous()
-        if use_residual:
+        if dur is not None:
             dur = dur.reshape(-1, dur.shape[-1]).contiguous()
         b, d = x_.shape
         x_ = rearrange(x_, "... (g e) -> ... g e", g=num_groups).contiguous()
@@ -369,6 +370,7 @@ class NormalizeTriton(torch.autograd.Function):
         return dx, dw, db, dr, None, None, None, None, None
 
 
+# @torch.compiler.disable
 def normalize_triton(
     x: torch.Tensor,
     weight: Optional[torch.Tensor] = None,
