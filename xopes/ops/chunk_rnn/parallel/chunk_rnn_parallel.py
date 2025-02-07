@@ -85,9 +85,8 @@ def chunk_rnn_parallel(
     o_intra = rearrange(o_intra, "(b m) c h d -> b (m c) h d", m=m)
 
     # inter
-    states = torch.einsum("b n h d, b n h e -> b h d e", k, g)
-    q = rearrange(q, "(b m) c h d -> b m c h d", m=m)
-    states = rearrange(states, "(b m) h d e -> b m h d e", m=m)
+    q, k, g = map(lambda x: rearrange(x, "(b m) c h d -> b m c h d", m=m), [q, k, g])
+    states = torch.einsum("b m c h d, b m c h e -> b m h d e", k, g)
     for i in range(m):
         # b c h d
         state_ = states[

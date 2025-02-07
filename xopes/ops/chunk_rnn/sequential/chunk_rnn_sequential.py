@@ -59,26 +59,31 @@ def chunk_rnn_sequential(
         vi = v[:, start:end, :, :]
 
         if log_f is not None:
+            # b h d
             log_fi = torch.mean(log_f[:, start:end, :, :], dim=1)
         else:
             log_fi = None
 
-        vi_ = torch.einsum("b c h d, b h d e -> b c h e", ki, state)
+        if log_f is not None:
+            ki_ = ki * torch.exp(log_fi).unsqueeze(1)
+        else:
+            ki_ = ki
+
+        # TODO: check whether to use normalize here
+        vi_ = torch.einsum("b c h d, b h d e -> b c h e", ki_, state)
         if gradient_type == 0:
             gi = vi - vi_
         elif gradient_type == 1:
-            gi = vi - ki - vi_
+            gi = vi - ki_ - vi_
         elif gradient_type == 2:
             gi = ln_fused_l2_bwd(vi_, vi, scale)
         elif gradient_type == 3:
-            gi = ln_fused_l2_bwd(vi_, vi - ki, scale)
+            gi = ln_fused_l2_bwd(vi_, vi - ki_, scale)
 
-        oi_intra = flash_attn_func(qi, ki, gi, causal=True)
-        oi_inter = torch.einsum("b c h d, b h d e -> b c h e", ki, state)
+        oi_intra = flash_attn_func(qi, ki, gi.to(qi.dtype), causal=True)
+        oi_inter = torch.einsum("b c h d, b h d e -> b c h e", qi, state)
         oi = oi_intra + oi_inter
-        if log_f is not None:
-            ki = ki * torch.exp(log_f[:, start:end, :, :])
-        state_ = torch.einsum("b n h d, b n h e -> b h d e", ki, gi)
+        state_ = torch.einsum("b n h d, b n h e -> b h d e", ki_, gi)
         o.append(oi)
         torch.exp(log_fi)
 
