@@ -1,13 +1,14 @@
 import torch
 import torch._dynamo as dynamo
-from xmixers.modules.normalizations.rms_norm import RMSNorm
+from xmixers.modules import GLU
 
 device = torch.device("cuda")
 
 b = 4
 d = 128
+act = "silu"
 
-module = RMSNorm(d).to(device)
+module = GLU(d, d, act, use_gate_linear=True).to(device)
 x = torch.randn(b, d, device=device)
 
 explanation = dynamo.explain(module)(x)

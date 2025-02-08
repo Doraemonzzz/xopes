@@ -3,44 +3,44 @@ import torch.nn.functional as F
 
 
 @torch.jit.script
-def relu(x):
+def relu(x, dim=None):
     return F.relu(x)
 
 
 @torch.jit.script
-def relu_bwd(x, do):
+def relu_bwd(x, do, dim=None):
     return torch.where(x >= 0, do, 0)
 
 
 @torch.jit.script
-def grad_relu(x):
+def grad_relu(x, dim=None):
     return torch.where(x >= 0, 1, 0)
 
 
 @torch.jit.script
-def sigmoid(x):
+def sigmoid(x, dim=None):
     return F.sigmoid(x)
 
 
 @torch.jit.script
-def sigmoid_bwd(x, do):
+def sigmoid_bwd(x, do, dim=None):
     sigmoid = F.sigmoid(x)
     return do * sigmoid * (1 - sigmoid)
 
 
 @torch.jit.script
-def grad_sigmoid(x):
+def grad_sigmoid(x, dim=None):
     sigmoid = F.sigmoid(x)
     return sigmoid * (1 - sigmoid)
 
 
 @torch.jit.script
-def silu(x):
+def silu(x, dim=None):
     return F.silu(x)
 
 
 @torch.jit.script
-def silu_bwd(x, do):
+def silu_bwd(x, do, dim=None):
     sigmoid = F.sigmoid(x)
     return do * sigmoid * (1 + x * (1 - sigmoid))
 

@@ -2,6 +2,7 @@ date=$(date '+%Y-%m-%d-%H:%M:%S')
 file=test
 
 folder=normalize
+folder=gate_linear
 
 mkdir -p $folder/log
 
