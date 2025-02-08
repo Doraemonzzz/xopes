@@ -1,12 +1,17 @@
+import os
+
 import pytest
 import torch
 
 from xopes.ops.gate_linear import gate_linear_ag, gate_linear_torch, gate_linear_triton
 from xopes.utils import get_threshold
 
+os.environ["TRITON_F32_DEFAULT"] = "ieee"
+
 
 def get_params():
     shapes = [(6, 128), (4, 8, 256), (8, 115)]
+
     return shapes
 
 

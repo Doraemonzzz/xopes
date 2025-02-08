@@ -137,7 +137,7 @@ def _gate_fn(
     elif ACT == "silu":
         x1 = x1 * tl.sigmoid(x1.to(tl.float32))
 
-    o = x1.to(x2.dtype) * x2
+    o = x1 * x2.to(x1.dtype)
 
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
 

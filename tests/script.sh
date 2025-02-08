@@ -49,8 +49,8 @@ folder=normalize/group_srms_norm
 # folder=lrpe/rotate/_1d
 # folder=lrpe/rotate/_1d_mpa
 
-##### act 250116
-folder=act
+# ##### act 250116
+# folder=act
 
 # ##### lce 250119
 # folder=linear_cross_entropy
@@ -62,8 +62,8 @@ folder=act
 # ##### cumsum 250129
 # folder=cumsum
 
-# ##### gate_linear 250201
-# folder=gate_linear
+##### gate_linear 250201
+folder=gate_linear
 
 mkdir -p $folder/log
 

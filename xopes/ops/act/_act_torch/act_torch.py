@@ -13,6 +13,11 @@ def relu_bwd(x, do):
 
 
 @torch.jit.script
+def grad_relu(x):
+    return torch.where(x >= 0, 1, 0)
+
+
+@torch.jit.script
 def sigmoid(x):
     return F.sigmoid(x)
 
@@ -21,6 +26,12 @@ def sigmoid(x):
 def sigmoid_bwd(x, do):
     sigmoid = F.sigmoid(x)
     return do * sigmoid * (1 - sigmoid)
+
+
+@torch.jit.script
+def grad_sigmoid(x):
+    sigmoid = F.sigmoid(x)
+    return sigmoid * (1 - sigmoid)
 
 
 @torch.jit.script
@@ -35,6 +46,12 @@ def silu_bwd(x, do):
 
 
 @torch.jit.script
+def grad_silu(x):
+    sigmoid = F.sigmoid(x)
+    return sigmoid * (1 + x * (1 - sigmoid))
+
+
+@torch.jit.script
 def none(x):
     return x
 
@@ -42,6 +59,11 @@ def none(x):
 @torch.jit.script
 def none_bwd(x, do):
     return do
+
+
+@torch.jit.script
+def grad_none(x):
+    return 1
 
 
 ACT_TORCH_DICT = {
@@ -60,4 +82,11 @@ ACT_BWD_TORCH_DICT = {
 
 ACT_DIM_TORCH_DICT = {
     "softmax": lambda x, dim: F.softmax(x, dim=dim, dtype=torch.float32).to(x.dtype),
+}
+
+ACT_GRAD_TORCH_DICT = {
+    "relu": grad_relu,
+    "sigmoid": grad_sigmoid,
+    "silu": grad_silu,
+    "none": grad_none,
 }

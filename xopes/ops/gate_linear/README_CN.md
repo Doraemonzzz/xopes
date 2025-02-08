@@ -17,7 +17,7 @@ $$
 \begin{aligned}
 \mathbf {dr}&= \mathbf {do}, \\
 \mathbf {y} &= f(\mathbf x_1)\odot \mathbf x_2, \\
-\mathbf {dW}&= \mathbf {y}^\top \mathbf W, \\
+\mathbf {dW}&= \mathbf {do}^\top \mathbf y, \\
 \mathbf {dy} &= \mathbf {do}\mathbf W^\top, \\
 \mathbf {dx}_2 & = f(\mathbf {x}_1)  \odot \mathbf {dy}, \\
 \mathbf {dx}_1 & = f(\mathbf {x}_1)'  \odot \mathbf {x}_2  \odot \mathbf {dy}.

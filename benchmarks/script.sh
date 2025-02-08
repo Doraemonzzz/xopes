@@ -41,15 +41,15 @@ folder=lrpe/cosine/_1d
 # folder=lrpe/cosine/_1d
 # folder=lrpe/rotate/_1d
 
-##### act 250116
-folder=act
+# ##### act 250116
+# folder=act
 
 # ##### cumsum 250130
 # folder=cumsum
 
-# ##### gate_linear 250201
-# folder=gate_linear/hidden_dim
-# folder=gate_linear/batch_size
+##### gate_linear 250201
+folder=gate_linear/hidden_dim
+folder=gate_linear/batch_size
 
 # ##### lavd 250204
 # folder=lightning_attention/vector_decay
@@ -57,6 +57,6 @@ folder=act
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0
-# export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=1
 
 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
