@@ -1,4 +1,3 @@
-
 from xopes.utils import is_act_valid
 
 from ._act_torch import ACT_BWD_TORCH_DICT, ACT_DIM_TORCH_DICT, ACT_TORCH_DICT
