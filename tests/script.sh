@@ -43,10 +43,10 @@ folder=normalize/group_srms_norm
 # ##### oplr 250109
 # folder=out_product_linear_recurrence/data_dependent_decay
 
-# ##### lrpe 250114
+##### lrpe 250114
 # folder=lrpe/cosine/_1d
 # folder=lrpe/cosine/_1d_mpa
-# folder=lrpe/rotate/_1d
+folder=lrpe/rotate/_1d
 # folder=lrpe/rotate/_1d_mpa
 
 # ##### act 250116
@@ -62,8 +62,8 @@ folder=normalize/group_srms_norm
 # ##### cumsum 250129
 # folder=cumsum
 
-##### gate_linear 250201
-folder=gate_linear
+# ##### gate_linear 250201
+# folder=gate_linear
 
 mkdir -p $folder/log
 

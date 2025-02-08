@@ -370,7 +370,6 @@ class NormalizeTriton(torch.autograd.Function):
         return dx, dw, db, dr, None, None, None, None, None
 
 
-# @torch.compiler.disable
 def normalize_triton(
     x: torch.Tensor,
     weight: Optional[torch.Tensor] = None,

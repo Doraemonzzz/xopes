@@ -39,7 +39,7 @@ folder=lrpe/cosine/_1d
 
 # ##### lrpe 250115
 # folder=lrpe/cosine/_1d
-# folder=lrpe/rotate/_1d
+folder=lrpe/rotate/_1d
 
 # ##### act 250116
 # folder=act
@@ -47,9 +47,9 @@ folder=lrpe/cosine/_1d
 # ##### cumsum 250130
 # folder=cumsum
 
-##### gate_linear 250201
-folder=gate_linear/hidden_dim
-folder=gate_linear/batch_size
+# ##### gate_linear 250201
+# folder=gate_linear/hidden_dim
+# folder=gate_linear/batch_size
 
 # ##### lavd 250204
 # folder=lightning_attention/vector_decay

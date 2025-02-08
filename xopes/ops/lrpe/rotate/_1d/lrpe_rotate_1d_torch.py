@@ -46,17 +46,6 @@ def lrpe_rotate_1d_torch(
     o2 = x1 * torch.sin(theta) + x2 * torch.cos(theta)
     output = torch.cat([o1, o2], dim=-1)
 
-    # theta = torch.polar(torch.ones_like(theta), theta)
-    # # x1, x2 = x.chunk(2, dim=-1)
-    # # x = torch.stack([x1, x2], dim=-1)
-    # print(x.shape)
-    # x = torch.view_as_complex(torch.stack([x1, x2], dim=-1))
-    # output = torch.view_as_real(x * theta).flatten(3)
-
-    # print("aaa", torch.norm(output - output_))
-    # assert False
-    # output = output_
-
     if not has_head:
         output = output.squeeze(-2)
     return output.to(dtype)
