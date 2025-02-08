@@ -6,7 +6,7 @@ from xopes.utils import contiguous, generate_configs, next_power_of_two
 
 
 @triton.autotune(
-    generate_configs({"num_warps": [1, 2, 4, 8, 16, 32]}),
+    generate_configs({"num_warps": [1, 2, 4, 8, 16, 32], "num_stages": [2, 4]}),
     key=["N", "D"],
 )
 @triton.jit
@@ -43,7 +43,7 @@ def _act_no_dim_fwd_triton(
 
 
 @triton.autotune(
-    generate_configs({"num_warps": [2, 4, 8]}),
+    generate_configs({"num_warps": [1, 2, 4, 8, 16, 32], "num_stages": [2, 4]}),
     key=["N", "D"],
 )
 @triton.jit

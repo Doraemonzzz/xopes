@@ -1,18 +1,7 @@
-import torch
-import torch.nn.functional as F
 
-from xopes.utils import identity, is_act_valid
+from xopes.utils import is_act_valid
 
-ACT_TORCH_DICT = {
-    "relu": F.relu,
-    "sigmoid": F.sigmoid,
-    "silu": F.silu,
-    "none": identity,
-}
-
-ACT_DIM_TORCH_DICT = {
-    "softmax": lambda x, dim: F.softmax(x, dim=dim, dtype=torch.float32).to(x.dtype),
-}
+from ._act_torch import ACT_BWD_TORCH_DICT, ACT_DIM_TORCH_DICT, ACT_TORCH_DICT
 
 
 def act_torch(x, act, dim=None):
@@ -25,3 +14,27 @@ def act_torch(x, act, dim=None):
         fn = ACT_DIM_TORCH_DICT[act]
 
         return fn(x, dim=dim)
+
+
+def act_fwd_torch(x, act, dim=None):
+    is_act_valid(act)
+    if dim is None:
+        fn = ACT_TORCH_DICT[act]
+
+        return fn(x)
+    else:
+        fn = ACT_DIM_TORCH_DICT[act]
+
+        return fn(x, dim=dim)
+
+
+def act_bwd_torch(x, do, act, dim=None):
+    is_act_valid(act)
+    if dim is None:
+        fn = ACT_BWD_TORCH_DICT[act]
+
+        return fn(x, do)
+    else:
+        fn = ACT_DIM_BWD_TORCH_DICT[act]
+
+        return fn(x, do, dim=dim)

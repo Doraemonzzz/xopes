@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from xopes.ops.act import act_torch, act_triton
+from xopes.ops.act import act_bwd_torch, act_torch, act_triton
 from xopes.utils import get_threshold
 
 
@@ -20,6 +20,7 @@ def get_params():
 @pytest.mark.parametrize("shape", get_params())
 # without dim
 @pytest.mark.parametrize("act", ["relu", "sigmoid", "silu", "none"])
+# @pytest.mark.parametrize("act", ["relu",])
 @pytest.mark.parametrize("dim", [None])
 # # with dim
 # @pytest.mark.parametrize(
@@ -62,3 +63,11 @@ def test(shape, act, dim, dtype):
     assert torch.allclose(
         dx_act_torch, dx_act_triton, atol=atol, rtol=rtol
     ), f"dx diff: {torch.abs(dx_act_torch - dx_act_triton).max().item()}"
+
+    if act not in ["softmax"]:
+        dx_act_bwd_torch = act_bwd_torch(x, do, act, dim)
+        print("dx diff max: ", torch.abs(dx_act_bwd_torch - dx_act_torch).max().item())
+        print("dx diff norm: ", torch.norm(dx_act_bwd_torch - dx_act_torch).item())
+        assert torch.allclose(
+            dx_act_bwd_torch, dx_act_torch, atol=atol, rtol=rtol
+        ), f"do diff: {torch.abs(dx_act_bwd_torch - dx_act_torch).max().item()}"

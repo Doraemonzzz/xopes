@@ -11,7 +11,7 @@ folder=lrpe/cosine/_1d
 # folder=multinomial
 
 ##### normalize 241231
-folder=normalize/srms_norm
+# folder=normalize/srms_norm
 # folder=normalize/rms_norm
 # folder=normalize/group_norm
 # folder=normalize/layer_norm
@@ -41,14 +41,14 @@ folder=normalize/srms_norm
 # folder=lrpe/cosine/_1d
 # folder=lrpe/rotate/_1d
 
-# ##### act 250116
-# folder=act
+##### act 250116
+folder=act
 
 # ##### cumsum 250130
 # folder=cumsum
 
-##### gate_linear 250201
-folder=gate_linear/hidden_dim
+# ##### gate_linear 250201
+# folder=gate_linear/hidden_dim
 # folder=gate_linear/batch_size
 
 # ##### lavd 250204

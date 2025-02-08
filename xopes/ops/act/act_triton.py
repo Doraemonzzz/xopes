@@ -1,6 +1,6 @@
 from xopes.utils import is_act_valid
 
-from .triton import (
+from ._act_triton import (
     act_no_dim_bwd_triton,
     act_no_dim_fwd_triton,
     act_no_dim_triton,
