@@ -47,8 +47,8 @@ folder=normalize/srms_norm
 # ##### cumsum 250130
 # folder=cumsum
 
-# ##### gate_linear 250201
-# folder=gate_linear/hidden_dim
+##### gate_linear 250201
+folder=gate_linear/hidden_dim
 # folder=gate_linear/batch_size
 
 # ##### lavd 250204

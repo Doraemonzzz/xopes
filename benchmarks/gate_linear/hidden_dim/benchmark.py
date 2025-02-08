@@ -5,6 +5,7 @@ import torch
 import triton
 
 from xopes.ops.gate_linear import gate_linear_ag, gate_linear_torch, gate_linear_triton
+from xopes.ops.gate_linear.baseline import fla_gate_linear_wrapper
 from xopes.utils import get_memory
 
 torch._functorch.config.donated_buffer = False
@@ -22,6 +23,7 @@ module_map = {
     "ag": gate_linear_ag,
     "torch": gate_linear_torch,
     "torch_compile": torch.compile(gate_linear_torch),
+    "fla": fla_gate_linear_wrapper,
 }
 
 configs = [
@@ -36,13 +38,15 @@ configs = [
             "ag",
             "torch",
             "torch_compile",
+            "fla",
         ],
-        line_names=["tr", "ag", "to", "toc"],
+        line_names=["tr", "ag", "to", "toc", "fla"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
             ("green", "-"),
             ("blue", "-"),
+            ("purple", "-"),
         ],
         plot_name=f"gate_linear-{bench_type}-{mode}-batch{b}-{act}-bias_{use_bias}-residual_{use_residual}-{dtype_name}",
         args={
@@ -56,7 +60,8 @@ configs = [
             "use_residual": use_residual,
         },
     )
-    for use_residual in [True, False]
+    # for use_residual in [True, False]
+    for use_residual in [False]
     for use_bias in [False]
     for act in ["silu"]
     for bench_type in ["speed", "memory"]

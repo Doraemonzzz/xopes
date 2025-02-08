@@ -44,7 +44,6 @@ class GateLinearAutograd(torch.autograd.Function):
         dx1 = torch.empty_like(x1_)
         dx2 = torch.empty_like(x2_)
         y = torch.empty_like(x1_)
-        dw = torch.empty_like(weight)
         do_ = do.reshape(-1, do.shape[-1]).contiguous()
         if use_bias:
             db = do_.sum(dim=0)
@@ -78,15 +77,10 @@ class GateLinearAutograd(torch.autograd.Function):
             BLOCK_D=BLOCK_D,
         )
 
-        def f(do_, y, weight):
-            # b d2, b d1 -> d2 d1
-            dw = torch.matmul(do_.T, y)
-            # b d2, d2 d1 -> b d2
-            dy = torch.matmul(do_, weight.to(y.dtype))
-
-            return dw, dy
-
-        dw, dy = f(do_, y, weight)
+        # b d2, b d1 -> d2 d1
+        dw = torch.matmul(do_.T, y)
+        # b d2, d2 d1 -> b d2
+        dy = torch.matmul(do_, weight.to(y.dtype))
 
         _gate_linear_bwd[grid](
             X1=x1_,

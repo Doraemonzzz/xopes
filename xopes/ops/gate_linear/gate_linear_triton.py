@@ -302,16 +302,10 @@ class GateLinearTriton(torch.autograd.Function):
             BLOCK_D=BLOCK_D,
         )
 
-        @torch.compile
-        def f(do_, y, weight):
-            # b d2, b d1 -> d2 d1
-            dw = torch.matmul(do_.T, y)
-            # b d2, d2 d1 -> b d2
-            dy = torch.matmul(do_, weight.to(y.dtype))
-
-            return dw, dy
-
-        dw, dy = f(do_, y, weight)
+        # b d2, b d1 -> d2 d1
+        dw = torch.matmul(do_.T, y)
+        # b d2, d2 d1 -> b d2
+        dy = torch.matmul(do_, weight.to(y.dtype))
 
         _gate_linear_bwd[grid](
             X1=x1_,
