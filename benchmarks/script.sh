@@ -38,8 +38,8 @@ folder=lrpe/cosine/_1d
 # folder=oplr/ddd
 
 # ##### lrpe 250115
-# folder=lrpe/cosine/_1d
-folder=lrpe/rotate/_1d
+folder=lrpe/cosine/_1d
+# folder=lrpe/rotate/_1d
 
 # ##### act 250116
 # folder=act
@@ -57,6 +57,6 @@ folder=lrpe/rotate/_1d
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0
-export CUDA_VISIBLE_DEVICES=1
+# export CUDA_VISIBLE_DEVICES=1
 
 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log

@@ -45,8 +45,8 @@ folder=normalize/group_srms_norm
 
 ##### lrpe 250114
 # folder=lrpe/cosine/_1d
-# folder=lrpe/cosine/_1d_mpa
-folder=lrpe/rotate/_1d
+folder=lrpe/cosine/_1d_mpa
+# folder=lrpe/rotate/_1d
 # folder=lrpe/rotate/_1d_mpa
 
 # ##### act 250116
@@ -69,8 +69,8 @@ mkdir -p $folder/log
 
 
 export XOPES_DEBUG=True
-export CUDA_VISIBLE_DEVICES=0
-# export CUDA_VISIBLE_DEVICES=1
+# export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 # export TRITON_INTERPRET=1
 
 pytest $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log

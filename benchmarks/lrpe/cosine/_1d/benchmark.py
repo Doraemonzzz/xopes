@@ -64,12 +64,12 @@ configs = [
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
     # witout dim
-    # for act in ["none"]
+    for act in ["none"]
     # for act in ["silu"]
-    # for dim in [None]
+    for dim in [None]
     # with dim
-    for act in ["softmax"]
-    for dim in [-1]
+    # for act in ["softmax"]
+    # for dim in [-1]
     # for dim in [1]
 ]
 
