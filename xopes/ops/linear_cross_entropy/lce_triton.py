@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from xopes.utils import contiguous, generate_configs
-
+from torch.distributed._tensor import Replicate, Shard, Partial
 
 @triton.autotune(
     generate_configs(
@@ -427,7 +427,7 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
             ewbo_mul_fwd(dw, do)
             if db is not None:
                 ewbo_mul_fwd(db, do)
-
+        
         return dx, None, dw, db, None, None, None
 
 
