@@ -10,7 +10,7 @@ def normalize_torch(
     bias: Optional[torch.Tensor] = None,
     residual: Optional[torch.Tensor] = None,
     c: float = 1.0,
-    eps: float = 1e-5,
+    eps: float = 1e-6,
     use_mean: bool = False,
     num_groups: int = 1,
     return_residual: bool = False,
