@@ -52,8 +52,8 @@ folder=lrpe/cosine/_1d_mpa
 # ##### act 250116
 # folder=act
 
-# ##### lce 250119
-# folder=linear_cross_entropy
+##### lce 250119
+folder=linear_cross_entropy
 
 # ##### lavd 250122
 # folder=lightning_attn/vector_decay

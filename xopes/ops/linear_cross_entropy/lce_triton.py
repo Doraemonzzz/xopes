@@ -97,9 +97,9 @@ def _ce_fwd_reduce(
     ZK,  # B
     LSE,  # B G
     S,  # B G
+    N,
     LABEL_SMOOTHING: tl.constexpr,
     USE_LABEL_SMOOTHING: tl.constexpr,
-    N: tl.constexpr,
     B: tl.constexpr,
     V: tl.constexpr,
     G: tl.constexpr,
@@ -137,7 +137,8 @@ def _ce_fwd_reduce(
     else:
         s = 0.0
 
-    o = (-(1 - LABEL_SMOOTHING) * zk + lse_ - (LABEL_SMOOTHING / V) * s) / N
+    n = tl.load(N)
+    o = (-(1 - LABEL_SMOOTHING) * zk + lse_ - (LABEL_SMOOTHING / V) * s) / n
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty))
     tl.store(lse_output_block_ptr, lse_.to(lse_output_block_ptr.dtype.element_ty))
 
@@ -157,13 +158,12 @@ def _ce_bwd(
     Y,  # B
     LSE,  # B
     DZ,  # B V
+    N,
     IGNORE_INDEX: tl.constexpr,
     LABEL_SMOOTHING: tl.constexpr,
     USE_LABEL_SMOOTHING: tl.constexpr,
-    N: tl.constexpr,
     B: tl.constexpr,
     V: tl.constexpr,
-    # G: tl.constexpr,
     BLOCK_V: tl.constexpr,
 ):
     tl.cdiv(V, BLOCK_V)
@@ -184,9 +184,10 @@ def _ce_bwd(
     z = tl.load(z_block_ptr, mask=mask, other=-float("inf"))
     y = tl.load(y_block_ptr)
     lse = tl.load(lse_block_ptr)
+    n = tl.load(N)
     p = tl.exp(z - lse)
     c = -LABEL_SMOOTHING / V
-    dz = tl.where(array == y, -1 + LABEL_SMOOTHING + p + c, p + c) / N
+    dz = tl.where(array == y, -1 + LABEL_SMOOTHING + p + c, p + c) / n
     # When y is IGNORE_INDEX, set dz to 0
     dz = tl.where(y == IGNORE_INDEX, 0.0, dz)
     tl.store(dz_block_ptr, dz.to(dz_block_ptr.dtype.element_ty), mask=mask)
@@ -307,7 +308,6 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
         # Allocate output
         o = torch.empty((b,), dtype=torch.float32, device=x.device)
         dx = torch.empty_like(x)
-        # dw = torch.zeros((v, d), dtype=torch.float32, device=x.device)
         dw = torch.zeros((v, d), dtype=x.dtype, device=x.device)
         if bias is not None:
             db = torch.zeros((v,), dtype=torch.float32, device=x.device)
@@ -320,9 +320,13 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
         num_chunks = triton.cdiv(b, chunk_size)
 
         if reduction == "mean":
-            n = max(y.ne(ignore_index).sum().item(), 1)  # avoid all IGNORE_INDEX
+            n = y.ne(ignore_index).sum()  # avoid all IGNORE_INDEX
+            n = torch.where(
+                n == 0, 1, n
+            )  # hack for torch.compile since it does not support item
         else:
-            n = 1
+            # n = 1
+            n = torch.tensor(1, device=x.device)
 
         for i in range(num_chunks):
             start = i * chunk_size
@@ -372,9 +376,9 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
                 ZK=zk,
                 LSE=lse,
                 S=s,
+                N=n,
                 LABEL_SMOOTHING=label_smoothing,
                 USE_LABEL_SMOOTHING=use_label_smoothing,
-                N=n,
                 B=c,
                 V=v,
                 G=g,
@@ -391,10 +395,10 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
                 Y=yi,
                 LSE=lse,
                 DZ=zi,  # use inplace operation to compute gradients
+                N=n,
                 IGNORE_INDEX=ignore_index,
                 LABEL_SMOOTHING=label_smoothing,
                 USE_LABEL_SMOOTHING=use_label_smoothing,
-                N=n,
                 B=c,
                 V=v,
             )

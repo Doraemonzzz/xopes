@@ -65,10 +65,6 @@ def test(shape, dtype, reduction, label_smoothing, ignore_index=-100):
     dW_lce_triton, W.grad = W.grad.clone(), None
 
     atol, rtol = get_threshold(dtype)
-    # dx_atol, dx_rtol = THRESHOLD_DICT = {
-    #     torch.float32: [5e-2, 1e-2],
-    #     torch.bfloat16: [1e-1, 1e-1],
-    # }[dtype]
     dx_atol, dx_rtol = atol, rtol
 
     print(f"o_lce_torch: {o_lce_torch}")
