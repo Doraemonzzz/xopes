@@ -65,6 +65,9 @@ folder=linear_cross_entropy
 # ##### gate_linear 250201
 # folder=gate_linear
 
+##### lasd 250219
+folder=lightning_attn/scalar_decay
+
 mkdir -p $folder/log
 
 

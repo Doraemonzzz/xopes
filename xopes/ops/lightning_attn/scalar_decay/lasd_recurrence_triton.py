@@ -27,6 +27,15 @@ def _apply_activation(X, ACT: tl.constexpr):
     return X
 
 
+@triton.jit
+def _apply_normalization(X, USE_NORM: tl.constexpr, D: tl.constexpr, EPS: tl.constexpr):
+    if USE_NORM:
+        sigma = tl.sqrt(tl.sum(X * X, axis=0) / D + EPS)
+        return X / sigma
+    else:
+        return X
+
+
 @triton.autotune(
     generate_configs(
         {
@@ -49,13 +58,14 @@ def _lasd_recurrence_fwd(
     H: tl.constexpr,
     D: tl.constexpr,
     E: tl.constexpr,
-    q_act: tl.constexpr,
-    k_act: tl.constexpr,
-    v_act: tl.constexpr,
-    q_norm: tl.constexpr,
-    k_norm: tl.constexpr,
-    v_norm: tl.constexpr,
+    Q_ACT: tl.constexpr,
+    K_ACT: tl.constexpr,
+    V_ACT: tl.constexpr,
+    Q_NORM: tl.constexpr,
+    K_NORM: tl.constexpr,
+    V_NORM: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
+    EPS: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -85,25 +95,28 @@ def _lasd_recurrence_fwd(
     # compute
     state = tl.load(state_block_ptr).to(tl.float32)  # D E
     log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
-    decay = tl.exp(-log_decay)
+    decay = tl.exp(log_decay)
     for i in range(N):
         # load
-        q = tl.load(q_block_ptr)
-        k = tl.load(k_block_ptr)
-        v = tl.load(v_block_ptr)
-        q = _apply_activation(q, q_act)
-        k = _apply_activation(k, k_act)
-        v = _apply_activation(v, v_act)
+        q = tl.load(q_block_ptr).to(tl.float32)
+        k = tl.load(k_block_ptr).to(tl.float32)
+        v = tl.load(v_block_ptr).to(tl.float32)
+        q = _apply_normalization(q, Q_NORM, D, EPS)
+        k = _apply_normalization(k, K_NORM, D, EPS)
+        v = _apply_normalization(v, V_NORM, E, EPS)
+        q = _apply_activation(q, Q_ACT)
+        k = _apply_activation(k, K_ACT)
+        v = _apply_activation(v, V_ACT)
         state = decay * state + k[:, None] * v[None, :]
         o = tl.sum(q[:, None] * state, axis=0)
 
         tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty))
 
         # update
-        q_block_ptr += D
-        k_block_ptr += D
-        v_block_ptr += E
-        o_block_ptr += E
+        q_block_ptr += H * D
+        k_block_ptr += H * D
+        v_block_ptr += H * E
+        o_block_ptr += H * E
 
     tl.store(state_block_ptr, state.to(state_block_ptr.dtype.element_ty))
 
@@ -121,28 +134,26 @@ def lasd_recurrence_fwd(
     q_norm: bool = False,
     k_norm: bool = False,
     v_norm: bool = False,
+    eps: float = 1e-6,
 ):
     b, n, h, d = q.shape
     e = v.shape[-1]
 
     use_cu_seqlens = cu_seqlens is not None
     if use_cu_seqlens:
-        b = len(cu_seqlens) - 1
+        b = cu_seqlens.shape[0] - 1
 
     if initial_state is None:
         state = torch.zeros((b, h, d, e), dtype=torch.float32, device=q.device)
     else:
         state = initial_state
+        if state.shape[0] == 1:
+            state = state.squeeze(0)
         if len(state.shape) == 3:
-            state = repeat(state, "h d e -> b h d e", b=b)
+            state = repeat(state, "h d e -> b h d e", b=b).contiguous()
 
     def grid(meta):
         return (b, h)
-
-    if initial_state is None:
-        state = torch.zeros((b, h, d, e), dtype=torch.float32, device=q.device)
-    else:
-        state = initial_state
 
     if use_cu_seqlens:
         o = torch.empty((1, cu_seqlens[-1], h, e), dtype=q.dtype, device=q.device)
@@ -162,13 +173,14 @@ def lasd_recurrence_fwd(
         H=h,
         D=d,
         E=e,
-        q_act=q_act,
-        k_act=k_act,
-        v_act=v_act,
-        q_norm=q_norm,
-        k_norm=k_norm,
-        v_norm=v_norm,
+        Q_ACT=q_act,
+        K_ACT=k_act,
+        V_ACT=v_act,
+        Q_NORM=q_norm,
+        K_NORM=k_norm,
+        V_NORM=v_norm,
         USE_CU_SEQLENS=use_cu_seqlens,
+        EPS=eps,
     )
 
     return o, state
@@ -191,6 +203,7 @@ class LasdRecurrenceFunction(torch.autograd.Function):
         q_norm=False,
         k_norm=False,
         v_norm=False,
+        eps=1e-6,
     ):
         # Save non-tensor inputs for backward
         ctx.q_act = q_act
@@ -207,12 +220,14 @@ class LasdRecurrenceFunction(torch.autograd.Function):
             v=v,
             ld=ld,
             initial_state=initial_state,
+            cu_seqlens=cu_seqlens,
             q_act=q_act,
             k_act=k_act,
             v_act=v_act,
             q_norm=q_norm,
             k_norm=k_norm,
             v_norm=v_norm,
+            eps=eps,
         )
 
         # Save tensors needed for backward

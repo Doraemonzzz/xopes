@@ -45,6 +45,10 @@ def lasd_torch(
     """
     b, n, h, d = q.shape
     e = v.shape[-1]
+    dtype = q.dtype
+    q = q.float()
+    k = k.float()
+    v = v.float()
 
     if len(ld.shape) == 1:
         ld = ld.unsqueeze(-1).unsqueeze(-1)
@@ -77,7 +81,7 @@ def lasd_torch(
             state_ = torch.einsum("b h d, b h e -> b h d e", ki, vi)
             state = ratio * state + state_
             oi = torch.einsum("b h d, b h d e -> b h e", qi, state)
-            o.append(oi)
+            o.append(oi.unsqueeze(1))
         o = torch.cat(o, dim=1)
     else:
         assert b == 1, "cu_seqlens is only supported for batch size 1"
@@ -90,14 +94,16 @@ def lasd_torch(
             state = torch.zeros(b, h, d, e).to(torch.float32).to(q.device)
         else:
             state = initial_state
+            if state.shape[0] == 1:
+                state = state.squeeze(0)
             if len(state.shape) == 3:
                 state = repeat(state, "h d e -> b h d e", b=b)
 
         o = []
         state_array = []
         for i in range(b):
-            start = cu_seqlens[i]
-            end = cu_seqlens[i + 1]
+            start = cu_seqlens[i].item()
+            end = cu_seqlens[i + 1].item()
             m = end - start
             q_ = q[start:end]
             k_ = k[start:end]
@@ -111,13 +117,13 @@ def lasd_torch(
                 state__ = torch.einsum("h d, h e -> h d e", ki, vi)
                 state_ = ratio * state_ + state__
                 oi = torch.einsum("h d, h d e -> h e", qi, state_)
-                o_array.append(oi.squeeze(0))
+                o_array.append(oi.unsqueeze(0))
             o.append(torch.cat(o_array, dim=0))
             state_array.append(state_.unsqueeze(0))
         o = torch.cat(o, dim=0).unsqueeze(0)
         state = torch.cat(state_array, dim=0)
 
-    return o, state
+    return o.to(dtype), state
 
 
 if __name__ == "__main__":
