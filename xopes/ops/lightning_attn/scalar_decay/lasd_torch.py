@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
+
 from xopes.ops.act.act_torch import act_torch
 
 
@@ -73,6 +74,7 @@ def lasd_torch(
     o = torch.cat(o, dim=1)
 
     return o, state
+
 
 if __name__ == "__main__":
     b, n, h, d = 2, 16, 12, 64
