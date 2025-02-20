@@ -8,6 +8,13 @@ from einops import repeat
 from xopes.ops.act.act_torch import act_torch
 
 
+def get_act_dim(act):
+    if act == "none":
+        return None
+    elif act == "softmax":
+        return -1
+
+
 def lasd_torch(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -21,6 +28,7 @@ def lasd_torch(
     q_norm: bool = False,
     k_norm: bool = False,
     v_norm: bool = False,
+    eps: float = 1e-6,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply Lightning Attention with Scalar Decay in Pytorch.
@@ -38,6 +46,7 @@ def lasd_torch(
         q_norm: Normalize query
         k_norm: Normalize key
         v_norm: Normalize value
+        eps: Epsilon for numerical stability
 
     Returns:
         output: Tensor of shape (B, N, H, E)
@@ -54,15 +63,15 @@ def lasd_torch(
         ld = ld.unsqueeze(-1).unsqueeze(-1)
 
     if q_norm:
-        q = F.normalize(q, p=2, dim=-1)
+        q = F.normalize(q, p=2, dim=-1, eps=eps)
     if k_norm:
-        k = F.normalize(k, p=2, dim=-1)
+        k = F.normalize(k, p=2, dim=-1, eps=eps)
     if v_norm:
-        v = F.normalize(v, p=2, dim=-1)
+        v = F.normalize(v, p=2, dim=-1, eps=eps)
 
-    q = act_torch(q, q_act)
-    k = act_torch(k, k_act)
-    v = act_torch(v, v_act)
+    q = act_torch(q, q_act, dim=get_act_dim(q_act))
+    k = act_torch(k, k_act, dim=get_act_dim(k_act))
+    v = act_torch(v, v_act, dim=get_act_dim(v_act))
     ratio = torch.exp(ld)
 
     if cu_seqlens is None:
