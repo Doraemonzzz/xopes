@@ -54,6 +54,9 @@ folder=lrpe/cosine/_1d
 # ##### lavd 250204
 # folder=lightning_attention/vector_decay
 
+# ##### lasd 250220
+folder=lightning_attention/scalar_decay
+
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0

@@ -395,7 +395,6 @@ def _lasd_recurrence_bwd_dk_dv(
             DSTATE + offset_state + array_d[:, None] * E + array_e[None, :]
         )
         dstate = tl.load(dstate_block_ptr).to(tl.float32)  # D E
-        tl.static_print("aaa", dstate, dstate_block_ptr)
     else:
         dstate = tl.zeros((D, E), dtype=tl.float32)
 
@@ -524,7 +523,7 @@ def lasd_recurrence_bwd(
         USE_DFINAL_STATE=use_dfinal_state,
         EPS=eps,
     )
-    print("aaa", use_dfinal_state, dfinal_state.mean())
+
     _lasd_recurrence_bwd_dk_dv[grid](
         Q=q,
         K=k,
