@@ -16,6 +16,7 @@ def get_params():
 
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("use_initial_state", [True, False])
+@pytest.mark.parametrize("use_log_decay", [True, False])
 @pytest.mark.parametrize("use_varlen", [True, False])
 @pytest.mark.parametrize(
     "act",
@@ -29,7 +30,7 @@ def get_params():
 )
 @pytest.mark.parametrize("norm", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test(shape, use_initial_state, use_varlen, act, norm, dtype):
+def test(shape, use_initial_state, use_log_decay, use_varlen, act, norm, dtype):
     if norm == True and act in ["silu", "sigmoid", "softmax"]:
         return
     torch.manual_seed(2024)
@@ -55,7 +56,10 @@ def test(shape, use_initial_state, use_varlen, act, norm, dtype):
     q = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
     k = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
     v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
-    ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device)).requires_grad_()
+    if use_log_decay:
+        ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device)).requires_grad_()
+    else:
+        ld = None
     do = torch.randn((), dtype=dtype, device=device)
 
     if use_initial_state:

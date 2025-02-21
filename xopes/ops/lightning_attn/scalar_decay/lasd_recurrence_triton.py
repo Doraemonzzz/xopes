@@ -82,7 +82,7 @@ def _normalization_bwd(
             "num_warps": [4, 8, 16, 32],
         }
     ),
-    key=["B", "H", "D", "E", "USE_INITIAL_STATE"],
+    key=["B", "H", "D", "E", "USE_INITIAL_STATE", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
 )
 @triton.jit
 def _lasd_recurrence_fwd(
@@ -107,6 +107,7 @@ def _lasd_recurrence_fwd(
     V_NORM: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
+    USE_LOG_DECAY: tl.constexpr,
     EPS: tl.constexpr,
 ):
     off_b = tl.program_id(0)
@@ -130,19 +131,23 @@ def _lasd_recurrence_fwd(
     k_block_ptr = K + offset_qk + array_d
     v_block_ptr = V + offset_vo + array_e
     o_block_ptr = O + offset_vo + array_e
+
     if USE_INITIAL_STATE:
         state_block_ptr = STATE + offset_state + array_d[:, None] * E + array_e[None, :]
         state = tl.load(state_block_ptr).to(tl.float32)  # D E
     else:
         state = tl.zeros((D, E), dtype=tl.float32)
+
     final_state_block_ptr = (
         FINAL_STATE + offset_state + array_d[:, None] * E + array_e[None, :]
     )
-    log_decay_block_ptr = LOG_DECAY + off_h
+
+    if USE_LOG_DECAY:
+        log_decay_block_ptr = LOG_DECAY + off_h
+        log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
+        decay = tl.exp(log_decay)
 
     # compute
-    log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
-    decay = tl.exp(log_decay)
     for i in range(N):
         # load
         q = tl.load(q_block_ptr).to(tl.float32)
@@ -154,7 +159,10 @@ def _lasd_recurrence_fwd(
         q = _activation_fwd(q, Q_ACT)
         k = _activation_fwd(k, K_ACT)
         v = _activation_fwd(v, V_ACT)
-        state = decay * state + k[:, None] * v[None, :]
+        if USE_LOG_DECAY:
+            state = decay * state + k[:, None] * v[None, :]
+        else:
+            state += k[:, None] * v[None, :]
         o = tl.sum(q[:, None] * state, axis=0)
 
         tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty))
@@ -172,7 +180,7 @@ def lasd_recurrence_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     q_act: str = "none",
@@ -192,6 +200,7 @@ def lasd_recurrence_fwd(
 
     use_initial_state = initial_state is not None
     final_state = torch.empty((b, h, d, e), dtype=torch.float32, device=q.device)
+    use_ld = ld is not None
 
     def grid(meta):
         return (b, h)
@@ -224,6 +233,7 @@ def lasd_recurrence_fwd(
         V_NORM=v_norm,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
+        USE_LOG_DECAY=use_ld,
         EPS=eps,
     )
 
@@ -267,6 +277,7 @@ def _lasd_recurrence_bwd_dq(
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_DFINAL_STATE: tl.constexpr,
+    USE_LOG_DECAY: tl.constexpr,
     EPS: tl.constexpr,
 ):
     off_b = tl.program_id(0)
@@ -291,16 +302,19 @@ def _lasd_recurrence_bwd_dq(
     v_block_ptr = V + offset_vo + array_e
     do_block_ptr = DO + offset_vo + array_e
     dq_block_ptr = DQ + offset_qk + array_d
+
     if USE_INITIAL_STATE:
         state_block_ptr = STATE + offset_state + array_d[:, None] * E + array_e[None, :]
         state = tl.load(state_block_ptr).to(tl.float32)  # D E
     else:
         state = tl.zeros((D, E), dtype=tl.float32)
-    log_decay_block_ptr = LOG_DECAY + off_h
+
+    if USE_LOG_DECAY:
+        log_decay_block_ptr = LOG_DECAY + off_h
+        log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
+        decay = tl.exp(log_decay)
 
     # compute
-    log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
-    decay = tl.exp(log_decay)
     for i in range(N):
         # load
         do = tl.load(do_block_ptr).to(tl.float32)
@@ -310,7 +324,10 @@ def _lasd_recurrence_bwd_dq(
         v = _normalization_fwd(v, V_NORM, E, EPS)
         k = _activation_fwd(k, K_ACT)
         v = _activation_fwd(v, V_ACT)
-        state = decay * state + k[:, None] * v[None, :]
+        if USE_LOG_DECAY:
+            state = decay * state + k[:, None] * v[None, :]
+        else:
+            state += k[:, None] * v[None, :]
         dq = tl.sum(do[None, :] * state, axis=-1)
 
         if Q_ACT != "none" or Q_NORM:
@@ -365,6 +382,7 @@ def _lasd_recurrence_bwd_dk_dv(
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_DFINAL_STATE: tl.constexpr,
+    USE_LOG_DECAY: tl.constexpr,
     EPS: tl.constexpr,
 ):
     off_b = tl.program_id(0)
@@ -390,6 +408,7 @@ def _lasd_recurrence_bwd_dk_dv(
     do_block_ptr = DO + offset_vo + array_e
     dk_block_ptr = DK + offset_qk + array_d
     dv_block_ptr = DV + offset_vo + array_e
+
     if USE_DFINAL_STATE:
         dstate_block_ptr = (
             DSTATE + offset_state + array_d[:, None] * E + array_e[None, :]
@@ -398,11 +417,12 @@ def _lasd_recurrence_bwd_dk_dv(
     else:
         dstate = tl.zeros((D, E), dtype=tl.float32)
 
-    log_decay_block_ptr = LOG_DECAY + off_h
+    if USE_LOG_DECAY:
+        log_decay_block_ptr = LOG_DECAY + off_h
+        log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
+        decay = tl.exp(log_decay)
 
     # compute
-    log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
-    decay = tl.exp(log_decay)
     for i in range(N):
         # update
         q_block_ptr -= H * D
@@ -419,7 +439,8 @@ def _lasd_recurrence_bwd_dk_dv(
         q = _activation_fwd(q, Q_ACT)
         # !!! IMPORTANT
         if i > 0:
-            dstate = decay * dstate
+            if USE_LOG_DECAY:
+                dstate = decay * dstate
         dstate += q[:, None] * do[None, :]
         # compute k and v
         k = tl.load(k_block_ptr).to(tl.float32)
@@ -433,8 +454,6 @@ def _lasd_recurrence_bwd_dk_dv(
         # norm and act
         dk = _activation_bwd(k, dk, K_ACT)
         dv = _activation_bwd(v, dv, V_ACT)
-        # k = tl.load(k_block_ptr).to(tl.float32)
-        # v = tl.load(v_block_ptr).to(tl.float32)
         dk = _normalization_bwd(k, dk, K_NORM, D, EPS)
         dv = _normalization_bwd(v, dv, V_NORM, E, EPS)
 
@@ -442,7 +461,8 @@ def _lasd_recurrence_bwd_dk_dv(
         tl.store(dv_block_ptr, dv.to(dv_block_ptr.dtype.element_ty))
 
     # !!! IMPORTANT
-    dstate = decay * dstate
+    if USE_LOG_DECAY:
+        dstate = decay * dstate
 
     if USE_INITIAL_STATE:
         dinitial_state_block_ptr = (
@@ -481,6 +501,7 @@ def lasd_recurrence_bwd(
 
     use_initial_state = initial_state is not None
     use_dfinal_state = dfinal_state is not None
+    use_ld = ld is not None
 
     dq = torch.empty_like(q)
     dk = torch.empty_like(k)
@@ -521,6 +542,7 @@ def lasd_recurrence_bwd(
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
         USE_DFINAL_STATE=use_dfinal_state,
+        USE_LOG_DECAY=use_ld,
         EPS=eps,
     )
 
@@ -552,6 +574,7 @@ def lasd_recurrence_bwd(
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
         USE_DFINAL_STATE=use_dfinal_state,
+        USE_LOG_DECAY=use_ld,
         EPS=eps,
     )
 
@@ -660,7 +683,7 @@ def lasd_recurrence_triton(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     q_act: str = "none",

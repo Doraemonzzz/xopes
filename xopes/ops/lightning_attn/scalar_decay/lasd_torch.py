@@ -19,7 +19,7 @@ def lasd_torch(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     q_act: str = "none",
@@ -59,8 +59,12 @@ def lasd_torch(
     k = k.float()
     v = v.float()
 
-    if len(ld.shape) == 1:
-        ld = ld.unsqueeze(-1).unsqueeze(-1)
+    if ld is not None:
+        if len(ld.shape) == 1:
+            ld = ld.unsqueeze(-1).unsqueeze(-1)
+        ratio = torch.exp(ld)
+    else:
+        ratio = 1.0
 
     if q_norm:
         q = F.normalize(q, p=2, dim=-1, eps=eps)
@@ -72,7 +76,6 @@ def lasd_torch(
     q = act_torch(q, q_act, dim=get_act_dim(q_act))
     k = act_torch(k, k_act, dim=get_act_dim(k_act))
     v = act_torch(v, v_act, dim=get_act_dim(v_act))
-    ratio = torch.exp(ld)
 
     if cu_seqlens is None:
         if initial_state is None:
