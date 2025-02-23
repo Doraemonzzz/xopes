@@ -16,6 +16,8 @@ from xopes.utils import contiguous, generate_configs
             "BLOCK_C": [16, 32, 64, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
+            # # debug
+            # "BLOCK_C": [64],
         }
     ),
     key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
@@ -150,6 +152,8 @@ def _lasd_parallel_fwd_intra(
             "BLOCK_C": [16, 32, 64, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
+            # ### debug
+            # "BLOCK_C": [64,],
         }
     ),
     key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
@@ -308,13 +312,12 @@ def _lasd_parallel_fwd_state_reduce(
     USE_CU_SEQLENS: tl.constexpr,
     USE_LOG_DECAY: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
+    REVERSE: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
-    tl.cdiv(D, BLOCK_D)
-    tl.cdiv(E, BLOCK_E)
 
     off_bh = tl.program_id(0)
     off_b = off_bh // H
@@ -344,6 +347,7 @@ def _lasd_parallel_fwd_state_reduce(
     mask_e = (array_e + offset_block_e) < E
     mask = mask_d[:, None] & mask_e[None, :]
 
+    c = 1.0
     if USE_LOG_DECAY:
         log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
         block_decay = tl.exp(log_decay * BLOCK_N)
@@ -353,6 +357,10 @@ def _lasd_parallel_fwd_state_reduce(
         else:
             last_decay = tl.exp(log_decay * L)
 
+        # !!! important
+        if REVERSE:
+            c = tl.exp(-log_decay)
+
     # compute
     if USE_INITIAL_STATE:
         state_block_ptr = (
@@ -361,7 +369,9 @@ def _lasd_parallel_fwd_state_reduce(
             + (offset_block_d + array_d[:, None]) * E
             + (offset_block_e + array_e[None, :])
         )
-        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32)
+        # !!! important
+
+        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32) * c
     else:
         state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
@@ -381,6 +391,10 @@ def _lasd_parallel_fwd_state_reduce(
             state += current_state
         states_block_ptr += D * E
 
+    # !!! important
+    if REVERSE:
+        state *= 1 / c
+
     tl.store(states_block_ptr, state.to(states_block_ptr.dtype.element_ty), mask=mask)
 
 
@@ -391,6 +405,8 @@ def _lasd_parallel_fwd_state_reduce(
             "BLOCK_C": [16, 32, 64, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
+            # ### debug
+            # "BLOCK_C": [64,],
         }
     ),
     key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
@@ -505,6 +521,7 @@ def lasd_parallel_fwd(
     ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
+    reverse: bool = False,
 ):
     b, n, h, d = q.shape
     e = v.shape[-1]
@@ -530,6 +547,8 @@ def lasd_parallel_fwd(
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
+
+    BLOCK_N = 64
 
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
@@ -630,6 +649,7 @@ def lasd_parallel_fwd(
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_LOG_DECAY=use_ld,
         USE_INITIAL_STATE=use_initial_state,
+        REVERSE=reverse,
         BLOCK_N=BLOCK_N,
     )
 
@@ -692,12 +712,17 @@ def lasd_parallel_bwd(
     dk = torch.empty((b, n, h, d), dtype=k.dtype, device=k.device)
     dv = torch.empty((b, n, h, e), dtype=v.dtype, device=v.device)
 
+    if initial_state is not None:
+        initial_state_dq = initial_state.transpose(-1, -2).contiguous()
+    else:
+        initial_state_dq = None
+
     dq, _ = lasd_parallel_fwd(
         q=do,
         k=v,
         v=k,
         ld=ld,
-        initial_state=initial_state,
+        initial_state=initial_state_dq,
         cu_seqlens=cu_seqlens,
     )
 
@@ -706,23 +731,33 @@ def lasd_parallel_bwd(
     v = torch.flip(v, [1]).contiguous()
     do = torch.flip(do, [1]).contiguous()
 
+    if dfinal_state is not None:
+        # b h d e -> b h e d
+        dfinal_state_dk = dfinal_state.transpose(-1, -2).contiguous()
+    else:
+        dfinal_state_dk = None
+
     dk, _ = lasd_parallel_fwd(
         q=v,
         k=do,
         v=q,
         ld=ld,
-        initial_state=dfinal_state,
+        initial_state=dfinal_state_dk,
         cu_seqlens=cu_seqlens,
+        reverse=True,
     )
     dk = torch.flip(dk, [1])
+
+    dfinal_state_dv = dfinal_state
 
     dv, dfinal_states = lasd_parallel_fwd(
         q=k,
         k=q,
         v=do,
         ld=ld,
-        initial_state=dfinal_state,
+        initial_state=dfinal_state_dv,
         cu_seqlens=cu_seqlens,
+        reverse=True,
     )
     dv = torch.flip(dv, [1])
 
@@ -761,7 +796,6 @@ class LasdParallelFunction(torch.autograd.Function):
         )
 
         # Save tensors needed for backward
-        # ctx.save_for_backward(q, k, v, ld, initial_state, states, cu_seqlens)
         ctx.save_for_backward(q, k, v, ld, initial_state, cu_seqlens)
         final_state = states[:, :, -1, :, :]
         del states

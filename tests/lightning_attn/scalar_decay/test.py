@@ -17,6 +17,7 @@ def get_params():
         (2, 256, 8, 64, 32),
         (2, 1125, 8, 43, 33),
         (2, 1024, 8, 32, 16),
+        # (2, 256, 8, 32, 16),
     ]
     return shapes
 
@@ -38,8 +39,8 @@ def get_params():
 # @pytest.mark.parametrize("norm", [True, False])
 
 
-@pytest.mark.parametrize("use_initial_state", [False])
-@pytest.mark.parametrize("use_log_decay", [False])
+@pytest.mark.parametrize("use_initial_state", [True, False])
+@pytest.mark.parametrize("use_log_decay", [True, False])
 # @pytest.mark.parametrize("use_initial_state", [True])
 # @pytest.mark.parametrize("use_log_decay", [True])
 @pytest.mark.parametrize("use_varlen", [False])
@@ -84,7 +85,7 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, act, norm, dtype):
     do = torch.randn((), dtype=dtype, device=device)
 
     if use_initial_state:
-        initial_state = torch.ones(
+        initial_state = torch.randn(
             (b, h, d, e), dtype=dtype, device=device
         ).requires_grad_()
     else:
@@ -123,8 +124,7 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, act, norm, dtype):
     #     k_norm=k_norm,
     #     v_norm=v_norm,
     # )
-    # output_triton = o_triton.sum()# + s_triton.sum()
-    # output_triton = o_triton
+    # output_triton = o_triton.sum() + s_triton.sum()
 
     # triton parallel
     o_parallel_triton, s_parallel_triton = lasd_parallel_triton(
@@ -210,7 +210,7 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, act, norm, dtype):
     # print("s diff norm (Vs triton recurrence): ", torch.norm(s_torch - s_triton).item())
     # assert torch.allclose(s_torch, s_triton, atol=atol, rtol=rtol)
 
-    ##### Check backward pass results
+    # ##### Check backward pass results
     # print(
     #     "dq diff max (Vs triton recurrence): ",
     #     torch.abs(dq_torch - dq_triton).max().item(),
@@ -278,6 +278,7 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, act, norm, dtype):
         torch.norm(dk_torch - dk_parallel_triton).item(),
     )
 
+    # c = 16
     # for i in range((n + c - 1) // c):
     #     print(
     #         i,
@@ -307,3 +308,5 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, act, norm, dtype):
             torch.norm(ds_torch - ds_parallel_triton).item(),
         )
         assert torch.allclose(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)
+
+    # assert False
