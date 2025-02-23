@@ -87,7 +87,7 @@ configs = [
     ]
     for mode in [
         "fwd",
-        # "bwd",
+        "bwd",
     ]
     for dtype_name in ["bf16"]
     for b in [4]

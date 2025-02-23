@@ -8,15 +8,11 @@ from einops import repeat
 from xopes.utils import contiguous, generate_configs
 
 
+########## Fwd start ##########
 @triton.autotune(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            # "BLOCK_C": [16, 32, 64, 128],
-            # "BLOCK_D": [16, 32, 64, 128],
-            # "BLOCK_E": [16, 32, 64, 128],
-            # "BLOCK_C": [128],
-            # "BLOCK_C": [16, 32, 64],
             "BLOCK_C": [16, 32, 64, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
@@ -45,9 +41,7 @@ def _lasd_parallel_fwd_intra(
     BLOCK_E: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
-    tl.cdiv(BLOCK_N, BLOCK_C)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
-    tl.cdiv(E, BLOCK_E)
 
     off_bhn = tl.program_id(0)
     off_bh = off_bhn // NUM_BLOCK_N
@@ -97,7 +91,7 @@ def _lasd_parallel_fwd_intra(
         log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
 
     for i in range(NUM_BLOCK_D):
-        mask_d = (array_d + i * BLOCK_D) < D
+        mask_d = (i * BLOCK_D + array_d) < D
         q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
 
         k_trans_block_ptr = (
@@ -105,18 +99,18 @@ def _lasd_parallel_fwd_intra(
             + offset_qk
             + offset_block_qk
             + array_c[None, :] * H * D
-            + (array_d + i * BLOCK_D)[:, None]
+            + (i * BLOCK_D + array_d)[:, None]
         )
         v_block_ptr = (
             V
             + offset_vo
             + offset_block_vo
             + array_c[:, None] * H * E
-            + (array_e + offset_block_e)[None, :]
+            + (offset_block_e + array_e)[None, :]
         )
 
         for j in range(off_block_c + 1):
-            array_kv = array_c + j * BLOCK_C
+            array_kv = j * BLOCK_C + array_c
             mask_kv = array_kv < N
 
             k_trans = tl.load(
@@ -132,7 +126,7 @@ def _lasd_parallel_fwd_intra(
                 decay = log_decay * diff
                 decay = tl.exp(tl.where(diff >= 0, decay, float("-inf")))
                 score *= decay
-            o += tl.dot(score, v.to(tl.float32))
+            o += tl.dot(score.to(v.dtype), v)
 
             k_trans_block_ptr += BLOCK_C * H * D
             v_block_ptr += BLOCK_C * H * E
@@ -367,7 +361,7 @@ def _lasd_parallel_fwd_state_reduce(
             + (offset_block_d + array_d[:, None]) * E
             + (offset_block_e + array_e[None, :])
         )
-        state = tl.load(state_block_ptr, mask=mask, other=0.0)
+        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32)
     else:
         state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
@@ -511,13 +505,6 @@ def lasd_parallel_fwd(
     ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
-    q_act: str = "none",
-    k_act: str = "none",
-    v_act: str = "none",
-    q_norm: bool = False,
-    k_norm: bool = False,
-    v_norm: bool = False,
-    eps: float = 1e-6,
 ):
     b, n, h, d = q.shape
     e = v.shape[-1]
@@ -527,7 +514,6 @@ def lasd_parallel_fwd(
         b = cu_seqlens.shape[0] - 1
 
     use_initial_state = initial_state is not None
-    final_state = torch.empty((b, h, d, e), dtype=torch.float32, device=q.device)
     use_ld = ld is not None
 
     if use_cu_seqlens:
@@ -548,6 +534,7 @@ def lasd_parallel_fwd(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 
+    # Step1: Compute intra in parallel, for each chunk, parallel over sub-chunk
     def grid_partial(MAX_BLOCK_C, MAX_BLOCK_E):
         def grid(meta):
             meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
@@ -562,7 +549,6 @@ def lasd_parallel_fwd(
 
     grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_E)
 
-    # Step1: Compute intra in parallel, for each chunk, parallel over sub-chunk
     _lasd_parallel_fwd_intra[grid](
         Q=q,
         K=k,
@@ -682,6 +668,76 @@ def lasd_parallel_fwd(
     return o, states
 
 
+########## Fwd end ##########
+
+########## Bwd start ##########
+def lasd_parallel_bwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    do: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
+    initial_state: Optional[torch.Tensor] = None,
+    dfinal_state: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+):
+    b, n, h, d = q.shape
+    e = v.shape[-1]
+
+    use_cu_seqlens = cu_seqlens is not None
+    if use_cu_seqlens:
+        b = cu_seqlens.shape[0] - 1
+
+    dq = torch.empty((b, n, h, d), dtype=q.dtype, device=q.device)
+    dk = torch.empty((b, n, h, d), dtype=k.dtype, device=k.device)
+    dv = torch.empty((b, n, h, e), dtype=v.dtype, device=v.device)
+
+    dq, _ = lasd_parallel_fwd(
+        q=do,
+        k=v,
+        v=k,
+        ld=ld,
+        initial_state=initial_state,
+        cu_seqlens=cu_seqlens,
+    )
+
+    q = torch.flip(q, [1]).contiguous()
+    k = torch.flip(k, [1]).contiguous()
+    v = torch.flip(v, [1]).contiguous()
+    do = torch.flip(do, [1]).contiguous()
+
+    dk, _ = lasd_parallel_fwd(
+        q=v,
+        k=do,
+        v=q,
+        ld=ld,
+        initial_state=dfinal_state,
+        cu_seqlens=cu_seqlens,
+    )
+    dk = torch.flip(dk, [1])
+
+    dv, dfinal_states = lasd_parallel_fwd(
+        q=k,
+        k=q,
+        v=do,
+        ld=ld,
+        initial_state=dfinal_state,
+        cu_seqlens=cu_seqlens,
+    )
+    dv = torch.flip(dv, [1])
+
+    need_dfinal_state = (
+        dfinal_state is not None
+        and initial_state is not None
+        and initial_state.requires_grad
+    )
+
+    return dq, dk, dv, dfinal_states[:, :, -1, :, :] if need_dfinal_state else None
+
+
+########## Bwd end ##########
+
+
 class LasdParallelFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
@@ -693,23 +749,7 @@ class LasdParallelFunction(torch.autograd.Function):
         ld,
         initial_state=None,
         cu_seqlens=None,
-        q_act="none",
-        k_act="none",
-        v_act="none",
-        q_norm=False,
-        k_norm=False,
-        v_norm=False,
-        eps=1e-6,
     ):
-        # Save non-tensor inputs for backward
-        ctx.q_act = q_act
-        ctx.k_act = k_act
-        ctx.v_act = v_act
-        ctx.q_norm = q_norm
-        ctx.k_norm = k_norm
-        ctx.v_norm = v_norm
-        ctx.eps = eps
-
         # Forward computation
         output, states = lasd_parallel_fwd(
             q=q,
@@ -718,13 +758,6 @@ class LasdParallelFunction(torch.autograd.Function):
             ld=ld,
             initial_state=initial_state,
             cu_seqlens=cu_seqlens,
-            q_act=q_act,
-            k_act=k_act,
-            v_act=v_act,
-            q_norm=q_norm,
-            k_norm=k_norm,
-            v_norm=v_norm,
-            eps=eps,
         )
 
         # Save tensors needed for backward
@@ -738,32 +771,17 @@ class LasdParallelFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
     def backward(ctx, do, dfinal_state):
-        q, k, v, ld, initial_state, final_state, cu_seqlens = ctx.saved_tensors
-        q_act = ctx.q_act
-        k_act = ctx.k_act
-        v_act = ctx.v_act
-        q_norm = ctx.q_norm
-        k_norm = ctx.k_norm
-        v_norm = ctx.v_norm
-        eps = ctx.eps
+        q, k, v, ld, initial_state, cu_seqlens = ctx.saved_tensors
 
         dq, dk, dv, dinitial_state = lasd_parallel_bwd(
             q=q,
             k=k,
             v=v,
+            do=do,
             ld=ld,
             initial_state=initial_state,
-            final_state=final_state,
-            do=do,
             dfinal_state=dfinal_state,
             cu_seqlens=cu_seqlens,
-            q_act=q_act,
-            k_act=k_act,
-            v_act=v_act,
-            q_norm=q_norm,
-            k_norm=k_norm,
-            v_norm=v_norm,
-            eps=eps,
         )
 
         return (
@@ -790,7 +808,6 @@ def lasd_parallel_triton(
     ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
-    eps: float = 1e-6,
     **kwargs,
 ):
     """
@@ -826,7 +843,6 @@ def lasd_parallel_triton(
         ld,
         initial_state,
         cu_seqlens,
-        eps,
     )
 
 
@@ -845,5 +861,5 @@ if __name__ == "__main__":
         True
     )
     output, final_state = lasd_parallel_triton(q, k, v, ld, initial_state)
-    # loss = output.sum() + final_state.sum()
-    # loss.backward()
+    loss = output.sum() + final_state.sum()
+    loss.backward()
