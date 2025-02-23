@@ -202,14 +202,13 @@ def lasd_recurrence_fwd(
     final_state = torch.empty((b, h, d, e), dtype=torch.float32, device=q.device)
     use_ld = ld is not None
 
-    def grid(meta):
-        return (b, h)
-
     if use_cu_seqlens:
-        # o = torch.empty((1, cu_seqlens[-1], h, e), dtype=q.dtype, device=q.device)
         o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
     else:
         o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
+
+    def grid(meta):
+        return (b, h)
 
     _lasd_recurrence_fwd[grid](
         Q=q,
@@ -695,7 +694,7 @@ def lasd_recurrence_triton(
     eps: float = 1e-6,
 ):
     """
-    Apply Lightning Attention with Scalar Decay in Triton.
+    Apply Lightning Attention Recurrence with Scalar Decay in Triton.
 
     Args:
         q: Query tensor of shape (B, N, H, D)

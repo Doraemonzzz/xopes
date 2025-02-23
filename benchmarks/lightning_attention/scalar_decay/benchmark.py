@@ -5,8 +5,11 @@ import torch
 import torch.nn.functional as F
 import triton
 
-from xopes.ops.lightning_attn.baseline import flash_attn_wrapper
-from xopes.ops.lightning_attn.scalar_decay import lasd_recurrence_triton
+from xopes.ops.lightning_attn.baseline import flash_attn_wrapper, lightning_attn_wrapper
+from xopes.ops.lightning_attn.scalar_decay import (
+    lasd_parallel_triton,
+    lasd_recurrence_triton,
+)
 from xopes.utils import get_memory
 
 device = torch.device("cuda")
@@ -18,30 +21,47 @@ dtype_map = {
 }
 
 
-def lasd(q, k, v, ld):
+def lasd_recurrence(q, k, v, ld):
     return lasd_recurrence_triton(q, k, v, ld=ld)[0]
 
 
+def lasd_parallel(q, k, v, ld):
+    return lasd_parallel_triton(q, k, v, ld=ld)[0]
+
+
+def land_parallel(q, k, v, ld):
+    return lasd_parallel_triton(q, k, v)[0]
+
+
 module_map = {
-    "lasd_r": lasd,
+    "lasd_r": lasd_recurrence,
+    "lasd_p": lasd_parallel,
+    "land_p": land_parallel,
     "flash": flash_attn_wrapper,
+    "lightning": lightning_attn_wrapper,
 }
 
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         # x_vals=[2**i for i in range(8, 14)],  # Sequence lengths from 256 to 8192
-        x_vals=[2**i for i in range(8, 12)],
+        x_vals=[2**i for i in range(8, 16)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
             "lasd_r",
+            "lasd_p",
+            "land_p",
             "flash",
+            "lightning",
         ],
         line_names=[
             "LASD_R",
+            "LASD_P",
+            "LAND_P",
             "Flash",
+            "Lightning",
         ],
         styles=[
             ("red", "-"),
@@ -67,7 +87,7 @@ configs = [
     ]
     for mode in [
         "fwd",
-        "bwd",
+        # "bwd",
     ]
     for dtype_name in ["bf16"]
     for b in [4]

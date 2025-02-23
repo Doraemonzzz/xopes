@@ -1,2 +1,4 @@
+from .lasd_parallel_torch import lasd_parallel_torch
+from .lasd_parallel_triton import lasd_parallel_triton
 from .lasd_recurrence_triton import lasd_recurrence_triton
 from .lasd_torch import lasd_torch
