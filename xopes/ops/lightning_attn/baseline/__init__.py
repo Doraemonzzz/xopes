@@ -44,7 +44,8 @@ def lightning_attn_wrapper(q, k, v, **kwargs):
         q,
         k,
         v,
-        -kwargs["ld"],
+        s=-kwargs["ld"],
+        variant=kwargs["variant"],
     )
     o = rearrange(o, "b h n d -> b n h d")
     return o

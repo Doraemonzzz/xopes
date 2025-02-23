@@ -548,8 +548,6 @@ def lasd_parallel_fwd(
     else:
         BLOCK_N = 256
 
-    BLOCK_N = 64
-
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 

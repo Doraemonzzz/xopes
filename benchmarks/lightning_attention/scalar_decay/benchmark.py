@@ -33,12 +33,21 @@ def land_parallel(q, k, v, ld):
     return lasd_parallel_triton(q, k, v)[0]
 
 
+def lightning_parallel(q, k, v, ld):
+    return lightning_attn_wrapper(q, k, v, ld=ld, variant="parallel")
+
+
+def lightning_chunk_loop(q, k, v, ld):
+    return lightning_attn_wrapper(q, k, v, ld=ld, variant="chunk_loop")
+
+
 module_map = {
     "lasd_r": lasd_recurrence,
     "lasd_p": lasd_parallel,
     "land_p": land_parallel,
     "flash": flash_attn_wrapper,
-    "lightning": lightning_attn_wrapper,
+    "lightning_p": lightning_parallel,
+    "lightning_c": lightning_chunk_loop,
 }
 
 configs = [
@@ -46,6 +55,7 @@ configs = [
         x_names=["n"],
         # x_vals=[2**i for i in range(8, 14)],  # Sequence lengths from 256 to 8192
         x_vals=[2**i for i in range(8, 16)],
+        # x_vals=[2**i for i in range(8, 10)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -54,14 +64,16 @@ configs = [
             "lasd_p",
             "land_p",
             "flash",
-            "lightning",
+            "lightning_p",
+            "lightning_c",
         ],
         line_names=[
             "LASD_R",
             "LASD_P",
             "LAND_P",
             "Flash",
-            "Lightning",
+            "Lightning_P",
+            "Lightning_C",
         ],
         styles=[
             ("red", "-"),
@@ -69,6 +81,7 @@ configs = [
             ("green", "-"),
             ("orange", "-"),
             ("purple", "-"),
+            ("pink", "-"),
         ],
         plot_name=f"lasd-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
