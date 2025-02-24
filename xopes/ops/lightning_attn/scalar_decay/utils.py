@@ -635,10 +635,67 @@ def _lasd_parallel_inter(
     )
 
 
-import torch
+########## pytorch implementation reference ##########
+def lasd_intra_torch(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    reverse: bool = False,
+):
+    def _lasd_intra(
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        ld: Optional[torch.Tensor] = None,
+    ):
+        b, n, h, d = k.shape
+        e = v.shape[-1]
+        dtype = q.dtype
+
+        q = q.float()
+        k = k.float()
+        v = v.float()
+
+        if ld is None:
+            decay = (
+                torch.ones((), dtype=torch.float32, device=q.device)
+                .unsqueeze(-1)
+                .unsqueeze(-1)
+            )
+        else:
+            decay = torch.exp(ld.float()).unsqueeze(-1).unsqueeze(-1)
+
+        state = torch.zeros(b, h, d, e, dtype=torch.float32, device=q.device)
+        o = []
+        for i in range(n):
+            state_ = torch.einsum(
+                "b h d, b h e -> b h d e", k[:, i, :, :], v[:, i, :, :]
+            )
+            state = decay * state + state_
+            o_ = torch.einsum(
+                "b h d, b h d e -> b h e", q[:, i, :, :], state
+            ).unsqueeze(1)
+            o.append(o_)
+        o = torch.cat(o, dim=1)
+
+        return o.to(dtype)
+
+    if reverse:
+        q = torch.flip(q, dims=[1])
+        k = torch.flip(k, dims=[1])
+        v = torch.flip(v, dims=[1])
+
+    o = _lasd_intra(q, k, v, ld)
+
+    if reverse:
+        o = torch.flip(o, dims=[1])
+
+    return o
 
 
-def compute_d_states(
+def compute_states(
     k: torch.Tensor,
     v: torch.Tensor,
     ld: Optional[torch.Tensor] = None,

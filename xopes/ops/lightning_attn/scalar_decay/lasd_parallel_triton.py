@@ -18,10 +18,8 @@ def lasd_parallel_intra(
     k: torch.Tensor,
     v: torch.Tensor,
     ld: Optional[torch.Tensor] = None,
-    initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
-    trans: bool = False,
     MAX_BLOCK_N: int = 256,
     MAX_BLOCK_C: int = 256,
     MAX_BLOCK_E: int = 128,
@@ -35,7 +33,7 @@ def lasd_parallel_intra(
     if use_cu_seqlens:
         b = cu_seqlens.shape[0] - 1
 
-    initial_state is not None
+    # initial_state is not None
     use_ld = ld is not None
 
     if use_cu_seqlens:
@@ -326,10 +324,8 @@ def lasd_parallel_fwd(
         k=k,
         v=v,
         ld=ld,
-        initial_state=initial_state,
         cu_seqlens=cu_seqlens,
         reverse=reverse,
-        trans=trans,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -435,10 +431,8 @@ def lasd_parallel_bwd(
         k=do,
         v=q,
         ld=ld,
-        initial_state=dfinal_state,
         cu_seqlens=cu_seqlens,
         reverse=True,
-        trans=False,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -451,10 +445,8 @@ def lasd_parallel_bwd(
         k=q,
         v=do,
         ld=ld,
-        initial_state=dfinal_state,
         cu_seqlens=cu_seqlens,
         reverse=True,
-        trans=False,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,

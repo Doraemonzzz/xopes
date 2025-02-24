@@ -68,6 +68,9 @@ folder=linear_cross_entropy
 ##### lasd 250219
 folder=lightning_attn/scalar_decay
 
+##### lasd_intra 250224
+folder=lightning_attn/scalar_decay/intra
+
 mkdir -p $folder/log
 
 
