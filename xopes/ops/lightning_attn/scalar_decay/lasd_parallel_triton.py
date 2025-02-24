@@ -2,519 +2,18 @@ from typing import Optional
 
 import torch
 import triton
-import triton.language as tl
 from einops import repeat
 
-from xopes.utils import contiguous, generate_configs
-
-
-########## Fwd start ##########
-@triton.autotune(
-    generate_configs(
-        {
-            "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
-            # # debug
-            # "BLOCK_C": [64],
-        }
-    ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+from xopes.ops.lightning_attn.scalar_decay.utils import (
+    _lasd_parallel_inter,
+    _lasd_parallel_intra,
+    _lasd_parallel_state_parallel,
+    _lasd_parallel_state_reduce,
 )
-@triton.jit
-def _lasd_parallel_fwd_intra(
-    Q,  # B N H D
-    K,  # B N H D
-    V,  # B N H E
-    O,  # B N H E
-    LOG_DECAY,  # H
-    CU_SEQLENS,  # M
-    B: tl.constexpr,
-    N: tl.constexpr,
-    H: tl.constexpr,
-    D: tl.constexpr,
-    E: tl.constexpr,
-    USE_CU_SEQLENS: tl.constexpr,
-    USE_LOG_DECAY: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_C: tl.constexpr,
-    BLOCK_D: tl.constexpr,
-    BLOCK_E: tl.constexpr,
-):
-    NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
-    NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
-
-    off_bhn = tl.program_id(0)
-    off_bh = off_bhn // NUM_BLOCK_N
-    off_b = off_bh // H
-    off_h = off_bh % H
-    off_block_n = off_bhn % NUM_BLOCK_N
-    off_block_c = tl.program_id(1)
-    off_block_e = tl.program_id(2)
-
-    # compute offset
-    offset_qk = off_b * N * H * D + off_h * D
-    offset_vo = off_b * N * H * E + off_h * E
-    offset_block_n = off_block_n * BLOCK_N
-    offset_block_qk = offset_block_n * H * D
-    offset_block_vo = offset_block_n * H * E
-    offset_block_c = off_block_c * BLOCK_C
-    offset_block_e = off_block_e * BLOCK_E
-
-    array_c = tl.arange(0, BLOCK_C)
-    array_d = tl.arange(0, BLOCK_D)
-    array_e = tl.arange(0, BLOCK_E)
-
-    # compute block ptr and mask
-    q_block_ptr = (
-        Q
-        + offset_qk
-        + offset_block_qk
-        + (offset_block_c + array_c[:, None]) * H * D
-        + array_d[None, :]
-    )
-    o_block_ptr = (
-        O
-        + offset_vo
-        + offset_block_vo
-        + (offset_block_c + array_c[:, None]) * H * E
-        + (offset_block_e + array_e[None, :])
-    )
-    mask_c = (offset_block_n + offset_block_c + array_c) < N
-    mask_e = (offset_block_e + array_e) < E
-
-    # compute mask
-    array_c = tl.arange(0, BLOCK_C)
-    array_q = array_c + offset_block_c
-
-    o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
-    if USE_LOG_DECAY:
-        log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
-
-    for i in range(NUM_BLOCK_D):
-        mask_d = (i * BLOCK_D + array_d) < D
-        q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
-
-        k_trans_block_ptr = (
-            K
-            + offset_qk
-            + offset_block_qk
-            + array_c[None, :] * H * D
-            + (i * BLOCK_D + array_d)[:, None]
-        )
-        v_block_ptr = (
-            V
-            + offset_vo
-            + offset_block_vo
-            + array_c[:, None] * H * E
-            + (offset_block_e + array_e)[None, :]
-        )
-
-        for j in range(off_block_c + 1):
-            array_kv = j * BLOCK_C + array_c
-            mask_kv = array_kv < N
-
-            k_trans = tl.load(
-                k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
-            )
-            v = tl.load(v_block_ptr, mask=mask_kv[:, None] & mask_e[None, :], other=0.0)
-
-            score = tl.dot(q, k_trans)
-            diff = array_q[:, None] - array_kv[None, :]
-            if not USE_LOG_DECAY:
-                score = tl.where(diff >= 0, score, 0.0)
-            else:
-                decay = log_decay * diff
-                decay = tl.exp(tl.where(diff >= 0, decay, float("-inf")))
-                score *= decay
-            o += tl.dot(score.to(v.dtype), v)
-
-            k_trans_block_ptr += BLOCK_C * H * D
-            v_block_ptr += BLOCK_C * H * E
-
-        # !!! important
-        tl.debug_barrier()
-
-        q_block_ptr += BLOCK_D
-
-    tl.store(
-        o_block_ptr,
-        o.to(o_block_ptr.dtype.element_ty),
-        mask=mask_c[:, None] & mask_e[None, :],
-    )
+from xopes.utils import contiguous
 
 
-@triton.autotune(
-    generate_configs(
-        {
-            "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
-            # ### debug
-            # "BLOCK_C": [64,],
-        }
-    ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
-)
-@triton.jit
-def _lasd_parallel_fwd_state_parallel(
-    K,  # B N H D
-    V,  # B N H E
-    STATES,  # B H L D E
-    LOG_DECAY,  # H
-    CU_SEQLENS,  # M
-    B: tl.constexpr,
-    N: tl.constexpr,
-    H: tl.constexpr,
-    D: tl.constexpr,
-    E: tl.constexpr,
-    USE_CU_SEQLENS: tl.constexpr,
-    USE_LOG_DECAY: tl.constexpr,
-    USE_PAD: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_C: tl.constexpr,
-    BLOCK_D: tl.constexpr,
-    BLOCK_E: tl.constexpr,
-):
-    NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
-    NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
-    tl.cdiv(D, BLOCK_D)
-    tl.cdiv(E, BLOCK_E)
-
-    off_bhn = tl.program_id(0)
-    off_bh = off_bhn // NUM_BLOCK_N
-    off_b = off_bh // H
-    off_h = off_bh % H
-    off_block_n = off_bhn % NUM_BLOCK_N
-    off_block_d = tl.program_id(1)
-    off_block_e = tl.program_id(2)
-
-    offset_qk = off_b * N * H * D + off_h * D
-    offset_vo = off_b * N * H * E + off_h * E
-    offset_block_n = off_block_n * BLOCK_N
-    offset_block_qk = offset_block_n * H * D
-    offset_block_vo = offset_block_n * H * E
-    offset_block_d = off_block_d * BLOCK_D
-    offset_block_e = off_block_e * BLOCK_E
-    offset_state = off_bh * (NUM_BLOCK_N + 1) * D * E
-    offset_block_state = off_block_n * D * E
-
-    # compute block ptr and mask
-    array_c = tl.arange(0, BLOCK_C)
-    array_d = tl.arange(0, BLOCK_D)
-    array_e = tl.arange(0, BLOCK_E)
-
-    k_trans_block_ptr = (
-        K
-        + offset_qk
-        + offset_block_qk
-        + array_c[None, :] * H * D
-        + (array_d + offset_block_d)[:, None]
-    )
-    v_block_ptr = (
-        V
-        + offset_vo
-        + offset_block_vo
-        + array_c[:, None] * H * E
-        + (array_e + offset_block_e)[None, :]
-    )
-    state_block_ptr = (
-        STATES
-        + offset_state
-        + offset_block_state
-        + (offset_block_d + array_d[:, None]) * E
-        + (offset_block_e + array_e[None, :])
-    )
-
-    mask_d = (array_d + offset_block_d) < D
-    mask_e = (array_e + offset_block_e) < E
-
-    if USE_LOG_DECAY:
-        log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
-        block_decay = tl.exp(log_decay * BLOCK_C)
-        k_decay = tl.exp(log_decay * (BLOCK_C - 1 - tl.arange(0, BLOCK_C)))
-        if USE_PAD:
-            M = N % BLOCK_C
-            last_decay = tl.exp(log_decay * M)
-            array = M - 1 - tl.arange(0, BLOCK_C)
-            array = tl.where(
-                array >= 0, array, 0
-            )  # !!! important, otherwise the decay will be nan, nan * 0 != 0
-            last_k_decay = tl.exp(log_decay * array)
-
-    state = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
-    array_c = offset_block_n + tl.arange(0, BLOCK_C)
-
-    cnt = offset_block_n
-    for i in range(NUM_BLOCK_C):
-        mask_c = (array_c + i * BLOCK_C) < N
-        k_trans = tl.load(
-            k_trans_block_ptr, mask=mask_c[None, :] & mask_d[:, None], other=0.0
-        )
-        v = tl.load(v_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0)
-
-        if USE_LOG_DECAY:
-            if cnt < N:
-                # last step
-                if USE_PAD:
-                    if off_block_n == NUM_BLOCK_N - 1:
-                        if cnt + BLOCK_C >= N:
-                            k_trans = (k_trans * last_k_decay[None, :]).to(
-                                k_trans.dtype
-                            )
-                            state = last_decay * state + tl.dot(k_trans, v)
-                        else:
-                            k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
-                            state = block_decay * state + tl.dot(k_trans, v)
-                    else:
-                        k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
-                        state = block_decay * state + tl.dot(k_trans, v)
-                else:
-                    k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
-                    state = block_decay * state + tl.dot(k_trans, v)
-        else:
-            state += tl.dot(k_trans, v)
-
-        k_trans_block_ptr += BLOCK_C * H * D
-        v_block_ptr += BLOCK_C * H * E
-        cnt += BLOCK_C
-
-    tl.store(
-        state_block_ptr,
-        state.to(state_block_ptr.dtype.element_ty),
-        mask=mask_d[:, None] & mask_e[None, :],
-    )
-
-
-@triton.autotune(
-    generate_configs(
-        {
-            "num_warps": [4, 8, 16, 32],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
-        }
-    ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
-)
-@triton.jit
-def _lasd_parallel_fwd_state_reduce(
-    STATE,  # B H D E
-    STATES,  # B H L D E
-    LOG_DECAY,  # H
-    CU_SEQLENS,  # M
-    B: tl.constexpr,
-    N: tl.constexpr,
-    H: tl.constexpr,
-    D: tl.constexpr,
-    E: tl.constexpr,
-    USE_CU_SEQLENS: tl.constexpr,
-    USE_LOG_DECAY: tl.constexpr,
-    USE_INITIAL_STATE: tl.constexpr,
-    REVERSE: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_D: tl.constexpr,
-    BLOCK_E: tl.constexpr,
-):
-    NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
-
-    off_bh = tl.program_id(0)
-    off_b = off_bh // H
-    off_h = off_bh % H
-    off_block_d = tl.program_id(1)
-    off_block_e = tl.program_id(2)
-
-    # compute offset
-    offset_states = off_bh * (NUM_BLOCK_N + 1) * D * E
-    offset_state = off_b * H * D * E + off_h * D * E
-    offset_block_d = off_block_d * BLOCK_D
-    offset_block_e = off_block_e * BLOCK_E
-
-    # compute array for block ptr
-    array_d = tl.arange(0, BLOCK_D)
-    array_e = tl.arange(0, BLOCK_E)
-
-    # (BLOCK_D, BLOCK_E)
-    states_block_ptr = (
-        STATES
-        + offset_states
-        + (offset_block_d + array_d[:, None]) * E
-        + (offset_block_e + array_e[None, :])
-    )
-
-    mask_d = (array_d + offset_block_d) < D
-    mask_e = (array_e + offset_block_e) < E
-    mask = mask_d[:, None] & mask_e[None, :]
-
-    c = 1.0
-    if USE_LOG_DECAY:
-        log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
-        block_decay = tl.exp(log_decay * BLOCK_N)
-        L = N % BLOCK_N
-        if L == 0:
-            last_decay = block_decay
-        else:
-            last_decay = tl.exp(log_decay * L)
-
-        # !!! important
-        if REVERSE:
-            c = tl.exp(-log_decay)
-
-    # compute
-    if USE_INITIAL_STATE:
-        state_block_ptr = (
-            STATE
-            + offset_state
-            + (offset_block_d + array_d[:, None]) * E
-            + (offset_block_e + array_e[None, :])
-        )
-        # !!! important
-
-        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32) * c
-    else:
-        state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
-
-    for i in range(NUM_BLOCK_N):
-        current_state = tl.load(states_block_ptr, mask=mask, other=0.0)
-
-        tl.store(
-            states_block_ptr, state.to(states_block_ptr.dtype.element_ty), mask=mask
-        )
-
-        if USE_LOG_DECAY:
-            if i == NUM_BLOCK_N - 1:
-                state = last_decay * state + current_state
-            else:
-                state = block_decay * state + current_state
-        else:
-            state += current_state
-        states_block_ptr += D * E
-
-    # !!! important
-    if REVERSE:
-        state *= 1 / c
-
-    tl.store(states_block_ptr, state.to(states_block_ptr.dtype.element_ty), mask=mask)
-
-
-@triton.autotune(
-    generate_configs(
-        {
-            "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
-            # ### debug
-            # "BLOCK_C": [64,],
-        }
-    ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
-)
-@triton.jit
-def _lasd_parallel_fwd_inter(
-    Q,  # B N H D
-    O,  # B N H E
-    STATES,  # B H L D E
-    LOG_DECAY,  # H
-    CU_SEQLENS,  # M
-    B: tl.constexpr,
-    N: tl.constexpr,
-    H: tl.constexpr,
-    D: tl.constexpr,
-    E: tl.constexpr,
-    USE_CU_SEQLENS: tl.constexpr,
-    USE_LOG_DECAY: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_C: tl.constexpr,
-    BLOCK_D: tl.constexpr,
-    BLOCK_E: tl.constexpr,
-):
-    NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
-    tl.cdiv(BLOCK_N, BLOCK_C)
-    NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
-    tl.cdiv(E, BLOCK_E)
-
-    off_bhn = tl.program_id(0)
-    off_bh = off_bhn // NUM_BLOCK_N
-    off_b = off_bh // H
-    off_h = off_bh % H
-    off_block_n = off_bhn % NUM_BLOCK_N
-    off_block_c = tl.program_id(1)
-    off_block_e = tl.program_id(2)
-
-    # compute offset
-    offset_qk = off_b * N * H * D + off_h * D
-    offset_vo = off_b * N * H * E + off_h * E
-    offset_block_n = off_block_n * BLOCK_N
-    offset_block_qk = offset_block_n * H * D
-    offset_block_vo = offset_block_n * H * E
-
-    offset_block_c = off_block_c * BLOCK_C
-    offset_block_e = off_block_e * BLOCK_E
-
-    offset_state = off_bh * (NUM_BLOCK_N + 1) * D * E
-    offset_block_state = off_block_n * D * E
-
-    # compute block ptr and mask
-    array_e = tl.arange(0, BLOCK_E)
-    array_d = tl.arange(0, BLOCK_D)
-    array_c = tl.arange(0, BLOCK_C)
-    q_block_ptr = (
-        Q
-        + offset_qk
-        + offset_block_qk
-        + (offset_block_c + array_c[:, None]) * H * D
-        + array_d[None, :]
-    )
-    o_block_ptr = (
-        O
-        + offset_vo
-        + offset_block_vo
-        + (offset_block_c + array_c)[:, None] * H * E
-        + (offset_block_e + array_e)[None, :]
-    )
-    state_block_ptr = (
-        STATES
-        + offset_state
-        + offset_block_state
-        + array_d[:, None] * E
-        + (offset_block_e + array_e)[None, :]
-    )
-    mask_e = (offset_block_e + array_e) < E
-    mask_c = (offset_block_n + offset_block_c + array_c) < N
-
-    if USE_LOG_DECAY:
-        log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
-        array_c = tl.arange(0, BLOCK_C)
-        q_decay = tl.exp(log_decay * (offset_block_c + array_c[:, None] + 1))
-
-    o = tl.load(o_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0).to(
-        tl.float32
-    )
-    for i in range(NUM_BLOCK_D):
-        mask_d = (array_d + i * BLOCK_D) < D
-        q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
-        state = tl.load(
-            state_block_ptr, mask=mask_d[:, None] & mask_e[None, :], other=0.0
-        ).to(q.dtype)
-
-        o_ = tl.dot(q, state)
-        if USE_LOG_DECAY:
-            o_ *= q_decay
-        o += o_
-
-        q_block_ptr += BLOCK_D
-        state_block_ptr += BLOCK_D * E
-
-    tl.store(
-        o_block_ptr,
-        o.to(o_block_ptr.dtype.element_ty),
-        mask=mask_c[:, None] & mask_e[None, :],
-    )
-
-
-def lasd_parallel_fwd(
+def lasd_parallel_intra(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -522,6 +21,12 @@ def lasd_parallel_fwd(
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
+    trans: bool = False,
+    MAX_BLOCK_N: int = 256,
+    MAX_BLOCK_C: int = 256,
+    MAX_BLOCK_E: int = 128,
+    MAX_BLOCK_D: int = 128,
+    BLOCK_N: int = 256,
 ):
     b, n, h, d = q.shape
     e = v.shape[-1]
@@ -530,23 +35,13 @@ def lasd_parallel_fwd(
     if use_cu_seqlens:
         b = cu_seqlens.shape[0] - 1
 
-    use_initial_state = initial_state is not None
+    initial_state is not None
     use_ld = ld is not None
 
     if use_cu_seqlens:
         o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
     else:
         o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
-
-    MAX_BLOCK_N = triton.next_power_of_2(n)
-    MAX_BLOCK_C = MAX_BLOCK_N
-    MAX_BLOCK_E = triton.next_power_of_2(e)
-    MAX_BLOCK_D = triton.next_power_of_2(d)
-
-    if n <= 512:
-        BLOCK_N = min(MAX_BLOCK_N, 128)
-    else:
-        BLOCK_N = 256
 
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
@@ -566,7 +61,7 @@ def lasd_parallel_fwd(
 
     grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_E)
 
-    _lasd_parallel_fwd_intra[grid](
+    _lasd_parallel_intra[grid](
         Q=q,
         K=k,
         V=v,
@@ -580,12 +75,40 @@ def lasd_parallel_fwd(
         E=e,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_LOG_DECAY=use_ld,
+        REVERSE=reverse,
         BLOCK_N=BLOCK_N,
     )
 
-    # Step2: Compute local states in parallel
+    return o
+
+
+def lasd_parallel_state_parallel(
+    k: torch.Tensor,
+    v: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
+    initial_state: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    reverse: bool = False,
+    trans: bool = False,
+    MAX_BLOCK_N: int = 256,
+    MAX_BLOCK_C: int = 256,
+    MAX_BLOCK_E: int = 128,
+    MAX_BLOCK_D: int = 128,
+    BLOCK_N: int = 256,
+):
+    b, n, h, d = k.shape
+    e = v.shape[-1]
+
+    use_cu_seqlens = cu_seqlens is not None
+    if use_cu_seqlens:
+        b = cu_seqlens.shape[0] - 1
+
+    NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
+    use_pad = n % BLOCK_N != 0
+    use_ld = ld is not None
+
     states = torch.empty(
-        (b, h, NUM_BLOCK_N + 1, d, e), dtype=torch.float32, device=q.device
+        (b, h, NUM_BLOCK_N + 1, d, e), dtype=torch.float32, device=k.device
     )
 
     def grid_partial(MAX_BLOCK_D, MAX_BLOCK_E):
@@ -602,7 +125,7 @@ def lasd_parallel_fwd(
 
     grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
 
-    _lasd_parallel_fwd_state_parallel[grid](
+    _lasd_parallel_state_parallel[grid](
         K=k,
         V=v,
         STATES=states,
@@ -616,10 +139,38 @@ def lasd_parallel_fwd(
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_LOG_DECAY=use_ld,
         USE_PAD=use_pad,
+        REVERSE=reverse,
         BLOCK_N=BLOCK_N,
     )
 
-    # Step3: Update local states to get global states
+    return states
+
+
+def lasd_parallel_state_reduce(
+    b: int,
+    n: int,
+    h: int,
+    d: int,
+    e: int,
+    states: torch.Tensor,
+    initial_state: Optional[torch.Tensor] = None,
+    ld: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    reverse: bool = False,
+    trans: bool = False,
+    MAX_BLOCK_N: int = 256,
+    MAX_BLOCK_C: int = 256,
+    MAX_BLOCK_E: int = 128,
+    MAX_BLOCK_D: int = 128,
+    BLOCK_N: int = 256,
+):
+    use_cu_seqlens = cu_seqlens is not None
+    if use_cu_seqlens:
+        b = cu_seqlens.shape[0] - 1
+
+    use_initial_state = initial_state is not None
+    use_ld = ld is not None
+
     def grid_partial(MAX_BLOCK_D, MAX_BLOCK_E):
         def grid(meta):
             meta["BLOCK_D"] = min(meta["BLOCK_D"], MAX_BLOCK_D)
@@ -634,7 +185,7 @@ def lasd_parallel_fwd(
 
     grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
 
-    _lasd_parallel_fwd_state_reduce[grid](
+    _lasd_parallel_state_reduce[grid](
         STATE=initial_state,
         STATES=states,
         LOG_DECAY=ld,
@@ -648,8 +199,49 @@ def lasd_parallel_fwd(
         USE_LOG_DECAY=use_ld,
         USE_INITIAL_STATE=use_initial_state,
         REVERSE=reverse,
+        TRANS=trans,
         BLOCK_N=BLOCK_N,
     )
+
+    return states
+
+
+def lasd_parallel_inter(
+    q: torch.Tensor,
+    o: torch.Tensor,
+    states: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    reverse: bool = False,
+    trans_states: bool = False,
+    MAX_BLOCK_N: int = 256,
+    MAX_BLOCK_C: int = 256,
+    MAX_BLOCK_E: int = 128,
+    MAX_BLOCK_D: int = 128,
+    BLOCK_N: int = 256,
+):
+    b, n, h, d = q.shape
+    e = o.shape[-1]
+
+    use_cu_seqlens = cu_seqlens is not None
+    if use_cu_seqlens:
+        b = cu_seqlens.shape[0] - 1
+
+    # MAX_BLOCK_N = triton.next_power_of_2(n)
+    # MAX_BLOCK_C = MAX_BLOCK_N
+    # MAX_BLOCK_E = triton.next_power_of_2(e)
+    # MAX_BLOCK_D = triton.next_power_of_2(d)
+
+    # if n <= 512:
+    #     BLOCK_N = min(MAX_BLOCK_N, 128)
+    # else:
+    #     BLOCK_N = 256
+
+    NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
+    use_pad = n % BLOCK_N != 0
+
+    # use_initial_state = initial_state is not None
+    use_ld = ld is not None
 
     # Step4: Compute inter in parallel, for each chunk, parallel over sub-chunk
     def grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E):
@@ -667,7 +259,7 @@ def lasd_parallel_fwd(
 
     grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E)
 
-    _lasd_parallel_fwd_inter[grid](
+    _lasd_parallel_inter[grid](
         Q=q,
         O=o,
         STATES=states,
@@ -680,15 +272,126 @@ def lasd_parallel_fwd(
         E=e,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_LOG_DECAY=use_ld,
+        REVERSE=reverse,
+        TRANS_STATES=trans_states,
+        BLOCK_N=BLOCK_N,
+    )
+
+    return o
+
+
+########## Fwd start ##########
+def lasd_parallel_fwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
+    initial_state: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    reverse: bool = False,
+    trans: bool = False,
+    trans_states: bool = False,
+):
+    b, n, h, d = q.shape
+    e = v.shape[-1]
+
+    # use_cu_seqlens = cu_seqlens is not None
+    # if use_cu_seqlens:
+    #     b = cu_seqlens.shape[0] - 1
+
+    # use_initial_state = initial_state is not None
+    # use_ld = ld is not None
+
+    # if use_cu_seqlens:
+    #     o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
+    # else:
+    #     o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
+
+    MAX_BLOCK_N = triton.next_power_of_2(n)
+    MAX_BLOCK_C = MAX_BLOCK_N
+    MAX_BLOCK_E = triton.next_power_of_2(e)
+    MAX_BLOCK_D = triton.next_power_of_2(d)
+
+    if n <= 512:
+        BLOCK_N = min(MAX_BLOCK_N, 128)
+    else:
+        BLOCK_N = 256
+
+    # NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
+    # use_pad = n % BLOCK_N != 0
+
+    # Step1: Compute intra in parallel, for each chunk, parallel over sub-chunk
+    o = lasd_parallel_intra(
+        q=q,
+        k=k,
+        v=v,
+        ld=ld,
+        initial_state=initial_state,
+        cu_seqlens=cu_seqlens,
+        reverse=reverse,
+        trans=trans,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
+    # Step2: Compute local states in parallel
+    states = lasd_parallel_state_parallel(
+        k=k,
+        v=v,
+        ld=ld,
+        initial_state=initial_state,
+        cu_seqlens=cu_seqlens,
+        reverse=reverse,
+        trans=trans,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
+    # Step3: Update local states to get global states
+    states = lasd_parallel_state_reduce(
+        b=b,
+        n=n,
+        h=h,
+        d=d,
+        e=e,
+        states=states,
+        initial_state=initial_state,
+        ld=ld,
+        cu_seqlens=cu_seqlens,
+        reverse=reverse,
+        trans=trans,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
+    # Step4: Compute inter in parallel, for each chunk, parallel over sub-chunk
+    o = lasd_parallel_inter(
+        q=q,
+        o=o,
+        states=states,
+        ld=ld,
+        cu_seqlens=cu_seqlens,
+        reverse=reverse,
+        trans_states=trans,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
         BLOCK_N=BLOCK_N,
     )
 
     return o, states
 
 
-########## Fwd end ##########
-
-########## Bwd start ##########
 def lasd_parallel_bwd(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -702,62 +405,126 @@ def lasd_parallel_bwd(
     b, n, h, d = q.shape
     e = v.shape[-1]
 
-    use_cu_seqlens = cu_seqlens is not None
-    if use_cu_seqlens:
-        b = cu_seqlens.shape[0] - 1
+    MAX_BLOCK_N = triton.next_power_of_2(n)
+    MAX_BLOCK_C = MAX_BLOCK_N
+    MAX_BLOCK_E = triton.next_power_of_2(e)
+    MAX_BLOCK_D = triton.next_power_of_2(d)
 
-    dq = torch.empty((b, n, h, d), dtype=q.dtype, device=q.device)
-    dk = torch.empty((b, n, h, d), dtype=k.dtype, device=k.device)
-    dv = torch.empty((b, n, h, e), dtype=v.dtype, device=v.device)
-
-    if initial_state is not None:
-        initial_state_dq = initial_state.transpose(-1, -2).contiguous()
+    if n <= 512:
+        BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
-        initial_state_dq = None
+        BLOCK_N = 256
 
-    dq, _ = lasd_parallel_fwd(
+    dq, states = lasd_parallel_fwd(
         q=do,
         k=v,
         v=k,
         ld=ld,
-        initial_state=initial_state_dq,
+        initial_state=initial_state,
         cu_seqlens=cu_seqlens,
+        reverse=False,
+        trans=False,
     )
 
-    q = torch.flip(q, [1]).contiguous()
-    k = torch.flip(k, [1]).contiguous()
-    v = torch.flip(v, [1]).contiguous()
-    do = torch.flip(do, [1]).contiguous()
+    del states
 
-    if dfinal_state is not None:
-        # b h d e -> b h e d
-        dfinal_state_dk = dfinal_state.transpose(-1, -2).contiguous()
-    else:
-        dfinal_state_dk = None
+    # for dk and dv, use the same states
 
-    dk, _ = lasd_parallel_fwd(
+    dk = lasd_parallel_intra(
         q=v,
         k=do,
         v=q,
         ld=ld,
-        initial_state=dfinal_state_dk,
+        initial_state=dfinal_state,
         cu_seqlens=cu_seqlens,
         reverse=True,
+        trans=False,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
     )
-    dk = torch.flip(dk, [1])
 
-    dfinal_state_dv = dfinal_state
-
-    dv, dfinal_states = lasd_parallel_fwd(
+    dv = lasd_parallel_intra(
         q=k,
         k=q,
         v=do,
         ld=ld,
-        initial_state=dfinal_state_dv,
+        initial_state=dfinal_state,
         cu_seqlens=cu_seqlens,
         reverse=True,
+        trans=False,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
     )
-    dv = torch.flip(dv, [1])
+
+    dstates = lasd_parallel_state_parallel(
+        k=q,  # b n h d
+        v=do,  # b n h e
+        ld=ld,
+        initial_state=dfinal_state,  # b h d e
+        cu_seqlens=cu_seqlens,
+        reverse=True,
+        trans=False,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
+    dstates = lasd_parallel_state_reduce(
+        b=b,
+        n=n,
+        h=h,
+        d=d,
+        e=e,
+        states=dstates,
+        initial_state=dfinal_state,
+        ld=ld,
+        cu_seqlens=cu_seqlens,
+        reverse=True,
+        trans=False,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
+    dk = lasd_parallel_inter(
+        q=v,  # b n h e
+        o=dk,  # b n h d
+        states=dstates,  # b h (m + 1) d e
+        ld=ld,
+        cu_seqlens=cu_seqlens,
+        reverse=True,
+        trans_states=True,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
+    dv = lasd_parallel_inter(
+        q=k,  # b n h d
+        o=dv,  # b n h e
+        states=dstates,  # b h (m + 1) d e
+        ld=ld,
+        cu_seqlens=cu_seqlens,
+        reverse=True,
+        trans_states=False,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
 
     need_dfinal_state = (
         dfinal_state is not None
@@ -765,10 +532,7 @@ def lasd_parallel_bwd(
         and initial_state.requires_grad
     )
 
-    return dq, dk, dv, dfinal_states[:, :, -1, :, :] if need_dfinal_state else None
-
-
-########## Bwd end ##########
+    return dq, dk, dv, dstates[:, :, -1, :, :] if need_dfinal_state else None
 
 
 class LasdParallelFunction(torch.autograd.Function):
