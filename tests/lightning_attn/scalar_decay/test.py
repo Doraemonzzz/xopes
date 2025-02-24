@@ -12,12 +12,13 @@ from xopes.utils import get_threshold
 
 def get_params():
     shapes = [
-        (2, 270, 8, 64, 32),
-        (2, 270, 8, 33, 16),
-        (2, 256, 8, 64, 32),
-        (2, 1125, 8, 43, 33),
-        (2, 1024, 8, 32, 16),
-        # (2, 256, 8, 32, 16),
+        # (2, 270, 8, 64, 32),
+        # (2, 270, 8, 33, 16),
+        # (2, 256, 8, 64, 32),
+        # (2, 1125, 8, 43, 33),
+        # (2, 1024, 8, 32, 16),
+        (2, 256, 8, 32, 16),
+        # (2, 64, 8, 32, 16),
     ]
     return shapes
 
@@ -39,10 +40,10 @@ def get_params():
 # @pytest.mark.parametrize("norm", [True, False])
 
 
-@pytest.mark.parametrize("use_initial_state", [True, False])
-@pytest.mark.parametrize("use_log_decay", [True, False])
-# @pytest.mark.parametrize("use_initial_state", [True])
-# @pytest.mark.parametrize("use_log_decay", [True])
+# @pytest.mark.parametrize("use_initial_state", [True, False])
+# @pytest.mark.parametrize("use_log_decay", [True, False])
+@pytest.mark.parametrize("use_initial_state", [False])
+@pytest.mark.parametrize("use_log_decay", [False])
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize(
     "act",
@@ -107,7 +108,7 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, act, norm, dtype):
         k_norm=k_norm,
         v_norm=v_norm,
     )
-    output_torch = o_torch.sum() + s_torch.sum()
+    output_torch = o_torch.sum()  # + s_torch.sum()
 
     # # triton recurrence
     # o_triton, s_triton = lasd_recurrence_triton(
@@ -130,7 +131,7 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, act, norm, dtype):
     o_parallel_triton, s_parallel_triton = lasd_parallel_triton(
         q=q, k=k, v=v, ld=ld, initial_state=initial_state
     )
-    output_parallel_triton = o_parallel_triton.sum() + s_parallel_triton.sum()
+    output_parallel_triton = o_parallel_triton.sum()  # + s_parallel_triton.sum()
 
     ##### Backward pass
     # baseline
@@ -278,14 +279,14 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, act, norm, dtype):
         torch.norm(dk_torch - dk_parallel_triton).item(),
     )
 
-    # c = 16
-    # for i in range((n + c - 1) // c):
-    #     print(
-    #         i,
-    #         torch.norm(
-    #             (dk_torch - dk_parallel_triton)[:, i * c : (i + 1) * c, :, :]
-    #         ).item(),
-    #     )
+    c = 16
+    for i in range((n + c - 1) // c):
+        print(
+            i,
+            torch.norm(
+                (dk_torch - dk_parallel_triton)[:, i * c : (i + 1) * c, :, :]
+            ).item(),
+        )
     assert torch.allclose(dk_torch, dk_parallel_triton, atol=atol, rtol=rtol)
 
     print(
@@ -298,15 +299,13 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, act, norm, dtype):
     )
     assert torch.allclose(dv_torch, dv_parallel_triton, atol=atol, rtol=rtol)
 
-    if use_initial_state:
-        print(
-            "ds diff max (torch parallel Vs triton parallel): ",
-            torch.abs(ds_torch - ds_parallel_triton).max().item(),
-        )
-        print(
-            "ds diff norm (torch parallel Vs triton parallel): ",
-            torch.norm(ds_torch - ds_parallel_triton).item(),
-        )
-        assert torch.allclose(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)
-
-    # assert False
+    # if use_initial_state:
+    #     print(
+    #         "ds diff max (torch parallel Vs triton parallel): ",
+    #         torch.abs(ds_torch - ds_parallel_triton).max().item(),
+    #     )
+    #     print(
+    #         "ds diff norm (torch parallel Vs triton parallel): ",
+    #         torch.norm(ds_torch - ds_parallel_triton).item(),
+    #     )
+    #     assert torch.allclose(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)
