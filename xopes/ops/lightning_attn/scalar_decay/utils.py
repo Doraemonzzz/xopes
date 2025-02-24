@@ -93,7 +93,6 @@ def _lasd_parallel_intra(
         stride = -1
         NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
         NUM_LOOP = NUM_BLOCK_C - off_block_c
-        # tl.device_print("NUM_LOOP", NUM_LOOP)
     else:
         stride = 1
         NUM_LOOP = off_block_c + 1
@@ -102,39 +101,13 @@ def _lasd_parallel_intra(
         mask_d = (i * BLOCK_D + array_d) < D
         q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
 
-        # k_trans_block_ptr = (
-        #     K
-        #     + offset_qk
-        #     + offset_block_qk
-        #     + array_c[None, :] * H * D
-        #     + (i * BLOCK_D + array_d)[:, None]
-        # )
-        # v_block_ptr = (
-        #     V
-        #     + offset_vo
-        #     + offset_block_vo
-        #     + array_c[:, None] * H * E
-        #     + (offset_block_e + array_e)[None, :]
-        # )
-
         if REVERSE:
-            # array_kv = BLOCK_N - 1 - array_c
-            # array_kv = offset_block_c + array_c
-            # array_kv = BLOCK_N - 1 - offset_block_c - array_c
-            # start from the last chunk
-            # array_kv = BLOCK_N - 1 - array_c
-
+            # TODO: test this
             # array_kv = BLOCK_N - 1 - array_c
 
             array_kv = BLOCK_N - BLOCK_C + array_c
-
-            # array_kv = (N - 1) - (offset_block_n + array_c)
-
-            # array_kv = (N - 1) - offset_block_n + offset_block_c + array_c
-            # tl.static_print("aa", array_kv)
         else:
             array_kv = array_c
-            # array_kv = offset_block_n + offset_block_c + array_c
 
         k_trans_block_ptr = (
             K
@@ -151,9 +124,7 @@ def _lasd_parallel_intra(
             + (offset_block_e + array_e)[None, :]
         )
 
-        # for j in range(off_block_c + 1):
         for j in range(NUM_LOOP):
-            # array_kv = j * BLOCK_C + array_c
             mask_kv = (array_kv < N) & (array_kv >= 0)
 
             k_trans = tl.load(
@@ -165,7 +136,6 @@ def _lasd_parallel_intra(
             diff = (array_q[:, None] - array_kv[None, :]) * stride
             if not USE_LOG_DECAY:
                 score = tl.where(diff >= 0, score, 0.0)
-                # tl.device_print("aaa", score)
             else:
                 decay = log_decay * diff
                 decay = tl.exp(tl.where(diff >= 0, decay, float("-inf")))
@@ -175,10 +145,6 @@ def _lasd_parallel_intra(
             k_trans_block_ptr += BLOCK_C * H * D * stride
             v_block_ptr += BLOCK_C * H * E * stride
             array_kv += BLOCK_C * stride
-
-            # k_trans_block_ptr += BLOCK_C * H * D
-            # v_block_ptr += BLOCK_C * H * E
-            # array_kv += BLOCK_C
 
         # !!! important
         tl.debug_barrier()
@@ -251,23 +217,26 @@ def _lasd_parallel_state_parallel(
     array_d = tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
 
-    # for reverse, start from the last block
+    # # for reverse, local loop start from the last block
     if REVERSE:
         # index map: 0: Sn-1, 1: Sn-2, 2: Sn-3, ..., n-1: S0, n: Null
         stride = -1
-        array_c = BLOCK_N - 1 - array_c
-        offset_block_state = (NUM_BLOCK_N - 1 - off_block_n) * D * E
+        # array_c = BLOCK_N - 1 - array_c
+        array_c = BLOCK_N - BLOCK_C + array_c
+        # offset_block_state = (NUM_BLOCK_N - 1 - off_block_n) * D * E
         # tl.device_print("offset_block_state", offset_block_state)
     else:
         # index map: 0: S0, 1: S1, 2: S2, ..., n-1: Sn-1, n: Null
         stride = 1
         array_c = array_c
-        offset_block_state = off_block_n * D * E
+        # offset_block_state = off_block_n * D * E
 
-    # # index map: 0: S0, 1: S1, 2: S2, ..., n-1: Sn-1, n: Null
+    # index map, assume index starts from 1
+    # reverse = false: 1: S1, 2: S2, ..., n: Sn, n + 1: Null
+    # reverse = true:  1: dS1, 2: dS2, ..., n: dSn, n + 1: Null
     # stride = 1
     # array_c = array_c
-    # offset_block_state = off_block_n * D * E
+    offset_block_state = off_block_n * D * E
 
     k_trans_block_ptr = (
         K
@@ -350,7 +319,7 @@ def _lasd_parallel_state_parallel(
         k_trans_block_ptr += BLOCK_C * H * D * stride
         v_block_ptr += BLOCK_C * H * E * stride
         array_c += BLOCK_C * stride
-        cnt += BLOCK_C
+        cnt += BLOCK_C * stride
 
     tl.store(
         state_block_ptr,
@@ -407,15 +376,15 @@ def _lasd_parallel_state_reduce(
     array_d = tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
 
-    # # if reverse, start from the last block
-    # if REVERSE:
-    #     stride = -1
-    #     states_start = NUM_BLOCK_N * D * E
-    # else:
-    #     stride = 1
-    #     states_start = 0
-    stride = 1
-    states_start = 0
+    # if reverse, start from the last block
+    if REVERSE:
+        stride = -1
+        states_start = NUM_BLOCK_N * D * E
+    else:
+        stride = 1
+        states_start = 0
+    # stride = 1
+    # states_start = 0
 
     # (BLOCK_D, BLOCK_E)
     states_block_ptr = (
@@ -707,18 +676,17 @@ def compute_states(
     e = v.shape[-1]
 
     if ld is None:
-        decay = 1.0
+        decay = (
+            torch.ones((), dtype=torch.float32, device=k.device)
+            .unsqueeze(-1)
+            .unsqueeze(-1)
+        )
     else:
-        decay = torch.exp(ld.float())
+        decay = torch.exp(ld.float()).unsqueeze(-1).unsqueeze(-1)
 
     # local state
-    if initial_state is None:
-        state = torch.zeros(b, h, d, e, dtype=torch.float32, device=k.device)
-    else:
-        state = initial_state.float()
-
     l = (n + BLOCK_N - 1) // BLOCK_N
-    local_states = [state.unsqueeze(2)]
+    local_states = []
     for i in range(l):
         start = i * BLOCK_N
         end = min(start + BLOCK_N, n)
@@ -735,11 +703,16 @@ def compute_states(
     local_states = torch.cat(local_states, dim=2)
 
     # global state
+    if initial_state is None:
+        state = torch.zeros(b, h, d, e, dtype=torch.float32, device=k.device)
+    else:
+        state = initial_state.float()
+
     global_states = [state.unsqueeze(2)]
-    for i in range(l):
+    for i in range(n):
         state_ = torch.einsum("b h d, b h e -> b h d e", k[:, i, :, :], v[:, i, :, :])
         state = decay * state + state_
-        if (i + 1) % BLOCK_N == 0 or (i == l - 1):
+        if (i + 1) % BLOCK_N == 0 or (i == n - 1):
             global_states.append(state.unsqueeze(2))
     global_states = torch.cat(global_states, dim=2)
 
