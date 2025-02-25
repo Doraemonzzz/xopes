@@ -1,6 +1,3 @@
-from typing import Optional
-
-import torch
 import triton
 import triton.language as tl
 
@@ -192,8 +189,6 @@ def _lasd_parallel_state_parallel(
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
-    # tl.cdiv(D, BLOCK_D)
-    # tl.cdiv(E, BLOCK_E)
 
     off_bhn = tl.program_id(0)
     off_bh = off_bhn // NUM_BLOCK_N
@@ -206,6 +201,7 @@ def _lasd_parallel_state_parallel(
     offset_qk = off_b * N * H * D + off_h * D
     offset_vo = off_b * N * H * E + off_h * E
     offset_block_n = off_block_n * BLOCK_N
+    offset_block_n = off_block_n * BLOCK_N
     offset_block_qk = offset_block_n * H * D
     offset_block_vo = offset_block_n * H * E
     offset_block_d = off_block_d * BLOCK_D
@@ -217,25 +213,16 @@ def _lasd_parallel_state_parallel(
     array_d = tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
 
-    # # for reverse, local loop start from the last block
+    # for reverse, local loop start from the last block
     if REVERSE:
-        # index map: 0: Sn-1, 1: Sn-2, 2: Sn-3, ..., n-1: S0, n: Null
         stride = -1
+        # TODO: test speed
         # array_c = BLOCK_N - 1 - array_c
         array_c = BLOCK_N - BLOCK_C + array_c
-        # offset_block_state = (NUM_BLOCK_N - 1 - off_block_n) * D * E
-        # tl.device_print("offset_block_state", offset_block_state)
     else:
-        # index map: 0: S0, 1: S1, 2: S2, ..., n-1: Sn-1, n: Null
         stride = 1
         array_c = array_c
-        # offset_block_state = off_block_n * D * E
 
-    # index map, assume index starts from 1
-    # reverse = false: 1: S1, 2: S2, ..., n: Sn, n + 1: Null
-    # reverse = true:  1: dS1, 2: dS2, ..., n: dSn, n + 1: Null
-    # stride = 1
-    # array_c = array_c
     offset_block_state = off_block_n * D * E
 
     k_trans_block_ptr = (
@@ -284,10 +271,10 @@ def _lasd_parallel_state_parallel(
             last_k_decay = tl.exp(log_decay * array)
 
     state = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
-    # array_c = offset_block_n + tl.arange(0, BLOCK_C)
 
     cnt = offset_block_n
     for i in range(NUM_BLOCK_C):
+        array = offset_block_n + array_c
         mask_c = (offset_block_n + array_c) < N
         k_trans = tl.load(
             k_trans_block_ptr, mask=mask_c[None, :] & mask_d[:, None], other=0.0
@@ -353,7 +340,6 @@ def _lasd_parallel_state_reduce(
     USE_LOG_DECAY: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     REVERSE: tl.constexpr,
-    TRANS: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
@@ -376,17 +362,13 @@ def _lasd_parallel_state_reduce(
     array_d = tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
 
-    # if reverse, start from the last block
     if REVERSE:
         stride = -1
-        states_start = NUM_BLOCK_N * D * E
+        states_start = (NUM_BLOCK_N - 1) * D * E
     else:
         stride = 1
         states_start = 0
-    # stride = 1
-    # states_start = 0
 
-    # (BLOCK_D, BLOCK_E)
     states_block_ptr = (
         STATES
         + offset_states
@@ -395,11 +377,18 @@ def _lasd_parallel_state_reduce(
         + (offset_block_e + array_e[None, :])
     )
 
+    final_states_block_ptr = (
+        STATES
+        + offset_states
+        + NUM_BLOCK_N * D * E
+        + (offset_block_d + array_d[:, None]) * E
+        + (offset_block_e + array_e[None, :])
+    )
+
     mask_d = (array_d + offset_block_d) < D
     mask_e = (array_e + offset_block_e) < E
     mask = mask_d[:, None] & mask_e[None, :]
 
-    c = 1.0
     if USE_LOG_DECAY:
         log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
         block_decay = tl.exp(log_decay * BLOCK_N)
@@ -407,30 +396,21 @@ def _lasd_parallel_state_reduce(
         if L == 0:
             last_decay = block_decay
         else:
-            last_decay = tl.exp(log_decay * L)
-
-        # !!! important
-        if REVERSE:
-            c = tl.exp(-log_decay)
+            # !!! important
+            if REVERSE:
+                last_decay = tl.exp(log_decay * (L - 1))
+            else:
+                last_decay = tl.exp(log_decay * L)
 
     # compute
     if USE_INITIAL_STATE:
-        if TRANS:
-            state_block_ptr = (
-                STATE
-                + offset_state
-                + (offset_block_d + array_d[None, :]) * E
-                + (offset_block_e + array_e[:, None])
-            )
-        else:
-            state_block_ptr = (
-                STATE
-                + offset_state
-                + (offset_block_d + array_d[:, None]) * E
-                + (offset_block_e + array_e[None, :])
-            )
-        # !!! important
-        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32) * c
+        state_block_ptr = (
+            STATE
+            + offset_state
+            + (offset_block_d + array_d[:, None]) * E
+            + (offset_block_e + array_e[None, :])
+        )
+        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32)
     else:
         state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
@@ -442,19 +422,26 @@ def _lasd_parallel_state_reduce(
         )
 
         if USE_LOG_DECAY:
-            if i == NUM_BLOCK_N - 1:
-                state = last_decay * state + current_state
+            if REVERSE:
+                if i == 0:
+                    state = last_decay * state + current_state
+                else:
+                    state = block_decay * state + current_state
             else:
-                state = block_decay * state + current_state
+                if i == NUM_BLOCK_N - 1:
+                    state = last_decay * state + current_state
+                else:
+                    state = block_decay * state + current_state
         else:
             state += current_state
+
         states_block_ptr += D * E * stride
 
-    # !!! important
-    if REVERSE:
-        state *= 1 / c
-
-    tl.store(states_block_ptr, state.to(states_block_ptr.dtype.element_ty), mask=mask)
+    tl.store(
+        final_states_block_ptr,
+        state.to(final_states_block_ptr.dtype.element_ty),
+        mask=mask,
+    )
 
 
 @triton.autotune(
@@ -602,118 +589,3 @@ def _lasd_parallel_inter(
         o.to(o_block_ptr.dtype.element_ty),
         mask=mask_c[:, None] & mask_e[None, :],
     )
-
-
-########## pytorch implementation reference ##########
-def lasd_intra_torch(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    ld: Optional[torch.Tensor] = None,
-    cu_seqlens: Optional[torch.LongTensor] = None,
-    reverse: bool = False,
-):
-    def _lasd_intra(
-        q: torch.Tensor,
-        k: torch.Tensor,
-        v: torch.Tensor,
-        ld: Optional[torch.Tensor] = None,
-    ):
-        b, n, h, d = k.shape
-        e = v.shape[-1]
-        dtype = q.dtype
-
-        q = q.float()
-        k = k.float()
-        v = v.float()
-
-        if ld is None:
-            decay = (
-                torch.ones((), dtype=torch.float32, device=q.device)
-                .unsqueeze(-1)
-                .unsqueeze(-1)
-            )
-        else:
-            decay = torch.exp(ld.float()).unsqueeze(-1).unsqueeze(-1)
-
-        state = torch.zeros(b, h, d, e, dtype=torch.float32, device=q.device)
-        o = []
-        for i in range(n):
-            state_ = torch.einsum(
-                "b h d, b h e -> b h d e", k[:, i, :, :], v[:, i, :, :]
-            )
-            state = decay * state + state_
-            o_ = torch.einsum(
-                "b h d, b h d e -> b h e", q[:, i, :, :], state
-            ).unsqueeze(1)
-            o.append(o_)
-        o = torch.cat(o, dim=1)
-
-        return o.to(dtype)
-
-    if reverse:
-        q = torch.flip(q, dims=[1])
-        k = torch.flip(k, dims=[1])
-        v = torch.flip(v, dims=[1])
-
-    o = _lasd_intra(q, k, v, ld)
-
-    if reverse:
-        o = torch.flip(o, dims=[1])
-
-    return o
-
-
-def compute_states(
-    k: torch.Tensor,
-    v: torch.Tensor,
-    ld: Optional[torch.Tensor] = None,
-    initial_state: Optional[torch.Tensor] = None,
-    BLOCK_N: int = 256,
-    reverse: bool = False,
-):
-    b, n, h, d = k.shape
-    e = v.shape[-1]
-
-    if ld is None:
-        decay = (
-            torch.ones((), dtype=torch.float32, device=k.device)
-            .unsqueeze(-1)
-            .unsqueeze(-1)
-        )
-    else:
-        decay = torch.exp(ld.float()).unsqueeze(-1).unsqueeze(-1)
-
-    # local state
-    l = (n + BLOCK_N - 1) // BLOCK_N
-    local_states = []
-    for i in range(l):
-        start = i * BLOCK_N
-        end = min(start + BLOCK_N, n)
-        m = end - start
-        k_i = k[:, start:end, :, :]
-        v_i = v[:, start:end, :, :]
-        state_i = torch.zeros(b, h, d, e, dtype=torch.float32, device=k.device)
-        for j in range(m):
-            state_ = torch.einsum(
-                "b h d, b h e -> b h d e", k_i[:, j, :, :], v_i[:, j, :, :]
-            )
-            state_i = decay * state_i + state_
-        local_states.append(state_i.unsqueeze(2))
-    local_states = torch.cat(local_states, dim=2)
-
-    # global state
-    if initial_state is None:
-        state = torch.zeros(b, h, d, e, dtype=torch.float32, device=k.device)
-    else:
-        state = initial_state.float()
-
-    global_states = [state.unsqueeze(2)]
-    for i in range(n):
-        state_ = torch.einsum("b h d, b h e -> b h d e", k[:, i, :, :], v[:, i, :, :])
-        state = decay * state + state_
-        if (i + 1) % BLOCK_N == 0 or (i == n - 1):
-            global_states.append(state.unsqueeze(2))
-    global_states = torch.cat(global_states, dim=2)
-
-    return local_states, global_states

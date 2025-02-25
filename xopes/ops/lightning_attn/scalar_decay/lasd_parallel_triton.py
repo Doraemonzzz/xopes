@@ -153,7 +153,6 @@ def lasd_parallel_state_reduce(
     ld: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
-    trans: bool = False,
     MAX_BLOCK_N: int = 256,
     MAX_BLOCK_C: int = 256,
     MAX_BLOCK_E: int = 128,
@@ -195,7 +194,6 @@ def lasd_parallel_state_reduce(
         USE_LOG_DECAY=use_ld,
         USE_INITIAL_STATE=use_initial_state,
         REVERSE=reverse,
-        TRANS=trans,
         BLOCK_N=BLOCK_N,
     )
 
@@ -357,7 +355,6 @@ def lasd_parallel_fwd(
         ld=ld,
         cu_seqlens=cu_seqlens,
         reverse=reverse,
-        trans=trans,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -474,7 +471,6 @@ def lasd_parallel_bwd(
         ld=ld,
         cu_seqlens=cu_seqlens,
         reverse=True,
-        trans=False,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
