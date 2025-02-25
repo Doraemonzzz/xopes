@@ -42,8 +42,8 @@ def get_params():
 
 # @pytest.mark.parametrize("use_initial_state", [True, False])
 # @pytest.mark.parametrize("use_log_decay", [True, False])
-@pytest.mark.parametrize("use_initial_state", [False])
-@pytest.mark.parametrize("use_log_decay", [False])
+@pytest.mark.parametrize("use_initial_state", [True])
+@pytest.mark.parametrize("use_log_decay", [True])
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize(
     "act",

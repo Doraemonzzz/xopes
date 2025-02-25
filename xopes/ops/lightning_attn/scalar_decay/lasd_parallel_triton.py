@@ -207,7 +207,7 @@ def lasd_parallel_inter(
     ld: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
-    trans_states: bool = False,
+    trans: bool = False,
     MAX_BLOCK_N: int = 256,
     MAX_BLOCK_C: int = 256,
     MAX_BLOCK_E: int = 128,
@@ -220,16 +220,6 @@ def lasd_parallel_inter(
     use_cu_seqlens = cu_seqlens is not None
     if use_cu_seqlens:
         b = cu_seqlens.shape[0] - 1
-
-    # MAX_BLOCK_N = triton.next_power_of_2(n)
-    # MAX_BLOCK_C = MAX_BLOCK_N
-    # MAX_BLOCK_E = triton.next_power_of_2(e)
-    # MAX_BLOCK_D = triton.next_power_of_2(d)
-
-    # if n <= 512:
-    #     BLOCK_N = min(MAX_BLOCK_N, 128)
-    # else:
-    #     BLOCK_N = 256
 
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
@@ -267,7 +257,7 @@ def lasd_parallel_inter(
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_LOG_DECAY=use_ld,
         REVERSE=reverse,
-        TRANS_STATES=trans_states,
+        TRANS=trans,
         BLOCK_N=BLOCK_N,
     )
 
@@ -284,22 +274,9 @@ def lasd_parallel_fwd(
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     trans: bool = False,
-    trans_states: bool = False,
 ):
     b, n, h, d = q.shape
     e = v.shape[-1]
-
-    # use_cu_seqlens = cu_seqlens is not None
-    # if use_cu_seqlens:
-    #     b = cu_seqlens.shape[0] - 1
-
-    # use_initial_state = initial_state is not None
-    # use_ld = ld is not None
-
-    # if use_cu_seqlens:
-    #     o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
-    # else:
-    #     o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
 
     MAX_BLOCK_N = triton.next_power_of_2(n)
     MAX_BLOCK_C = MAX_BLOCK_N
@@ -310,9 +287,6 @@ def lasd_parallel_fwd(
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
-
-    # NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
-    # use_pad = n % BLOCK_N != 0
 
     # Step1: Compute intra in parallel, for each chunk, parallel over sub-chunk
     o = lasd_parallel_intra(
@@ -369,8 +343,7 @@ def lasd_parallel_fwd(
         states=states,
         ld=ld,
         cu_seqlens=cu_seqlens,
-        reverse=reverse,
-        trans_states=trans,
+        trans=trans,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -418,7 +391,6 @@ def lasd_parallel_bwd(
     del states
 
     # for dk and dv, use the same states
-
     dk = lasd_parallel_intra(
         q=v,
         k=do,

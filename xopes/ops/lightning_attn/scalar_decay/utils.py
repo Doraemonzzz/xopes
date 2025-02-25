@@ -470,7 +470,7 @@ def _lasd_parallel_inter(
     USE_CU_SEQLENS: tl.constexpr,
     USE_LOG_DECAY: tl.constexpr,
     REVERSE: tl.constexpr,
-    TRANS_STATES: tl.constexpr,
+    TRANS: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
@@ -498,16 +498,6 @@ def _lasd_parallel_inter(
     offset_block_e = off_block_e * BLOCK_E
 
     offset_state = off_bh * (NUM_BLOCK_N + 1) * D * E
-    # if REVERSE:
-    #     # if reverse, the i'th q chunk aligns with the i + 1'th state:
-    #     # q chunk:        0, 1, ..., n - 1
-    #     # state chunk: 0, 1, 2, ..., n
-    #     offset_block_state = (off_block_n + 1) * D * E
-    # else:
-    #     # if not reverse, the i'th q chunk aligns with the i'th state:
-    #     # q chunk:     0, 1, ..., n - 1
-    #     # state chunk: 0, 1, ..., n - 1, n
-    #     offset_block_state = off_block_n * D * E
     offset_block_state = off_block_n * D * E
 
     # compute block ptr and mask
@@ -528,7 +518,7 @@ def _lasd_parallel_inter(
         + (offset_block_c + array_c)[:, None] * H * E
         + (offset_block_e + array_e)[None, :]
     )
-    if TRANS_STATES:
+    if TRANS:
         # if trans_states, the states are stored in the shape of B H L E D, the shape we need to load is D E
         state_block_ptr = (
             STATES
@@ -545,14 +535,7 @@ def _lasd_parallel_inter(
             + array_d[:, None] * E
             + (offset_block_e + array_e)[None, :]
         )
-    # tl.static_print("aaa", q_block_ptr, state_block_ptr)
-    # state_block_ptr = (
-    #     STATES
-    #     + offset_state
-    #     + offset_block_state
-    #     + array_d[:, None] * E
-    #     + (offset_block_e + array_e)[None, :]
-    # )
+
     mask_e = (offset_block_e + array_e) < E
     mask_c = (offset_block_n + offset_block_c + array_c) < N
 
@@ -582,7 +565,10 @@ def _lasd_parallel_inter(
         o += o_
 
         q_block_ptr += BLOCK_D
-        state_block_ptr += BLOCK_D * E
+        if TRANS:
+            state_block_ptr += BLOCK_D
+        else:
+            state_block_ptr += BLOCK_D * E
 
     tl.store(
         o_block_ptr,

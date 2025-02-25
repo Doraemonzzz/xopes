@@ -152,26 +152,60 @@ def compute_states(
 
         return local_states, global_states
 
-    # for i in range(global_states.shape[2]):
-    #     print(i, torch.norm(global_states[:, :, i, :, :]))
-
-    # if reverse:
-    #     k = torch.flip(k, dims=[1])
-    #     v = torch.flip(v, dims=[1])
-
     local_states, global_states = _compute_states(
         k, v, ld, initial_state, BLOCK_N, reverse
     )
 
-    # if reverse:
-    #     # local_states = torch.cat(
-    #     #     [torch.flip(local_states[:, :, :-1], dims=[2]),
-    #     #     local_states[:, :, -1:]],
-    #     #     dim=2
-    #     # )
-    #     global_states = torch.cat(
-    #         [torch.flip(global_states[:, :, :-1], dims=[2]),
-    #         global_states[:, :, -1:]
-    #     ], dim=2)
-
     return local_states, global_states
+
+
+def lasd_inter_torch(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
+    initial_state: Optional[torch.Tensor] = None,
+    BLOCK_N: int = 256,
+):
+    b, n, h, d = k.shape
+    e = v.shape[-1]
+
+    m = (n + BLOCK_N - 1) // BLOCK_N
+    o_intra = []
+    for i in range(m):
+        start = i * BLOCK_N
+        end = min(start + BLOCK_N, n)
+        qi = q[:, start:end, :, :]
+        ki = k[:, start:end, :, :]
+        vi = v[:, start:end, :, :]
+        o_intra_i = lasd_intra_torch(qi, ki, vi, ld)
+        o_intra.append(o_intra_i)
+    o_intra = torch.cat(o_intra, dim=1)
+
+    if ld is None:
+        decay = (
+            torch.ones((), dtype=torch.float32, device=k.device)
+            .unsqueeze(-1)
+            .unsqueeze(-1)
+        )
+    else:
+        decay = torch.exp(ld.float()).unsqueeze(-1).unsqueeze(-1)
+
+    o = []
+    # global state
+    if initial_state is None:
+        state = torch.zeros(b, h, d, e, dtype=torch.float32, device=k.device)
+    else:
+        state = initial_state.float()
+
+    for i in range(n):
+        state_ = torch.einsum("b h d, b h e -> b h d e", k[:, i, :, :], v[:, i, :, :])
+        state = decay * state + state_
+        o_ = torch.einsum("b h d, b h d e -> b h e", q[:, i, :, :], state).unsqueeze(1)
+        o.append(o_)
+
+    o = torch.cat(o, dim=1)
+
+    o_inter = o - o_intra
+
+    return o_inter
