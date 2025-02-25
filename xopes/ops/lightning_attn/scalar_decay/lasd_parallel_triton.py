@@ -33,7 +33,6 @@ def lasd_parallel_intra(
     if use_cu_seqlens:
         b = cu_seqlens.shape[0] - 1
 
-    # initial_state is not None
     use_ld = ld is not None
 
     if use_cu_seqlens:
@@ -44,7 +43,6 @@ def lasd_parallel_intra(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 
-    # Step1: Compute intra in parallel, for each chunk, parallel over sub-chunk
     def grid_partial(MAX_BLOCK_C, MAX_BLOCK_E):
         def grid(meta):
             meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
@@ -227,7 +225,6 @@ def lasd_parallel_inter(
     # use_initial_state = initial_state is not None
     use_ld = ld is not None
 
-    # Step4: Compute inter in parallel, for each chunk, parallel over sub-chunk
     def grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E):
         def grid(meta):
             meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
@@ -363,6 +360,7 @@ def lasd_parallel_bwd(
     initial_state: Optional[torch.Tensor] = None,
     dfinal_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
+    states: Optional[torch.Tensor] = None,
 ):
     b, n, h, d = q.shape
     e = v.shape[-1]
@@ -377,16 +375,110 @@ def lasd_parallel_bwd(
     else:
         BLOCK_N = 256
 
+    """
+    The following code is equivalent to this simple code:
+
     dq, states = lasd_parallel_fwd(
+        q=do,  # b n h e
+        k=v,  # b n h e
+        v=k,  # b n h d
+        ld=ld,
+        initial_state=initial_state.transpose(-1, -2).contiguous(),
+        cu_seqlens=cu_seqlens,
+        trans=True,
+    )
+
+    dk, dstates = lasd_parallel_fwd(
+        q=v,  # b n h e
+        k=do,  # b n h e
+        v=q,  # b n h d
+        ld=ld,
+        initial_state=initial_state,
+        cu_seqlens=cu_seqlens,
+        reverse=True,
+        trans=True,
+    )
+
+    dv, dstates = lasd_parallel_fwd(
+        q=k,  # b n h d
+        k=q,  # b n h d
+        v=do,  # b n h e
+        ld=ld,
+        initial_state=initial_state,
+        cu_seqlens=cu_seqlens,
+        reverse=True,
+        trans=False,
+    )
+    """
+    dq = lasd_parallel_intra(
         q=do,
         k=v,
         v=k,
         ld=ld,
-        initial_state=initial_state,
         cu_seqlens=cu_seqlens,
         reverse=False,
-        trans=False,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
     )
+
+    if states is None:
+        states = lasd_parallel_state_parallel(
+            k=k,
+            v=v,
+            ld=ld,
+            cu_seqlens=cu_seqlens,
+            reverse=False,
+            MAX_BLOCK_N=MAX_BLOCK_N,
+            MAX_BLOCK_C=MAX_BLOCK_C,
+            MAX_BLOCK_E=MAX_BLOCK_E,
+            MAX_BLOCK_D=MAX_BLOCK_D,
+            BLOCK_N=BLOCK_N,
+        )
+
+        states = lasd_parallel_state_reduce(
+            b=b,
+            n=n,
+            h=h,
+            d=d,
+            e=e,
+            states=states,
+            initial_state=initial_state,
+            ld=ld,
+            cu_seqlens=cu_seqlens,
+            reverse=False,
+            MAX_BLOCK_N=MAX_BLOCK_N,
+            MAX_BLOCK_C=MAX_BLOCK_C,
+            MAX_BLOCK_E=MAX_BLOCK_E,
+            MAX_BLOCK_D=MAX_BLOCK_D,
+            BLOCK_N=BLOCK_N,
+        )
+
+    dq = lasd_parallel_inter(
+        q=do,  # b n h e
+        o=dq,  # b n h d
+        states=states,  # b h (m + 1) d e
+        ld=ld,
+        cu_seqlens=cu_seqlens,
+        reverse=False,
+        trans=True,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
+    # dq, states = lasd_parallel_fwd(
+    #     q=do,  # b n h e
+    #     k=v,  # b n h e
+    #     v=k,  # b n h d
+    #     ld=ld,
+    #     initial_state=initial_state,
+    #     cu_seqlens=cu_seqlens,
+    # )
 
     del states
 
@@ -457,7 +549,7 @@ def lasd_parallel_bwd(
         ld=ld,
         cu_seqlens=cu_seqlens,
         reverse=True,
-        trans_states=True,
+        trans=True,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -472,7 +564,7 @@ def lasd_parallel_bwd(
         ld=ld,
         cu_seqlens=cu_seqlens,
         reverse=True,
-        trans_states=False,
+        trans=False,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -500,6 +592,7 @@ class LasdParallelFunction(torch.autograd.Function):
         ld,
         initial_state=None,
         cu_seqlens=None,
+        save_states=True,
     ):
         # Forward computation
         output, states = lasd_parallel_fwd(
@@ -512,8 +605,10 @@ class LasdParallelFunction(torch.autograd.Function):
         )
 
         # Save tensors needed for backward
-        ctx.save_for_backward(q, k, v, ld, initial_state, cu_seqlens)
         final_state = states[:, :, -1, :, :]
+        if not save_states:
+            states = None
+        ctx.save_for_backward(q, k, v, ld, initial_state, cu_seqlens, states)
         del states
 
         return output, final_state
@@ -521,7 +616,7 @@ class LasdParallelFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
     def backward(ctx, do, dfinal_state):
-        q, k, v, ld, initial_state, cu_seqlens = ctx.saved_tensors
+        q, k, v, ld, initial_state, cu_seqlens, states = ctx.saved_tensors
 
         dq, dk, dv, dinitial_state = lasd_parallel_bwd(
             q=q,
@@ -532,6 +627,7 @@ class LasdParallelFunction(torch.autograd.Function):
             initial_state=initial_state,
             dfinal_state=dfinal_state,
             cu_seqlens=cu_seqlens,
+            states=states,
         )
 
         return (
@@ -540,12 +636,6 @@ class LasdParallelFunction(torch.autograd.Function):
             dv,
             None,
             dinitial_state,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
             None,
             None,
         )

@@ -5,13 +5,6 @@ import torch
 import torch.nn.functional as F
 
 
-def get_act_dim(act):
-    if act == "none":
-        return None
-    elif act == "softmax":
-        return -1
-
-
 def lasd_parallel_torch(
     q: torch.Tensor,
     k: torch.Tensor,

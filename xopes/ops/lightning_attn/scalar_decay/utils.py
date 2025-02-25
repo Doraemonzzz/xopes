@@ -101,7 +101,6 @@ def _lasd_parallel_intra(
         if REVERSE:
             # TODO: test this
             # array_kv = BLOCK_N - 1 - array_c
-
             array_kv = BLOCK_N - BLOCK_C + array_c
         else:
             array_kv = array_c
@@ -122,7 +121,7 @@ def _lasd_parallel_intra(
         )
 
         for j in range(NUM_LOOP):
-            mask_kv = (array_kv < N) & (array_kv >= 0)
+            mask_kv = (offset_block_n + array_kv) < N
 
             k_trans = tl.load(
                 k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
@@ -217,7 +216,6 @@ def _lasd_parallel_state_parallel(
     if REVERSE:
         stride = -1
         # TODO: test speed
-        # array_c = BLOCK_N - 1 - array_c
         array_c = BLOCK_N - BLOCK_C + array_c
     else:
         stride = 1
@@ -389,18 +387,23 @@ def _lasd_parallel_state_reduce(
     mask_e = (array_e + offset_block_e) < E
     mask = mask_d[:, None] & mask_e[None, :]
 
+    c = 1.0
     if USE_LOG_DECAY:
         log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
         block_decay = tl.exp(log_decay * BLOCK_N)
         L = N % BLOCK_N
         if L == 0:
-            last_decay = block_decay
+            L = BLOCK_N
+
+        # !!! important
+        if REVERSE:
+            last_decay = tl.exp(log_decay * (L - 1))
         else:
-            # !!! important
-            if REVERSE:
-                last_decay = tl.exp(log_decay * (L - 1))
-            else:
-                last_decay = tl.exp(log_decay * L)
+            last_decay = tl.exp(log_decay * L)
+
+        # !!! important
+        if REVERSE:
+            c = tl.exp(log_decay)
 
     # compute
     if USE_INITIAL_STATE:
@@ -410,7 +413,7 @@ def _lasd_parallel_state_reduce(
             + (offset_block_d + array_d[:, None]) * E
             + (offset_block_e + array_e[None, :])
         )
-        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32)
+        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32)  # * c
     else:
         state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
@@ -436,6 +439,10 @@ def _lasd_parallel_state_reduce(
             state += current_state
 
         states_block_ptr += D * E * stride
+
+    # !!! important
+    if REVERSE:
+        state *= c
 
     tl.store(
         final_states_block_ptr,
@@ -575,3 +582,71 @@ def _lasd_parallel_inter(
         o.to(o_block_ptr.dtype.element_ty),
         mask=mask_c[:, None] & mask_e[None, :],
     )
+
+
+@triton.jit
+def _activation_fwd(X, ACT: tl.constexpr):
+    if ACT != "none":
+        if ACT == "relu":
+            X = tl.where(X >= 0, X, 0)
+        elif ACT == "sigmoid":
+            X = tl.sigmoid(X)
+        elif ACT == "silu":
+            X = X * tl.sigmoid(X)
+        elif ACT == "softmax":
+            X_max = tl.max(X, axis=-1)
+            X_minus_max = X - X_max
+            # softmax
+            numerator = tl.exp(X_minus_max)
+            denominator = tl.sum(numerator, axis=-1, keep_dims=True)
+            X = numerator / denominator
+    return X
+
+
+@triton.jit
+def _activation_bwd(X, DX, ACT: tl.constexpr):
+    if ACT == "relu":
+        DX = tl.where(X >= 0, DX, 0)
+    elif ACT == "sigmoid":
+        sigmoid = tl.sigmoid(X)
+        DX = DX * sigmoid * (1 - sigmoid)
+    elif ACT == "silu":
+        sigmoid = tl.sigmoid(X)
+        DX = DX * sigmoid * (1 + X * (1 - sigmoid))
+    elif ACT == "softmax":
+        X_max = tl.max(X, axis=-1)
+        # for stable
+        X_minus_max = X - X_max
+        # softmax
+        numerator = tl.exp(X_minus_max)
+        denominator = tl.sum(numerator, axis=-1, keep_dims=True)
+        O = numerator / denominator
+        # scalar
+        c = tl.sum(O * DX, axis=-1, keep_dims=True)
+        DX = O * DX - c * O
+
+    return DX
+
+
+@triton.jit
+def _normalization_fwd(X, USE_NORM: tl.constexpr, D: tl.constexpr, EPS: tl.constexpr):
+    if USE_NORM:
+        sigma = tl.sqrt(tl.sum(X * X, axis=-1) / D + EPS)
+        O = (1 / D**0.5) * X / sigma
+    else:
+        O = X
+
+    return O
+
+
+@triton.jit
+def _normalization_bwd(
+    X, DX, USE_NORM: tl.constexpr, D: tl.constexpr, EPS: tl.constexpr
+):
+    if USE_NORM:
+        sigma = tl.sqrt(tl.sum(X * X, axis=-1) / D + EPS)
+        R = X / sigma
+        DR = DX * (1 / D**0.5)
+        DX = 1 / sigma * (DR - R * tl.sum(R * DR, axis=-1) / D)
+
+    return DX

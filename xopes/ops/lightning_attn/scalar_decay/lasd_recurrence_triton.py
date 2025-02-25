@@ -8,74 +8,6 @@ from einops import repeat
 from xopes.utils import contiguous, generate_configs
 
 
-@triton.jit
-def _activation_fwd(X, ACT: tl.constexpr):
-    if ACT != "none":
-        if ACT == "relu":
-            X = tl.where(X >= 0, X, 0)
-        elif ACT == "sigmoid":
-            X = tl.sigmoid(X)
-        elif ACT == "silu":
-            X = X * tl.sigmoid(X)
-        elif ACT == "softmax":
-            X_max = tl.max(X, axis=-1)
-            X_minus_max = X - X_max
-            # softmax
-            numerator = tl.exp(X_minus_max)
-            denominator = tl.sum(numerator, axis=-1, keep_dims=True)
-            X = numerator / denominator
-    return X
-
-
-@triton.jit
-def _activation_bwd(X, DX, ACT: tl.constexpr):
-    if ACT == "relu":
-        DX = tl.where(X >= 0, DX, 0)
-    elif ACT == "sigmoid":
-        sigmoid = tl.sigmoid(X)
-        DX = DX * sigmoid * (1 - sigmoid)
-    elif ACT == "silu":
-        sigmoid = tl.sigmoid(X)
-        DX = DX * sigmoid * (1 + X * (1 - sigmoid))
-    elif ACT == "softmax":
-        X_max = tl.max(X, axis=-1)
-        # for stable
-        X_minus_max = X - X_max
-        # softmax
-        numerator = tl.exp(X_minus_max)
-        denominator = tl.sum(numerator, axis=-1, keep_dims=True)
-        O = numerator / denominator
-        # scalar
-        c = tl.sum(O * DX, axis=-1, keep_dims=True)
-        DX = O * DX - c * O
-
-    return DX
-
-
-@triton.jit
-def _normalization_fwd(X, USE_NORM: tl.constexpr, D: tl.constexpr, EPS: tl.constexpr):
-    if USE_NORM:
-        sigma = tl.sqrt(tl.sum(X * X, axis=-1) / D + EPS)
-        O = (1 / D**0.5) * X / sigma
-    else:
-        O = X
-
-    return O
-
-
-@triton.jit
-def _normalization_bwd(
-    X, DX, USE_NORM: tl.constexpr, D: tl.constexpr, EPS: tl.constexpr
-):
-    if USE_NORM:
-        sigma = tl.sqrt(tl.sum(X * X, axis=-1) / D + EPS)
-        R = X / sigma
-        DR = DX * (1 / D**0.5)
-        DX = 1 / sigma * (DR - R * tl.sum(R * DR, axis=-1) / D)
-
-    return DX
-
-
 @triton.autotune(
     generate_configs(
         {
@@ -99,16 +31,11 @@ def _lasd_recurrence_fwd(
     H: tl.constexpr,
     D: tl.constexpr,
     E: tl.constexpr,
-    Q_ACT: tl.constexpr,
-    K_ACT: tl.constexpr,
-    V_ACT: tl.constexpr,
-    Q_NORM: tl.constexpr,
-    K_NORM: tl.constexpr,
-    V_NORM: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_LOG_DECAY: tl.constexpr,
-    EPS: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -125,18 +52,24 @@ def _lasd_recurrence_fwd(
     offset_state = off_b * H * D * E + off_h * D * E
 
     # compute block ptr
-    array_d = tl.arange(0, D)
-    array_e = tl.arange(0, E)
+    array_d = tl.arange(0, BLOCK_D)
+    array_e = tl.arange(0, BLOCK_E)
     q_block_ptr = Q + offset_qk + array_d
     k_block_ptr = K + offset_qk + array_d
     v_block_ptr = V + offset_vo + array_e
     o_block_ptr = O + offset_vo + array_e
+    mask_d = array_d < D
+    mask_e = array_e < E
 
     if USE_INITIAL_STATE:
         state_block_ptr = STATE + offset_state + array_d[:, None] * E + array_e[None, :]
-        state = tl.load(state_block_ptr).to(tl.float32)  # D E
+        state = tl.load(
+            state_block_ptr, mask=mask_d[:, None] & mask_e[None, :], other=0.0
+        ).to(
+            tl.float32
+        )  # D E
     else:
-        state = tl.zeros((D, E), dtype=tl.float32)
+        state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
     final_state_block_ptr = (
         FINAL_STATE + offset_state + array_d[:, None] * E + array_e[None, :]
@@ -150,22 +83,17 @@ def _lasd_recurrence_fwd(
     # compute
     for i in range(N):
         # load
-        q = tl.load(q_block_ptr).to(tl.float32)
-        k = tl.load(k_block_ptr).to(tl.float32)
-        v = tl.load(v_block_ptr).to(tl.float32)
-        q = _normalization_fwd(q, Q_NORM, D, EPS)
-        k = _normalization_fwd(k, K_NORM, D, EPS)
-        v = _normalization_fwd(v, V_NORM, E, EPS)
-        q = _activation_fwd(q, Q_ACT)
-        k = _activation_fwd(k, K_ACT)
-        v = _activation_fwd(v, V_ACT)
+        q = tl.load(q_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+
         if USE_LOG_DECAY:
             state = decay * state + k[:, None] * v[None, :]
         else:
             state += k[:, None] * v[None, :]
         o = tl.sum(q[:, None] * state, axis=0)
 
-        tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty))
+        tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_e)
 
         # update
         q_block_ptr += H * D
@@ -173,7 +101,11 @@ def _lasd_recurrence_fwd(
         v_block_ptr += H * E
         o_block_ptr += H * E
 
-    tl.store(final_state_block_ptr, state.to(final_state_block_ptr.dtype.element_ty))
+    tl.store(
+        final_state_block_ptr,
+        state.to(final_state_block_ptr.dtype.element_ty),
+        mask=mask_d[:, None] & mask_e[None, :],
+    )
 
 
 def lasd_recurrence_fwd(
@@ -183,13 +115,6 @@ def lasd_recurrence_fwd(
     ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
-    q_act: str = "none",
-    k_act: str = "none",
-    v_act: str = "none",
-    q_norm: bool = False,
-    k_norm: bool = False,
-    v_norm: bool = False,
-    eps: float = 1e-6,
 ):
     b, n, h, d = q.shape
     e = v.shape[-1]
@@ -201,6 +126,8 @@ def lasd_recurrence_fwd(
     use_initial_state = initial_state is not None
     final_state = torch.empty((b, h, d, e), dtype=torch.float32, device=q.device)
     use_ld = ld is not None
+    BLOCK_D = triton.next_power_of_2(d)
+    BLOCK_E = triton.next_power_of_2(e)
 
     if use_cu_seqlens:
         o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
@@ -224,16 +151,11 @@ def lasd_recurrence_fwd(
         H=h,
         D=d,
         E=e,
-        Q_ACT=q_act,
-        K_ACT=k_act,
-        V_ACT=v_act,
-        Q_NORM=q_norm,
-        K_NORM=k_norm,
-        V_NORM=v_norm,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
         USE_LOG_DECAY=use_ld,
-        EPS=eps,
+        BLOCK_D=BLOCK_D,
+        BLOCK_E=BLOCK_E,
     )
 
     return o, final_state
@@ -267,17 +189,12 @@ def _lasd_recurrence_bwd_dq(
     H: tl.constexpr,
     D: tl.constexpr,
     E: tl.constexpr,
-    Q_ACT: tl.constexpr,
-    K_ACT: tl.constexpr,
-    V_ACT: tl.constexpr,
-    Q_NORM: tl.constexpr,
-    K_NORM: tl.constexpr,
-    V_NORM: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_DFINAL_STATE: tl.constexpr,
     USE_LOG_DECAY: tl.constexpr,
-    EPS: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -294,19 +211,25 @@ def _lasd_recurrence_bwd_dq(
     offset_state = off_b * H * D * E + off_h * D * E
 
     # compute block ptr
-    array_d = tl.arange(0, D)
-    array_e = tl.arange(0, E)
-    q_block_ptr = Q + offset_qk + array_d
+    array_d = tl.arange(0, BLOCK_D)
+    array_e = tl.arange(0, BLOCK_E)
+    Q + offset_qk + array_d
     k_block_ptr = K + offset_qk + array_d
     v_block_ptr = V + offset_vo + array_e
     do_block_ptr = DO + offset_vo + array_e
     dq_block_ptr = DQ + offset_qk + array_d
+    mask_d = array_d < D
+    mask_e = array_e < E
 
     if USE_INITIAL_STATE:
         state_block_ptr = STATE + offset_state + array_d[:, None] * E + array_e[None, :]
-        state = tl.load(state_block_ptr).to(tl.float32)  # D E
+        state = tl.load(
+            state_block_ptr, mask=mask_d[:, None] & mask_e[None, :], other=0.0
+        ).to(
+            tl.float32
+        )  # D E
     else:
-        state = tl.zeros((D, E), dtype=tl.float32)
+        state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
     if USE_LOG_DECAY:
         log_decay_block_ptr = LOG_DECAY + off_h
@@ -316,26 +239,15 @@ def _lasd_recurrence_bwd_dq(
     # compute
     for i in range(N):
         # load
-        do = tl.load(do_block_ptr).to(tl.float32)
-        k = tl.load(k_block_ptr).to(tl.float32)
-        v = tl.load(v_block_ptr).to(tl.float32)
-        k = _normalization_fwd(k, K_NORM, D, EPS)
-        v = _normalization_fwd(v, V_NORM, E, EPS)
-        k = _activation_fwd(k, K_ACT)
-        v = _activation_fwd(v, V_ACT)
+        do = tl.load(do_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         if USE_LOG_DECAY:
             state = decay * state + k[:, None] * v[None, :]
         else:
             state += k[:, None] * v[None, :]
         dq = tl.sum(do[None, :] * state, axis=-1)
-
-        if Q_ACT != "none" or Q_NORM:
-            q = tl.load(q_block_ptr).to(tl.float32)
-            dq = _activation_bwd(q, dq, Q_ACT)
-            dq = _normalization_bwd(q, dq, Q_NORM, D, EPS)
-            q_block_ptr += H * D
-
-        tl.store(dq_block_ptr, dq.to(dq_block_ptr.dtype.element_ty))
+        tl.store(dq_block_ptr, dq.to(dq_block_ptr.dtype.element_ty), mask=mask_d)
 
         # update
         k_block_ptr += H * D
@@ -372,17 +284,12 @@ def _lasd_recurrence_bwd_dk_dv(
     H: tl.constexpr,
     D: tl.constexpr,
     E: tl.constexpr,
-    Q_ACT: tl.constexpr,
-    K_ACT: tl.constexpr,
-    V_ACT: tl.constexpr,
-    Q_NORM: tl.constexpr,
-    K_NORM: tl.constexpr,
-    V_NORM: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_DFINAL_STATE: tl.constexpr,
     USE_LOG_DECAY: tl.constexpr,
-    EPS: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -399,22 +306,28 @@ def _lasd_recurrence_bwd_dk_dv(
     offset_state = off_b * H * D * E + off_h * D * E
 
     # compute block ptr
-    array_d = tl.arange(0, D)
-    array_e = tl.arange(0, E)
+    array_d = tl.arange(0, BLOCK_D)
+    array_e = tl.arange(0, BLOCK_E)
     q_block_ptr = Q + offset_qk + array_d
     k_block_ptr = K + offset_qk + array_d
     v_block_ptr = V + offset_vo + array_e
     do_block_ptr = DO + offset_vo + array_e
     dk_block_ptr = DK + offset_qk + array_d
     dv_block_ptr = DV + offset_vo + array_e
+    mask_d = array_d < D
+    mask_e = array_e < E
 
     if USE_DFINAL_STATE:
         dstate_block_ptr = (
             DSTATE + offset_state + array_d[:, None] * E + array_e[None, :]
         )
-        dstate = tl.load(dstate_block_ptr).to(tl.float32)  # D E
+        dstate = tl.load(
+            dstate_block_ptr, mask=mask_d[:, None] & mask_e[None, :], other=0.0
+        ).to(
+            tl.float32
+        )  # D E
     else:
-        dstate = tl.zeros((D, E), dtype=tl.float32)
+        dstate = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
     if USE_LOG_DECAY:
         log_decay_block_ptr = LOG_DECAY + off_h
@@ -432,32 +345,22 @@ def _lasd_recurrence_bwd_dk_dv(
         dv_block_ptr -= H * E
 
         # load
-        do = tl.load(do_block_ptr).to(tl.float32)
-        q = tl.load(q_block_ptr).to(tl.float32)
-        q = _normalization_fwd(q, Q_NORM, D, EPS)
-        q = _activation_fwd(q, Q_ACT)
+        do = tl.load(do_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        q = tl.load(q_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+
         # !!! IMPORTANT
         if i > 0:
             if USE_LOG_DECAY:
                 dstate = decay * dstate
         dstate += q[:, None] * do[None, :]
         # compute k and v
-        k = tl.load(k_block_ptr).to(tl.float32)
-        v = tl.load(v_block_ptr).to(tl.float32)
-        k_ = _normalization_fwd(k, K_NORM, D, EPS)
-        v_ = _normalization_fwd(v, V_NORM, E, EPS)
-        k_ = _activation_fwd(k_, K_ACT)
-        v_ = _activation_fwd(v_, V_ACT)
-        dk = tl.sum(dstate * v_[None, :], axis=-1)
-        dv = tl.sum(dstate * k_[:, None], axis=0)
-        # norm and act
-        dk = _activation_bwd(k, dk, K_ACT)
-        dv = _activation_bwd(v, dv, V_ACT)
-        dk = _normalization_bwd(k, dk, K_NORM, D, EPS)
-        dv = _normalization_bwd(v, dv, V_NORM, E, EPS)
+        k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        dk = tl.sum(dstate * v[None, :], axis=-1)
+        dv = tl.sum(dstate * k[:, None], axis=0)
 
-        tl.store(dk_block_ptr, dk.to(dk_block_ptr.dtype.element_ty))
-        tl.store(dv_block_ptr, dv.to(dv_block_ptr.dtype.element_ty))
+        tl.store(dk_block_ptr, dk.to(dk_block_ptr.dtype.element_ty), mask=mask_d)
+        tl.store(dv_block_ptr, dv.to(dv_block_ptr.dtype.element_ty), mask=mask_e)
 
     # !!! IMPORTANT
     if USE_LOG_DECAY:
@@ -470,6 +373,7 @@ def _lasd_recurrence_bwd_dk_dv(
         tl.store(
             dinitial_state_block_ptr,
             dstate.to(dinitial_state_block_ptr.dtype.element_ty),
+            mask=mask_d[:, None] & mask_e[None, :],
         )
 
 
@@ -483,13 +387,6 @@ def lasd_recurrence_bwd(
     do: torch.Tensor,
     dfinal_state: torch.Tensor,
     cu_seqlens: torch.LongTensor,
-    q_act: str = "none",
-    k_act: str = "none",
-    v_act: str = "none",
-    q_norm: bool = False,
-    k_norm: bool = False,
-    v_norm: bool = False,
-    eps: float = 1e-6,
 ):
     b, n, h, d = q.shape
     e = v.shape[-1]
@@ -501,6 +398,8 @@ def lasd_recurrence_bwd(
     use_initial_state = initial_state is not None
     use_dfinal_state = dfinal_state is not None
     use_ld = ld is not None
+    BLOCK_D = triton.next_power_of_2(d)
+    BLOCK_E = triton.next_power_of_2(e)
 
     dq = torch.empty_like(q)
     dk = torch.empty_like(k)
@@ -532,17 +431,12 @@ def lasd_recurrence_bwd(
         H=h,
         D=d,
         E=e,
-        Q_ACT=q_act,
-        K_ACT=k_act,
-        V_ACT=v_act,
-        Q_NORM=q_norm,
-        K_NORM=k_norm,
-        V_NORM=v_norm,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
         USE_DFINAL_STATE=use_dfinal_state,
         USE_LOG_DECAY=use_ld,
-        EPS=eps,
+        BLOCK_D=BLOCK_D,
+        BLOCK_E=BLOCK_E,
     )
 
     _lasd_recurrence_bwd_dk_dv[grid](
@@ -564,17 +458,12 @@ def lasd_recurrence_bwd(
         H=h,
         D=d,
         E=e,
-        Q_ACT=q_act,
-        K_ACT=k_act,
-        V_ACT=v_act,
-        Q_NORM=q_norm,
-        K_NORM=k_norm,
-        V_NORM=v_norm,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
         USE_DFINAL_STATE=use_dfinal_state,
         USE_LOG_DECAY=use_ld,
-        EPS=eps,
+        BLOCK_D=BLOCK_D,
+        BLOCK_E=BLOCK_E,
     )
 
     return dq, dk, dv, dinitial_state
@@ -591,23 +480,7 @@ class LasdRecurrenceFunction(torch.autograd.Function):
         ld,
         initial_state=None,
         cu_seqlens=None,
-        q_act="none",
-        k_act="none",
-        v_act="none",
-        q_norm=False,
-        k_norm=False,
-        v_norm=False,
-        eps=1e-6,
     ):
-        # Save non-tensor inputs for backward
-        ctx.q_act = q_act
-        ctx.k_act = k_act
-        ctx.v_act = v_act
-        ctx.q_norm = q_norm
-        ctx.k_norm = k_norm
-        ctx.v_norm = v_norm
-        ctx.eps = eps
-
         # Forward computation
         output, final_state = lasd_recurrence_fwd(
             q=q,
@@ -616,13 +489,6 @@ class LasdRecurrenceFunction(torch.autograd.Function):
             ld=ld,
             initial_state=initial_state,
             cu_seqlens=cu_seqlens,
-            q_act=q_act,
-            k_act=k_act,
-            v_act=v_act,
-            q_norm=q_norm,
-            k_norm=k_norm,
-            v_norm=v_norm,
-            eps=eps,
         )
 
         # Save tensors needed for backward
@@ -634,13 +500,6 @@ class LasdRecurrenceFunction(torch.autograd.Function):
     @contiguous
     def backward(ctx, do, dfinal_state):
         q, k, v, ld, initial_state, final_state, cu_seqlens = ctx.saved_tensors
-        q_act = ctx.q_act
-        k_act = ctx.k_act
-        v_act = ctx.v_act
-        q_norm = ctx.q_norm
-        k_norm = ctx.k_norm
-        v_norm = ctx.v_norm
-        eps = ctx.eps
 
         dq, dk, dv, dinitial_state = lasd_recurrence_bwd(
             q=q,
@@ -652,13 +511,6 @@ class LasdRecurrenceFunction(torch.autograd.Function):
             do=do,
             dfinal_state=dfinal_state,
             cu_seqlens=cu_seqlens,
-            q_act=q_act,
-            k_act=k_act,
-            v_act=v_act,
-            q_norm=q_norm,
-            k_norm=k_norm,
-            v_norm=v_norm,
-            eps=eps,
         )
 
         return (
@@ -685,13 +537,6 @@ def lasd_recurrence_triton(
     ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
-    q_act: str = "none",
-    k_act: str = "none",
-    v_act: str = "none",
-    q_norm: bool = False,
-    k_norm: bool = False,
-    v_norm: bool = False,
-    eps: float = 1e-6,
 ):
     """
     Apply Lightning Attention Recurrence with Scalar Decay in Triton.
@@ -703,13 +548,7 @@ def lasd_recurrence_triton(
         ld: Logarithmic decay tensor of shape (H,)
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
-        q_act: Activation function for query
-        k_act: Activation function for key
-        v_act: Activation function for value
-        q_norm: Normalize query
-        k_norm: Normalize key
-        v_norm: Normalize value
-        eps: Epsilon for numerical stability
+
     Returns:
         output: Tensor of shape (B, N, H, E)
         state: Tensor of shape (B, H, D, E)
@@ -732,13 +571,6 @@ def lasd_recurrence_triton(
         ld,
         initial_state,
         cu_seqlens,
-        q_act,
-        k_act,
-        v_act,
-        q_norm,
-        k_norm,
-        v_norm,
-        eps,
     )
 
 

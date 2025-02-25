@@ -50,6 +50,7 @@ def test_compute_states(shape, use_ld, use_initial_state, reverse, dtype):
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
     BLOCK_N = 64
+    MAX_BLOCK_C = BLOCK_N
 
     # Get thresholds based on dtype
     atol, rtol = get_threshold(dtype)

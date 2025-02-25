@@ -6,7 +6,7 @@ import triton
 from xopes.ops.lightning_attn.scalar_decay.lasd_parallel_triton import (
     lasd_parallel_intra,
 )
-from xopes.ops.lightning_attn.scalar_decay.utils import lasd_intra_torch
+from xopes.ops.lightning_attn.scalar_decay.torch_utils import lasd_intra_torch
 from xopes.utils import get_threshold
 
 

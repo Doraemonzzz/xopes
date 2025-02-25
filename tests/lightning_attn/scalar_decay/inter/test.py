@@ -53,6 +53,7 @@ def test_lasd_inter(shape, use_ld, use_initial_state, trans, dtype):
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
     BLOCK_N = 64
+    MAX_BLOCK_C = BLOCK_N
 
     # Compute using reference implementation
     o_inter_torch = lasd_inter_torch(

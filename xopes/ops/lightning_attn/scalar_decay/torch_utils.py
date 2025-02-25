@@ -136,6 +136,10 @@ def compute_states(
             else:
                 state = decay * state + state_
 
+            # !!! important
+            if reverse and i == n - 1:
+                state = decay * state
+
             if (i + 1 - c) % BLOCK_N == 0 or (i == n - 1):
                 global_states.append(state.unsqueeze(2))
 
