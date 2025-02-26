@@ -222,7 +222,6 @@ def lasd_parallel_inter(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 
-    # use_initial_state = initial_state is not None
     use_ld = ld is not None
 
     def grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E):
@@ -470,15 +469,6 @@ def lasd_parallel_bwd(
         MAX_BLOCK_D=MAX_BLOCK_D,
         BLOCK_N=BLOCK_N,
     )
-
-    # dq, states = lasd_parallel_fwd(
-    #     q=do,  # b n h e
-    #     k=v,  # b n h e
-    #     v=k,  # b n h d
-    #     ld=ld,
-    #     initial_state=initial_state,
-    #     cu_seqlens=cu_seqlens,
-    # )
 
     del states
 

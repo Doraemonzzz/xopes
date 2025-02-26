@@ -216,7 +216,10 @@ def _lasd_parallel_state_parallel(
     if REVERSE:
         stride = -1
         # TODO: test speed
-        array_c = BLOCK_N - BLOCK_C + array_c
+        # BLOCK_N - BLOCK_C, ... , BLOCK_N - 1
+        # array_c = BLOCK_N - BLOCK_C + array_c
+        # BLOCK_N - 1, ... , BLOCK_N - BLOCK_C
+        array_c = BLOCK_N - 1 - array_c
     else:
         stride = 1
         array_c = array_c
@@ -252,7 +255,9 @@ def _lasd_parallel_state_parallel(
         log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
         block_decay = tl.exp(log_decay * BLOCK_C)
         if REVERSE:
-            k_decay = tl.exp(log_decay * tl.arange(0, BLOCK_C))
+            # k_decay = tl.exp(log_decay * tl.arange(0, BLOCK_C))
+
+            k_decay = tl.exp(log_decay * (BLOCK_C - 1 - tl.arange(0, BLOCK_C)))
         else:
             k_decay = tl.exp(log_decay * (BLOCK_C - 1 - tl.arange(0, BLOCK_C)))
 
@@ -273,7 +278,7 @@ def _lasd_parallel_state_parallel(
     cnt = offset_block_n
     for i in range(NUM_BLOCK_C):
         array = offset_block_n + array_c
-        mask_c = (offset_block_n + array_c) < N
+        mask_c = array < N
         k_trans = tl.load(
             k_trans_block_ptr, mask=mask_c[None, :] & mask_d[:, None], other=0.0
         )
@@ -396,10 +401,7 @@ def _lasd_parallel_state_reduce(
             L = BLOCK_N
 
         # !!! important
-        if REVERSE:
-            last_decay = tl.exp(log_decay * (L - 1))
-        else:
-            last_decay = tl.exp(log_decay * L)
+        last_decay = tl.exp(log_decay * L)
 
         # !!! important
         if REVERSE:
@@ -413,7 +415,8 @@ def _lasd_parallel_state_reduce(
             + (offset_block_d + array_d[:, None]) * E
             + (offset_block_e + array_e[None, :])
         )
-        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32)  # * c
+        # !!! important
+        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32) / c
     else:
         state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
@@ -441,8 +444,7 @@ def _lasd_parallel_state_reduce(
         states_block_ptr += D * E * stride
 
     # !!! important
-    if REVERSE:
-        state *= c
+    state *= c
 
     tl.store(
         final_states_block_ptr,
@@ -550,9 +552,16 @@ def _lasd_parallel_inter(
         log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
         array_c = tl.arange(0, BLOCK_C)
         if REVERSE:
-            q_decay = tl.exp(
-                log_decay * (BLOCK_N - (offset_block_c + array_c[:, None]))
-            )
+            if off_block_n == NUM_BLOCK_N - 1:
+                array = (
+                    BLOCK_N
+                    - (offset_block_c + array_c[:, None])
+                    - (BLOCK_N - N % BLOCK_N) % BLOCK_N
+                )
+                array = tl.where(array >= 0, array, 0)
+            else:
+                array = BLOCK_N - (offset_block_c + array_c[:, None])
+            q_decay = tl.exp(log_decay * array)
         else:
             q_decay = tl.exp(log_decay * (offset_block_c + array_c[:, None] + 1))
 
