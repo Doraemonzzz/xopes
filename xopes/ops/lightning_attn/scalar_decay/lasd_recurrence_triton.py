@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import triton
@@ -537,7 +537,8 @@ def lasd_recurrence_triton(
     ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
-):
+    **kwargs,
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply Lightning Attention Recurrence with Scalar Decay in Triton.
 
@@ -553,14 +554,12 @@ def lasd_recurrence_triton(
         output: Tensor of shape (B, N, H, E)
         state: Tensor of shape (B, H, D, E)
     """
+    b = q.shape[0]
+    use_cu_seqlens = cu_seqlens is not None
+    if use_cu_seqlens:
+        b = cu_seqlens.shape[0] - 1
     if initial_state is not None:
-        b = q.shape[0]
-        use_cu_seqlens = cu_seqlens is not None
-        if use_cu_seqlens:
-            b = cu_seqlens.shape[0] - 1
         # treat for varlen training
-        if initial_state.shape[0] == 1:
-            initial_state = initial_state.squeeze(0)
         if len(initial_state.shape) == 3:
             initial_state = repeat(initial_state, "h d e -> b h d e", b=b).contiguous()
 

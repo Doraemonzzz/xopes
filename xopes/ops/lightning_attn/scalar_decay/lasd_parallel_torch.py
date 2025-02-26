@@ -12,6 +12,7 @@ def lasd_parallel_torch(
     ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
+    **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply Lightning Attention with Scalar Decay in Pytorch.
