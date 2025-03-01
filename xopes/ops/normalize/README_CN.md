@@ -1,4 +1,4 @@
-# Normalize
+# Normalize with residual or gate
 
 对于输入$\mathbf x\in \mathbb R^d$，本节讨论各种normalize的算法，算法定义为：
 $$
@@ -11,15 +11,26 @@ $$
 $$
 （其中最后一个等式是为了减少数值精度带来的影响。）
 
-其中$c\in\mathbb R, \mathbf w, \mathbf b\in \mathbb R^d$，$\mathbf x_1 = \mathbf x$或者$\mathbf x_1 =\mathbf x- \bar {\mathbf x},\bar {\mathbf x}=(\sum_{i=1}^d x_i)/d$。特别的，我们考虑如下算子：
+其中$c\in\mathbb R, \mathbf w, \mathbf b\in \mathbb R^d$，$\mathbf x_1 = \mathbf x$或者$\mathbf x_1 =\mathbf x- \bar {\mathbf x},\bar {\mathbf x}=(\sum_{i=1}^d x_i)/d$。
+
+
+
+我们考虑两类算子，其中一类包含残差链接，我们称为residual with residual：
 $$
 \mathbf o= f(\mathbf x + \mathbf y).
 $$
 其中$\mathbf y$为残差分支，这在Transformer中很常见。当不使用$\mathbf w, \mathbf b$时，等价于$\mathbf w=\mathbf b=\mathbf 1$；当不使用$\mathbf y$时，等价于$\mathbf y=\mathbf 0$。
 
+另一类为residual with gate：
+$$
+\mathbf o = f(\mathbf x  \odot g(\mathbf y)) \text{ or }
+\mathbf o = f(\mathbf x)  \odot g(\mathbf y) .
+$$
 
 
-## Forward
+## Normalize with residual
+
+### Forward
 
 输入：$\mathbf x, \mathbf y, \mathbf w, \mathbf b, c$，其中$c$是常数，不可学。
 
@@ -38,7 +49,7 @@ $$
 
 
 
-## Backward
+### Backward
 
 输入：$\mathbf {do}$。
 
@@ -74,7 +85,9 @@ $$
 \end{aligned}
 $$
 
-## Fuse Normalize and Residual
+
+
+### Fuse Normalize and Residual
 
 下面考虑对于Transformer layer，Fuse Normalize and Residual应该如何实现。
 
@@ -157,7 +170,9 @@ $$
 $$
 所以结论成立。
 
-### 反向传播更新
+
+
+#### 反向传播更新
 
 注意到此时函数的输入为输出为：
 $$
@@ -168,5 +183,69 @@ $$
 \begin{aligned}
 \mathbf {dx} & = \mathbf {dx} + \mathbf {dr}, \\
 \mathbf {dy}  &= \mathbf {dx} .
+\end{aligned}
+$$
+
+
+## Normalize with residual
+
+### Forward
+
+输入：$\mathbf x, \mathbf y, \mathbf w, \mathbf b, c$，其中$c$是常数，不可学。
+
+计算：
+$$
+\begin{aligned}
+\mathbf p  & =\mathbf x\odot \mathbf g(\mathbf y) ,\mathbf p   =\mathbf x \\
+\mathbf q &= \mathbf p, \mathrm{or}, \\
+\mathbf q&=\mathbf p-\left(\sum_{i=1}^d p_i\right)/d,\\
+\sigma&= \sqrt{\mathbf q^\top \mathbf q/d}, \\
+\mathbf r&= \mathbf q /\sigma, \\
+\mathbf o_1&=(c/\sqrt d)\times\mathbf r \odot \mathbf w + \mathbf b, \\
+\mathbf o& = \mathbf o_1, \mathrm{or}, \mathbf o=\mathbf o_1 \odot g(\mathbf y).
+
+\end{aligned}
+$$
+
+
+
+### Backward
+
+输入：$\mathbf {do}$。
+
+计算：
+$$
+\begin{aligned}
+\mathbf {do} & = \mathbf {do}  , \mathrm{or}, \mathbf {do}= \mathbf {do} \odot \mathbf g(\mathbf {y}),  \\
+\mathbf {db}&= \mathbf {do},\\
+\mathbf {dw}&= \mathbf {do} \odot (c/\sqrt d\times \mathbf r),  \\
+\mathbf {d r}&= \mathbf {do} \odot (c /\sqrt d\times \mathbf w),\\
+\frac{\partial r_i}{\partial q_j}
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \frac{\partial \sigma}{\partial q_j}  \\
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \left(1/2 \times  (\mathbf q^\top \mathbf q)^{-1/2}\times 2 q_j /\sqrt d \right)   \\
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \left( \sigma^{-1}/\sqrt d\times q_j /\sqrt d \right)   \\
+&= 1_{i=j}/\sigma - q_iq_j /\sigma^3 /d   \\
+&=1/\sigma  (1_{i=j}-r_i r_j /d)   \\
+
+\frac{\partial \mathbf r}{\partial \mathbf q}
+&= 1/\sigma (\mathbf I- \mathbf r \mathbf r^\top / d) \\
+
+
+\mathbf {dq}
+&= \left(\frac{\partial \mathbf r}{\partial \mathbf q} \right)^\top \mathbf {dr}  \\
+&=1/\sigma (\mathbf I- \mathbf r \mathbf r^\top / d) \mathbf {dr}  \\
+&=1/\sigma  \left( \mathbf {dr}  - (\mathbf r^\top \mathbf {dr})\mathbf r /d   \right)\\
+\mathbf {dp} &= \mathbf {dq}, \mathrm{or}, \\
+\mathbf {d}p_k& = \sum_{i=1}^d \mathbf {d}q_i \frac{\partial q_i }{\partial p_k} \\
+& = \sum_{i=1}^d \mathbf {d}q_i (\mathbf 1_{i=k}-1/d) \\
+&=  \mathbf d q_k-1/d \left( \sum_{i=1}^d \mathbf {d}q_i  \right)\\
+\mathbf {dp}&=\mathbf {dq}-\bar{\mathbf {dq}},\\
+\mathbf {dx}& = \mathbf {dp},\\
+\mathbf {dy}& = \mathbf {dp}, \\
+
+\mathbf {dy} &= g'(\mathbf y) \odot \mathbf {do} \odot \mathbf o_1, \mathrm{or}, \\
+
+\mathbf {dy} &=g'(\mathbf y) \odot \mathbf {dp} \odot \mathbf x.
+
 \end{aligned}
 $$

@@ -3,12 +3,17 @@ from typing import Optional, Tuple
 import torch
 from einops import rearrange
 
+from xopes.ops.act import act_torch
+
 
 def normalize_torch(
     x: torch.Tensor,
     weight: Optional[torch.Tensor] = None,
     bias: Optional[torch.Tensor] = None,
     residual: Optional[torch.Tensor] = None,
+    gate: Optional[torch.Tensor] = None,
+    gate_act: str = "sigmoid",
+    gate_pos: str = "pre",
     c: float = 1.0,
     eps: float = 1e-6,
     use_mean: bool = False,
@@ -23,6 +28,9 @@ def normalize_torch(
         weight: Weight tensor
         bias: Bias tensor
         residual: Residual tensor
+        gate: Gate tensor
+        gate_act: Activation function for gate
+        gate_pos: Position of gate
         c: Normalization constant
         eps: Epsilon value for numerical stability
         use_mean: Whether to use mean normalization
@@ -41,12 +49,23 @@ def normalize_torch(
         weight = weight.float()
     if bias is not None:
         bias = bias.float()
+
     use_residual = residual is not None
+    use_gate = gate is not None
+    assert not (
+        use_residual and use_gate
+    ), "gate and residual cannot be used at the same time"
+
     if use_residual:
         residual = residual.float()
         x = x + residual
         # update residual
         residual = x
+
+    if use_gate:
+        gate = act_torch(gate, gate_act)
+        if gate_pos == "pre":
+            x = x * gate
 
     x_ = rearrange(x, "... (g e) -> ... g e", g=num_groups)
 
@@ -70,6 +89,9 @@ def normalize_torch(
     else:
         if return_residual:
             residual = x.to(dtype)
+
+    if use_gate and gate_pos == "post":
+        o = o * gate
 
     if use_residual or return_residual:
         return o, residual

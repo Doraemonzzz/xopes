@@ -103,9 +103,7 @@ configs = [
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    for b in [4]
-    for h in [32]
-    for d in [128]
+    for b, h, d in [[4, 32, 128], [4, 32, 64], [1, 32, 128], [4, 1, 128]]
 ]
 
 

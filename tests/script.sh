@@ -23,6 +23,7 @@ folder=normalize/layer_norm
 folder=normalize/group_norm
 folder=normalize/group_rms_norm
 folder=normalize/group_srms_norm
+folder=normalize/normalize_fuse_gate # 250301 add
 
 # ##### householder 250101
 # folder=householder
@@ -43,17 +44,17 @@ folder=normalize/group_srms_norm
 # ##### oplr 250109
 # folder=out_product_linear_recurrence/data_dependent_decay
 
-##### lrpe 250114
+# ##### lrpe 250114
 # folder=lrpe/cosine/_1d
-folder=lrpe/cosine/_1d_mpa
+# folder=lrpe/cosine/_1d_mpa
 # folder=lrpe/rotate/_1d
 # folder=lrpe/rotate/_1d_mpa
 
 # ##### act 250116
 # folder=act
 
-##### lce 250119
-folder=linear_cross_entropy
+# ##### lce 250119
+# folder=linear_cross_entropy
 
 # ##### lavd 250122
 # folder=lightning_attn/vector_decay
@@ -65,8 +66,8 @@ folder=linear_cross_entropy
 # ##### gate_linear 250201
 # folder=gate_linear
 
-##### lasd 250219
-folder=lightning_attn/scalar_decay
+# ##### lasd 250219
+# folder=lightning_attn/scalar_decay
 
 ##### lasd_intra 250224
 # folder=lightning_attn/scalar_decay/intra
