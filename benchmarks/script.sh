@@ -15,6 +15,7 @@ folder=lrpe/cosine/_1d
 # folder=normalize/rms_norm
 # folder=normalize/group_norm
 # folder=normalize/layer_norm
+folder=normalize/normalize_with_gate
 
 # ##### householder 250101
 # folder=householder
@@ -38,7 +39,7 @@ folder=lrpe/cosine/_1d
 # folder=oplr/ddd
 
 # ##### lrpe 250115
-folder=lrpe/cosine/_1d
+# folder=lrpe/cosine/_1d
 # folder=lrpe/rotate/_1d
 
 # ##### act 250116
@@ -55,7 +56,7 @@ folder=lrpe/cosine/_1d
 # folder=lightning_attention/vector_decay
 
 # ##### lasd 250220
-folder=lightning_attention/scalar_decay
+# folder=lightning_attention/scalar_decay
 
 mkdir -p $folder/log
 
