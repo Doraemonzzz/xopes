@@ -194,19 +194,34 @@ $$
 输入：$\mathbf x, \mathbf y, \mathbf w, \mathbf b, c$，其中$c$是常数，不可学。
 
 计算：
+
+pre-gate:
 $$
 \begin{aligned}
-\mathbf p  & =\mathbf x\odot \mathbf g(\mathbf y) ,\mathbf p   =\mathbf x \\
+\mathbf p  & =\mathbf x\odot  g(\mathbf y),\\
 \mathbf q &= \mathbf p, \mathrm{or}, \\
 \mathbf q&=\mathbf p-\left(\sum_{i=1}^d p_i\right)/d,\\
 \sigma&= \sqrt{\mathbf q^\top \mathbf q/d}, \\
 \mathbf r&= \mathbf q /\sigma, \\
 \mathbf o_1&=(c/\sqrt d)\times\mathbf r \odot \mathbf w + \mathbf b, \\
-\mathbf o& = \mathbf o_1, \mathrm{or}, \mathbf o=\mathbf o_1 \odot g(\mathbf y).
+\mathbf o& = \mathbf o_1.
 
 \end{aligned}
 $$
 
+post-gate:
+$$
+\begin{aligned}
+\mathbf p  & =\mathbf x,\\
+\mathbf q &= \mathbf p, \mathrm{or}, \\
+\mathbf q&=\mathbf p-\left(\sum_{i=1}^d p_i\right)/d,\\
+\sigma&= \sqrt{\mathbf q^\top \mathbf q/d}, \\
+\mathbf r&= \mathbf q /\sigma, \\
+\mathbf o_1&=(c/\sqrt d)\times\mathbf r \odot \mathbf w + \mathbf b, \\
+\mathbf o& = \mathbf o_1\odot g(\mathbf y).
+
+\end{aligned}
+$$
 
 
 ### Backward
@@ -214,12 +229,49 @@ $$
 输入：$\mathbf {do}$。
 
 计算：
+
+pre-gate:
 $$
 \begin{aligned}
-\mathbf {do} & = \mathbf {do}  , \mathrm{or}, \mathbf {do}= \mathbf {do} \odot \mathbf g(\mathbf {y}),  \\
-\mathbf {db}&= \mathbf {do},\\
-\mathbf {dw}&= \mathbf {do} \odot (c/\sqrt d\times \mathbf r),  \\
-\mathbf {d r}&= \mathbf {do} \odot (c /\sqrt d\times \mathbf w),\\
+\mathbf {do}_1 & = \mathbf {do} ,  \\
+\mathbf {db}&= \mathbf {do}_1,\\
+\mathbf {dw}&= \mathbf {do}_1 \odot (c/\sqrt d\times \mathbf r),  \\
+\mathbf {d r}&= \mathbf {do}_1 \odot (c /\sqrt d\times \mathbf w),\\
+\frac{\partial r_i}{\partial q_j}
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \frac{\partial \sigma}{\partial q_j}  \\
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \left(1/2 \times  (\mathbf q^\top \mathbf q)^{-1/2}\times 2 q_j /\sqrt d \right)   \\
+&= 1_{i=j}/\sigma - q_i /\sigma^2 \left( \sigma^{-1}/\sqrt d\times q_j /\sqrt d \right)   \\
+&= 1_{i=j}/\sigma - q_iq_j /\sigma^3 /d   \\
+&=1/\sigma  (1_{i=j}-r_i r_j /d)   \\
+
+\frac{\partial \mathbf r}{\partial \mathbf q}
+&= 1/\sigma (\mathbf I- \mathbf r \mathbf r^\top / d) \\
+
+
+\mathbf {dq}
+&= \left(\frac{\partial \mathbf r}{\partial \mathbf q} \right)^\top \mathbf {dr}  \\
+&=1/\sigma (\mathbf I- \mathbf r \mathbf r^\top / d) \mathbf {dr}  \\
+&=1/\sigma  \left( \mathbf {dr}  - (\mathbf r^\top \mathbf {dr})\mathbf r /d   \right)\\
+\mathbf {dp} &= \mathbf {dq}, \mathrm{or}, \\
+\mathbf {d}p_k& = \sum_{i=1}^d \mathbf {d}q_i \frac{\partial q_i }{\partial p_k} \\
+& = \sum_{i=1}^d \mathbf {d}q_i (\mathbf 1_{i=k}-1/d) \\
+&=  \mathbf d q_k-1/d \left( \sum_{i=1}^d \mathbf {d}q_i  \right)\\
+\mathbf {dp}&=\mathbf {dq}-\bar{\mathbf {dq}},\\
+\mathbf {dx}& = \mathbf {dp} \odot g(\mathbf y) ,\\
+\mathbf {dy}& = \mathbf {dp} \odot \mathbf x, \\
+
+\mathbf {dy} &= g'(\mathbf y) \odot \mathbf {dy}.
+
+\end{aligned}
+$$
+
+post-gate:
+$$
+\begin{aligned}
+\mathbf {do}_1 & = \mathbf {do} \odot g(\mathbf y) ,  \\
+\mathbf {db}&= \mathbf {do}_1,\\
+\mathbf {dw}&= \mathbf {do}_1 \odot (c/\sqrt d\times \mathbf r),  \\
+\mathbf {d r}&= \mathbf {do}_1 \odot (c /\sqrt d\times \mathbf w),\\
 \frac{\partial r_i}{\partial q_j}
 &= 1_{i=j}/\sigma - q_i /\sigma^2 \frac{\partial \sigma}{\partial q_j}  \\
 &= 1_{i=j}/\sigma - q_i /\sigma^2 \left(1/2 \times  (\mathbf q^\top \mathbf q)^{-1/2}\times 2 q_j /\sqrt d \right)   \\
@@ -241,11 +293,9 @@ $$
 &=  \mathbf d q_k-1/d \left( \sum_{i=1}^d \mathbf {d}q_i  \right)\\
 \mathbf {dp}&=\mathbf {dq}-\bar{\mathbf {dq}},\\
 \mathbf {dx}& = \mathbf {dp},\\
-\mathbf {dy}& = \mathbf {dp}, \\
+\mathbf {dy}& = \mathbf {do} \odot \mathbf o_1, \\
 
-\mathbf {dy} &= g'(\mathbf y) \odot \mathbf {do} \odot \mathbf o_1, \mathrm{or}, \\
-
-\mathbf {dy} &=g'(\mathbf y) \odot \mathbf {dp} \odot \mathbf x.
+\mathbf {dy} &= g'(\mathbf y) \odot \mathbf {dy}.
 
 \end{aligned}
 $$
