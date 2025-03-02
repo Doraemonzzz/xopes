@@ -67,7 +67,7 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=gate_linear
 
 # ##### lasd 250219
-# folder=lightning_attn/scalar_decay
+folder=lightning_attn/scalar_decay
 
 ##### lasd_intra 250224
 # folder=lightning_attn/scalar_decay/intra

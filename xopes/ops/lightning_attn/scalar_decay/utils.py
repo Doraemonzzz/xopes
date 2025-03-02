@@ -254,12 +254,7 @@ def _lasd_parallel_state_parallel(
     if USE_LOG_DECAY:
         log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
         block_decay = tl.exp(log_decay * BLOCK_C)
-        if REVERSE:
-            # k_decay = tl.exp(log_decay * tl.arange(0, BLOCK_C))
-
-            k_decay = tl.exp(log_decay * (BLOCK_C - 1 - tl.arange(0, BLOCK_C)))
-        else:
-            k_decay = tl.exp(log_decay * (BLOCK_C - 1 - tl.arange(0, BLOCK_C)))
+        k_decay = tl.exp(log_decay * (BLOCK_C - 1 - tl.arange(0, BLOCK_C)))
 
         if USE_PAD:
             M = N % BLOCK_C

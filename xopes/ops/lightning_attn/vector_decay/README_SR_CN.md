@@ -75,7 +75,7 @@ $$
 \mathbf q_t^\top
 \left[\frac{ \alpha_t \beta_t^\top}{ \alpha_j \beta_j^\top}\odot  \mathbf k_j\mathbf v_j ^\top  \right]
 
-&= \left[(\mathbf q_t\odot \alpha_t)(\mathbf k_j / \alpha_j)(\mathbf v_j /\beta_j)^\top \right]\odot \beta_t.
+&= \left[(\mathbf q_t\odot \alpha_t)^\top(\mathbf k_j / \alpha_j)(\mathbf v_j /\beta_j)^\top \right]\odot \beta_t.
 \end{aligned}
 $$
 所以：
@@ -616,6 +616,8 @@ $$
 \end{aligned}
 $$
 
+
+
 ### 化简
 
 最后，我们考虑对$\mathbf {dk}_t, \mathbf {dv}_t$进行化简，我们假设$\mathbf{ds}_{n+1}\triangleq \mathbf{ds}_{n},\lambda_{n+1}=\mathbf 1_d, \gamma_{n+1}=\mathbf 1_e,\mathbf q_0=\mathbf 0_d, \mathbf{do}_0 = \mathbf 0_e$，考虑如下递推：
@@ -676,3 +678,68 @@ $$
 
  \end{aligned}
 $$
+
+
+
+## 整体化简
+
+注意到反向的递推为（注意，这里第一行的$\mathbf {ds}_n$表示state梯度的输入）：
+$$
+\begin{aligned}
+\mathbf {ds}_{n+1} &= \mathbf {ds}_n ,  \\
+\mathbf {ds}_n  &= \mathbf {ds}_{n+1} + \mathbf{q}_n\mathbf {do}^\top_n, \\
+
+\mathbf {ds}_t &= [\lambda_{t+1}\gamma_{t+1}^\top] \odot \mathbf{ds}_{t+1} + \mathbf{q}_t\mathbf {do}^\top_t, \\
+t&=1,\ldots, n- 1, \\
+\mathbf {ds}_0&= [\lambda_{1}\gamma_{1}^\top] \odot \mathbf {ds}_1,  \\
+
+\mathbf{dq}_t^\top &= \mathbf {do}_t^\top \mathbf s_t ^\top  ,\\
+
+\mathbf{dk}_t^\top &=\mathbf v_t^\top \mathbf {ds}_t^\top,  \\
+
+\mathbf{dv}_t& = \mathbf k_t^\top \mathbf {ds}_t.
+\end{aligned}
+$$
+假设我们定义fwd的函数为：
+$$
+\mathbf O, \bar {\mathbf s}= f(\mathbf Q, \mathbf K, \mathbf V, \Lambda, \Gamma, \mathbf s, \mathrm{reverse}).
+$$
+其中$\mathbf Q\in \mathbb R^{n\times d}, \mathbf K\in \mathbb R^{n\times d}, \mathbf V\in \mathbb R^{n\times e},\Lambda\in \mathbb R^{n\times d},\Gamma \in \mathbb R^{n\times e},\mathbf O\in \mathbb R^{n\times e}, \mathbf s\in \mathbb R^{d\times e}$：
+
+如果reverse = false:
+$$
+\begin{aligned}
+\mathbf s_0 &=\mathbf s, \\
+\mathbf s_t &= [\lambda_t\gamma_t^\top]\odot   \mathbf s_{t-1} + \mathbf k_t \mathbf v_t^\top \\
+&\triangleq  \mathbf a_t \odot \mathbf {s}_{t-1} + \mathbf k_t\mathbf v_t^\top, \\
+t&=1,\ldots, n, \\
+\mathbf o_t^\top&= \mathbf q_t^\top\mathbf s_t \in \mathbb R^{e}, \\
+\bar {\mathbf s} &= \mathbf s_n.
+\end{aligned}
+$$
+如果reverse = true:
+$$
+\begin{aligned}
+\mathbf {s}_{n+1} &= \mathbf {s} ,  \\
+\mathbf {s}_n  &= \mathbf {s}_{n+1} + \mathbf{k}_n\mathbf {v}^\top_n, \\
+
+\mathbf {s}_t &= [\lambda_{t+1}\gamma_{t+1}^\top] \odot \mathbf{ds}_{t+1} + \mathbf{k}_t\mathbf {v}^\top_t, \\
+t&=1,\ldots, n- 1, \\
+\mathbf {s}_0&= \lambda \mathbf {s}_1, \\
+\bar{\mathbf s}& = \mathbf s_0.
+
+\end{aligned}
+$$
+那么：
+$$
+\begin{aligned}
+\mathbf O,  {\mathbf s}_n &= f(\mathbf Q, \mathbf K, \mathbf V, \Lambda, \Gamma, \mathbf s, \mathrm{false}), \\
+
+\mathbf {dQ}, {\mathbf s}_n &= f(\mathbf {dO}, \mathbf V, \mathbf K, \Gamma, \Lambda, \mathbf s, \mathrm{false}), \\
+
+\mathbf {dK},  {\mathbf {ds}_0} &= f(\mathbf {V}, \mathbf {dO}, \mathbf Q, \Gamma, \Lambda, \mathbf {ds}, \mathrm{true}), \\
+
+\mathbf {dV},  {\mathbf {ds}_0} &= f(\mathbf {K}, \mathbf Q,\mathbf {dO} , \Lambda, \Gamma, \mathbf {ds}, \mathrm{true}).
+\end{aligned}
+$$
+所以我们可以用一个函数解决前向反向计算的问题。

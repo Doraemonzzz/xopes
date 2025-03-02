@@ -22,7 +22,7 @@ $$
 反向：
 $$
 \begin{aligned}
-\mathbf {ds}_{n+1}& \in \mathbb R^{d\times e}, \\
+\mathbf {ds}_{n+1}& = \mathbf {ds}_{n} \in \mathbb R^{d\times e}, \\
 
 \lambda_{n+1} &=\mathbf 1_d, \\
 \gamma_{n+1} &=\mathbf 1_e,  \\
@@ -66,7 +66,7 @@ c &=n/k,  \\
 \begin{cases}
 1, & \text{if }  i \ge  j \\
 0, & \text{if }  i < j
-\end{cases}.
+\end{cases} .
 \end{aligned}
 $$
 
@@ -220,7 +220,7 @@ $$
 
 
 
-## Backward
+## Backward(TODO)
 
 我们考虑$\mathbf {dS}_i$的递推，
 $$
@@ -245,9 +245,10 @@ $$
 $$
 
 
+
 ## 算法
 
-在后续讨论中，我们将计算中包含$\mathbf M$的称为chunk内。
+在后续讨论中，我们将计算中包含$\mathbf M$的称为intra，不包含$\mathbf M$称为inter。
 
 - 方案1：直接使用上述公式进行分块循环；
   - 问题：chunk内的计算有数值问题；
@@ -255,6 +256,144 @@ $$
   - 问题：chunk内比较慢；
 - 方案3：chunk内通过并行+循环同时计算，然后做递归；
   - 问题：可能并行粒度不够；
-- 方案4：对方案3进行两轮，
-  - 第一轮使用$c=16$，大规模并行，然后递推；
-  - 第二轮使用$c=128$，并行，然后递归；
+- 方案4：
+  - 对intra进行并行；
+    - intra内部进行sub chunk并行，增加并行度；
+  - 对local state进行并行计算；
+  - 对global state进行循环计算；
+  - 并且计算inter；
+
+
+
+## 整体化简
+
+首先考虑到：
+$$
+\begin{aligned}
+\Pi_{i,j} &= \prod_{s=(i-1)c+1}^{(i-1)c+j}\lambda_s, \\
+&= \alpha_{(i-1)c+j}/ \alpha_{(i-1)c} \\
+\Rho_{i,j} &= \prod_{s=(i-1)c+1}^{(i-1)c+j}\gamma_s, \\
+&=  \beta_{(i-1)c+j}/ \beta_{(i-1)c}, \\
+
+
+\Theta_{i,j} &= \prod_{s=(i-1)c+j}^{ic}\lambda_s, \\
+&= \alpha_{ic}/ \alpha_{(i-1)c+j-1}, \\
+\Phi_{i,j} &=  \prod_{s=(i-1)c+j}^{ic}\gamma_s, \\
+&= \beta_{ic}/ \beta_{(i-1)c+j-1}.
+
+
+\end{aligned}
+$$
+不难看出，$\Pi_i$是第$i$个chunk decay的`cumprod`，$\Theta_i$是第$i$个chunk decay的`revcumprod`，$\Rho_i, \Phi_i $同理，为了后续方便讨论，以及保持其对应关系，我们记：
+$$
+\begin{aligned}
+\Theta_i &= \bar \Pi_i, \\
+\Phi_i &=  \bar \Rho_i.
+\end{aligned}
+$$
+那么前向即为：
+$$
+\begin{aligned}
+
+\bar{\mathbf Q}_i &=  \mathbf Q_i \odot \mathbf \Pi_i,  \\
+\bar{\mathbf K}_i &=  \mathbf K_i / \mathbf \Pi_i,  \\
+\bar{\mathbf V}_i &=  \mathbf V_i / \mathbf \Rho_i,  \\
+
+\tilde{\mathbf K}_i &=  \mathbf K_i \odot \bar \Pi_i,  \\
+\tilde{\mathbf V}_i &=  \mathbf V_i \odot  \bar  \Rho_i,  \\
+
+\bar{\mathbf O}_i&=  \bar{\mathbf Q}_i  \mathbf S_i  + [ [\bar{\mathbf Q}_i \bar{\mathbf K}_i^\top] \odot \mathbf M ]
+\bar{\mathbf V}_i, \\
+\mathbf O_i &= \bar{\mathbf O}_i \odot \mathbf\Rho_i, \\
+\mathbf S_{i+1}&= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} + \tilde{\mathbf K}_{i+1} \tilde{\mathbf V}_{i+1}^\top \\
+&\triangleq [\Pi_{i+1, c}\Rho_{i+1,c}^\top] \odot \mathbf S_{i}+ \tilde{\mathbf K}_{i+1}  \tilde{\mathbf V}_{i+1}^\top.
+\end{aligned}
+$$
+接着回顾**Sequential Recurrence**的整体化简部分，我们知道前向传播可以被描述为：
+$$
+
+\mathbf O, \bar {\mathbf s}= f(\mathbf Q, \mathbf K, \mathbf V, \Lambda, \Gamma, \mathbf s, \mathrm{reverse}).
+
+$$
+其中计算公式如上式所示。
+
+根据对应关系：
+$$
+\begin{aligned}
+\mathbf O,  {\mathbf s}_n &= f(\mathbf Q, \mathbf K, \mathbf V, \Lambda, \Gamma, \mathbf s, \mathrm{false}), \\
+
+\mathbf {dQ}, {\mathbf s}_n &= f(\mathbf {dO}, \mathbf V, \mathbf K, \Gamma, \Lambda, \mathbf s, \mathrm{false}), \\
+
+\mathbf {dK},  {\mathbf {ds}_0} &= f(\mathbf {V}, \mathbf {dO}, \mathbf Q, \Gamma, \Lambda, \mathbf {ds}, \mathrm{true}), \\
+
+\mathbf {dV},  {\mathbf {ds}_0} &= f(\mathbf {K}, \mathbf Q,\mathbf {dO} , \Lambda, \Gamma, \mathbf {ds}, \mathrm{true}).
+\end{aligned}
+$$
+代入可得$\mathbf {dQ}$的计算公式：
+$$
+\begin{aligned}
+
+\mathbf{d\bar O}_i &= \mathbf{d O}_i \odot \mathbf \Rho_i,  \\
+\bar{\mathbf V}_i &=  \mathbf V_i / \mathbf \Rho_i,  \\
+\bar{\mathbf K}_i &=  \mathbf K_i / \mathbf \Pi_i,  \\
+
+\tilde{\mathbf V}_i &=  \mathbf V_i \odot  \bar  \Rho_i,  \\
+\tilde{\mathbf K}_i &=  \mathbf K_i \odot \bar \Pi_i,  \\
+
+
+{\mathbf {d \bar Q}}_i&= \mathbf{d\bar O}_i  \mathbf S_i^\top  + [ [\mathbf{d\bar O}_i \bar{\mathbf V}_i^\top] \odot \mathbf M ]
+\bar{\mathbf K}_i, \\
+{\mathbf {d Q}}_i &={\mathbf {d \bar Q}}_i \odot \mathbf\Pi_i, \\
+\mathbf S_{i+1}&= [\Pi_{i, c}\Rho_{i,c}^\top] \odot \mathbf S_{i}+ \tilde{\mathbf K}_{i+1}  \tilde{\mathbf V}_{i+1}^\top.
+\end{aligned}
+$$
+以及当revser = true时，$\Pi_i$和$\bar \Pi_i$的关系对调，所以：
+$$
+\begin{aligned}
+
+\tilde{\mathbf V}_i &=  \mathbf V_i \odot  \bar  \Rho_i,  \\
+
+\mathbf{d\tilde O}_i &= \mathbf{d O}_i /  \bar \Rho_i,  \\
+
+\tilde {\mathbf Q}_i &=  \mathbf Q_i / \bar \Pi_i,  \\
+
+\mathbf{d\bar O}_i &= \mathbf{d O}_i \odot   \Rho_i,  \\
+
+\bar {\mathbf Q}_i &=  \mathbf Q_i \odot   \Pi_i,  \\
+
+
+\mathbf {d \bar K}_i &= \mathbf{\tilde V}_i \mathbf {dS}_i^\top
++ [[ \mathbf{\tilde V}_i \mathbf{d\tilde O}_i^\top ]\odot \mathbf M^\top] \mathbf {\tilde Q}_i,\\
+
+
+\mathbf {dS}_{i}&=
+
+ [\bar \Pi_{i+1, c}\Rho_{i+1,c}^\top] \odot \mathbf {dS}_{i+1}+ \tilde{\mathbf K}_{i} \tilde{\mathbf V}_{i}^\top.
+\end{aligned}
+$$
+以及：
+$$
+\begin{aligned}
+
+\tilde{\mathbf K}_i &=  \mathbf K_i \odot  \bar  \Pi_i,  \\
+
+\tilde {\mathbf Q}_i &=  \mathbf Q_i / \bar \Pi_i,  \\
+
+\mathbf{d\tilde O}_i &= \mathbf{d O}_i /  \bar \Rho_i,  \\
+
+
+\bar {\mathbf Q}_i &=  \mathbf Q_i \odot   \Pi_i,  \\
+
+
+\mathbf{d\bar O}_i &= \mathbf{d O}_i \odot   \Rho_i,  \\
+
+
+\mathbf {d \bar V}_i &= \mathbf{\tilde K}_i \mathbf {dS}_i
++ [[  \mathbf{\tilde K}_i \mathbf{\tilde Q}_i^\top]\odot \mathbf M^\top ] \mathbf {d\tilde O}_i,\\
+
+
+\mathbf {dS}_{i}&=
+
+ [\Pi_{i+1, c}\Rho_{i+1,c}^\top] \odot \mathbf {dS}_{i+1}+ \tilde{\mathbf K}_{i} \tilde{\mathbf V}_{i}^\top.
+\end{aligned}
+$$
