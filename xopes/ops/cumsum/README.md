@@ -16,11 +16,11 @@ x1 + x2 + ... + xn-1 + xn
 
 **Backward:**
 ```
-do1 + do2 + ... + don-1 + don
-do1 + do2 + ... + don-1
+don + don-1 + ... + do2 + do1
+don + don-1 + ... + do2
 ...
-do1 + do2
-do1
+don + don-1
+don
 ```
 
 **Reverse = True:**

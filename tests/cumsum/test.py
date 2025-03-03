@@ -14,10 +14,23 @@ def get_params():
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("dim", [-1, 0, 1])
 @pytest.mark.parametrize("reverse", [True, False])
+@pytest.mark.parametrize("use_cu_seqlens", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test(shape, dim, reverse, dtype):
+def test(shape, dim, reverse, use_cu_seqlens, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
+
+    if use_cu_seqlens:
+        n = int(torch.randint(1024, 4096, (1,)).item())
+        m = n // 5
+        cu_seqlens = torch.tensor(
+            [0, m - 2, 2 * m + 1, 3 * m - 1, 4 * m, n], dtype=torch.long, device=device
+        )
+        d = 768
+        dim = 0
+        shape = (n, d)
+    else:
+        cu_seqlens = None
 
     # Generate input tensor
     x = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
@@ -28,8 +41,8 @@ def test(shape, dim, reverse, dtype):
         return
 
     # forward
-    o_cumsum_torch = cumsum_torch(x, dim=dim, reverse=reverse)
-    o_cumsum_triton = cumsum_triton(x, dim=dim, reverse=reverse)
+    o_cumsum_torch = cumsum_torch(x, dim=dim, reverse=reverse, cu_seqlens=cu_seqlens)
+    o_cumsum_triton = cumsum_triton(x, dim=dim, reverse=reverse, cu_seqlens=cu_seqlens)
 
     # backward
     o_cumsum_torch.backward(do, retain_graph=True)

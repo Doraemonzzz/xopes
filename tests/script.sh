@@ -60,19 +60,22 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=lightning_attn/vector_decay
 # folder=lightning_attn/vector_decay_unit_test
 
-# ##### cumsum 250129
-# folder=cumsum
+##### cumsum 250129
+folder=cumsum
 
 # ##### gate_linear 250201
 # folder=gate_linear
 
 # ##### lasd 250219
-folder=lightning_attn/scalar_decay
+# folder=lightning_attn/scalar_decay
 
 ##### lasd_intra 250224
 # folder=lightning_attn/scalar_decay/intra
 # folder=lightning_attn/scalar_decay/state
 # folder=lightning_attn/scalar_decay/inter
+
+##### lasd3
+folder=lightning_attn/scalar_data_dependent_decay
 
 mkdir -p $folder/log
 
