@@ -329,7 +329,7 @@ $$
 \mathbf {dV},  {\mathbf {ds}_0} &= f(\mathbf {K}, \mathbf Q,\mathbf {dO} , \Lambda, \Gamma, \mathbf {ds}, \mathrm{true}).
 \end{aligned}
 $$
-代入可得$\mathbf {dQ}$的计算公式：
+代入可得$\mathbf{dQ}$的计算公式：
 $$
 \begin{aligned}
 
@@ -365,10 +365,12 @@ $$
 \mathbf {d \bar K}_i &= \mathbf{\tilde V}_i \mathbf {dS}_i^\top
 + [[ \mathbf{\tilde V}_i \mathbf{d\tilde O}_i^\top ]\odot \mathbf M^\top] \mathbf {\tilde Q}_i,\\
 
+\mathbf {d K}_i &= \mathbf {d \bar K}_i \odot \bar \Pi_i, \\
+
 
 \mathbf {dS}_{i}&=
 
- [\bar \Pi_{i+1, c}\Rho_{i+1,c}^\top] \odot \mathbf {dS}_{i+1}+ \tilde{\mathbf K}_{i} \tilde{\mathbf V}_{i}^\top.
+ [\bar \Pi_{i+1, c}\Rho_{i+1,c}^\top] \odot \mathbf {dS}_{i+1}+ {\mathbf {\bar Q}}_{i} {\mathbf {d\bar O}}_{i}^\top.
 \end{aligned}
 $$
 以及：
@@ -391,9 +393,9 @@ $$
 \mathbf {d \bar V}_i &= \mathbf{\tilde K}_i \mathbf {dS}_i
 + [[  \mathbf{\tilde K}_i \mathbf{\tilde Q}_i^\top]\odot \mathbf M^\top ] \mathbf {d\tilde O}_i,\\
 
-
+\mathbf {d V}_i &= \mathbf {d \bar V}_i \odot \bar \Rho_i, \\
 \mathbf {dS}_{i}&=
 
- [\Pi_{i+1, c}\Rho_{i+1,c}^\top] \odot \mathbf {dS}_{i+1}+ \tilde{\mathbf K}_{i} \tilde{\mathbf V}_{i}^\top.
+ [\Pi_{i+1, c}\Rho_{i+1,c}^\top] \odot \mathbf {dS}_{i+1}+ {\mathbf {\bar Q}}_{i} {\mathbf {d\bar O}}_{i}^\top.
 \end{aligned}
 $$

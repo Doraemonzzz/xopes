@@ -1,4 +1,4 @@
-# Lightning Attention with Scalar Decay(Sequential Recurrence)
+# Lightning Attention with Data-Dependent Decay(Sequential Recurrence)
 
 给定输入$\mathbf Q\in \mathbb R^{n\times d}, \mathbf K\in \mathbb R^{n\times d}, \mathbf V\in \mathbb R^{n\times e}$，初起始state $\mathbf s_0$，以及Decay $\Lambda\in \mathbb R^{n}$，我们执行如下递归：
 $$
