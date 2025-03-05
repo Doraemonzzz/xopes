@@ -8,6 +8,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - gate_linear
 
 # Plan
+- chunk cumsum
+  - [x] 250305
 - normalize with gate
   - [x] 250301
 - lightning attn scalar decay
