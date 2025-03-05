@@ -288,6 +288,14 @@ def lasd_parallel_fwd(
         o: Output tensor of shape (B, N, H, E)
         states: Final state tensor
     """
+    b, n, h, d = q.shape
+    e = v.shape[-1]
+
+    MAX_BLOCK_N = triton.next_power_of_2(n)
+    MAX_BLOCK_C = MAX_BLOCK_N
+    MAX_BLOCK_E = triton.next_power_of_2(e)
+    MAX_BLOCK_D = triton.next_power_of_2(d)
+
     if n <= 512:
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
