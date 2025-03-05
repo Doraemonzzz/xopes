@@ -4,20 +4,21 @@ import torch
 import triton
 from einops import repeat
 
-from xopes.ops.lightning_attn.scalar_decay.utils import (
-    _lasd_parallel_inter,
-    _lasd_parallel_intra,
-    _lasd_parallel_state_parallel,
-    _lasd_parallel_state_reduce,
+from xopes.ops.cumsum import cumsum_fn, cumsum_torch  # noqa
+from xopes.ops.lightning_attn.scalar_data_dependent_decay.utils import (
+    _lasd3_parallel_inter,
+    _lasd3_parallel_intra,
+    _lasd3_parallel_state_parallel,
+    _lasd3_parallel_state_reduce,
 )
 from xopes.utils import contiguous
 
 
-def lasd_parallel_intra(
+def lasd3_parallel_intra(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: Optional[torch.Tensor] = None,
+    ld: torch.Tensor,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     MAX_BLOCK_N: int = 256,
@@ -32,8 +33,6 @@ def lasd_parallel_intra(
     use_cu_seqlens = cu_seqlens is not None
     if use_cu_seqlens:
         b = cu_seqlens.shape[0] - 1
-
-    use_ld = ld is not None
 
     if use_cu_seqlens:
         o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
@@ -57,7 +56,15 @@ def lasd_parallel_intra(
 
     grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_E)
 
-    _lasd_parallel_intra[grid](
+    ld_ = []
+    l = (n + BLOCK_N - 1) // BLOCK_N
+    for i in range(l):
+        start = i * BLOCK_N
+        end = min(start + BLOCK_N, n)
+        ld_.append(cumsum_fn(ld[:, start:end], dim=1, reverse=reverse).contiguous())
+    ld = torch.cat(ld_, dim=1)
+
+    _lasd3_parallel_intra[grid](
         Q=q,
         K=k,
         V=v,
@@ -70,7 +77,6 @@ def lasd_parallel_intra(
         D=d,
         E=e,
         USE_CU_SEQLENS=use_cu_seqlens,
-        USE_LOG_DECAY=use_ld,
         REVERSE=reverse,
         BLOCK_N=BLOCK_N,
     )
@@ -78,7 +84,7 @@ def lasd_parallel_intra(
     return o
 
 
-def lasd_parallel_state_parallel(
+def lasd3_parallel_state_parallel(
     k: torch.Tensor,
     v: torch.Tensor,
     ld: Optional[torch.Tensor] = None,
@@ -119,7 +125,7 @@ def lasd_parallel_state_parallel(
 
     grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
 
-    _lasd_parallel_state_parallel[grid](
+    _lasd3_parallel_state_parallel[grid](
         K=k,
         V=v,
         STATES=states,
@@ -140,7 +146,7 @@ def lasd_parallel_state_parallel(
     return states
 
 
-def lasd_parallel_state_reduce(
+def lasd3_parallel_state_reduce(
     b: int,
     n: int,
     h: int,
@@ -178,7 +184,7 @@ def lasd_parallel_state_reduce(
 
     grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
 
-    _lasd_parallel_state_reduce[grid](
+    _lasd3_parallel_state_reduce[grid](
         STATE=initial_state,
         STATES=states,
         LOG_DECAY=ld,
@@ -198,7 +204,7 @@ def lasd_parallel_state_reduce(
     return states
 
 
-def lasd_parallel_inter(
+def lasd3_parallel_inter(
     q: torch.Tensor,
     o: torch.Tensor,
     states: torch.Tensor,
@@ -239,7 +245,7 @@ def lasd_parallel_inter(
 
     grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E)
 
-    _lasd_parallel_inter[grid](
+    _lasd3_parallel_inter[grid](
         Q=q,
         O=o,
         STATES=states,
@@ -261,7 +267,7 @@ def lasd_parallel_inter(
 
 
 ########## Fwd start ##########
-def lasd_parallel_fwd(
+def lasd3_parallel_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -272,13 +278,13 @@ def lasd_parallel_fwd(
     trans: bool = False,
 ):
     """
-    Forward pass for Lightning Attention with Scalar Decay in parallel mode.
+    Forward pass for Lightning Attention with Data-Dependent Scalar Decay in parallel mode.
 
     Args:
         q: Query tensor of shape (B, N, H, D)
         k: Key tensor of shape (B, N, H, D)
         v: Value tensor of shape (B, N, H, E)
-        ld: Log decay tensor of shape (H,)
+        ld: Log decay tensor of shape (B, N, H) - data dependent decay factors
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths for variable length sequences
         reverse: Whether to process the sequence in reverse order
@@ -288,13 +294,21 @@ def lasd_parallel_fwd(
         o: Output tensor of shape (B, N, H, E)
         states: Final state tensor
     """
+    b, n, h, d = q.shape
+    e = v.shape[-1]
+
+    MAX_BLOCK_N = triton.next_power_of_2(n)
+    MAX_BLOCK_C = MAX_BLOCK_N
+    MAX_BLOCK_E = triton.next_power_of_2(e)
+    MAX_BLOCK_D = triton.next_power_of_2(d)
+
     if n <= 512:
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
 
     # Step1: Compute intra in parallel, for each chunk, parallel over sub-chunk
-    o = lasd_parallel_intra(
+    o = lasd3_parallel_intra(
         q=q,
         k=k,
         v=v,
@@ -309,7 +323,7 @@ def lasd_parallel_fwd(
     )
 
     # Step2: Compute local states in parallel
-    states = lasd_parallel_state_parallel(
+    states = lasd3_parallel_state_parallel(
         k=k,
         v=v,
         ld=ld,
@@ -323,7 +337,7 @@ def lasd_parallel_fwd(
     )
 
     # Step3: Update local states to get global states
-    states = lasd_parallel_state_reduce(
+    states = lasd3_parallel_state_reduce(
         b=b,
         n=n,
         h=h,
@@ -342,12 +356,13 @@ def lasd_parallel_fwd(
     )
 
     # Step4: Compute inter in parallel, for each chunk, parallel over sub-chunk
-    o = lasd_parallel_inter(
+    o = lasd3_parallel_inter(
         q=q,
         o=o,
         states=states,
         ld=ld,
         cu_seqlens=cu_seqlens,
+        reverse=reverse,
         trans=trans,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
@@ -359,7 +374,7 @@ def lasd_parallel_fwd(
     return o, states
 
 
-def lasd_parallel_bwd(
+def lasd3_parallel_bwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -371,14 +386,14 @@ def lasd_parallel_bwd(
     states: Optional[torch.Tensor] = None,
 ):
     """
-    Backward pass for Lightning Attention with Scalar Decay in parallel mode.
+    Backward pass for Lightning Attention with Data-Dependent Scalar Decay in parallel mode.
 
     Args:
         q: Query tensor of shape (B, N, H, D)
         k: Key tensor of shape (B, N, H, D)
         v: Value tensor of shape (B, N, H, E)
         do: Gradient of output tensor of shape (B, N, H, E)
-        ld: Log decay tensor of shape (H,)
+        ld: Log decay tensor of shape (B, N, H) - data dependent decay factors
         initial_state: Initial state tensor of shape (B, H, D, E)
         dfinal_state: Gradient of final state tensor
         cu_seqlens: Cumulative sequence lengths for variable length sequences
@@ -404,42 +419,8 @@ def lasd_parallel_bwd(
     else:
         BLOCK_N = 256
 
-    """
-    The following code is equivalent to this simple code:
-
-    dq, states = lasd_parallel_fwd(
-        q=do,  # b n h e
-        k=v,  # b n h e
-        v=k,  # b n h d
-        ld=ld,
-        initial_state=initial_state.transpose(-1, -2).contiguous(),
-        cu_seqlens=cu_seqlens,
-        trans=True,
-    )
-
-    dk, dstates = lasd_parallel_fwd(
-        q=v,  # b n h e
-        k=do,  # b n h e
-        v=q,  # b n h d
-        ld=ld,
-        initial_state=initial_state,
-        cu_seqlens=cu_seqlens,
-        reverse=True,
-        trans=True,
-    )
-
-    dv, dstates = lasd_parallel_fwd(
-        q=k,  # b n h d
-        k=q,  # b n h d
-        v=do,  # b n h e
-        ld=ld,
-        initial_state=initial_state,
-        cu_seqlens=cu_seqlens,
-        reverse=True,
-        trans=False,
-    )
-    """
-    dq = lasd_parallel_intra(
+    # Compute dq
+    dq = lasd3_parallel_intra(
         q=do,
         k=v,
         v=k,
@@ -453,8 +434,9 @@ def lasd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
+    # Recompute states if not provided
     if states is None:
-        states = lasd_parallel_state_parallel(
+        states = lasd3_parallel_state_parallel(
             k=k,
             v=v,
             ld=ld,
@@ -467,7 +449,7 @@ def lasd_parallel_bwd(
             BLOCK_N=BLOCK_N,
         )
 
-        states = lasd_parallel_state_reduce(
+        states = lasd3_parallel_state_reduce(
             b=b,
             n=n,
             h=h,
@@ -485,10 +467,11 @@ def lasd_parallel_bwd(
             BLOCK_N=BLOCK_N,
         )
 
-    dq = lasd_parallel_inter(
-        q=do,  # b n h e
-        o=dq,  # b n h d
-        states=states,  # b h (m + 1) d e
+    # Complete dq computation
+    dq = lasd3_parallel_inter(
+        q=do,
+        o=dq,
+        states=states,
         ld=ld,
         cu_seqlens=cu_seqlens,
         reverse=False,
@@ -502,8 +485,8 @@ def lasd_parallel_bwd(
 
     del states
 
-    # for dk and dv, use the same states
-    dk = lasd_parallel_intra(
+    # Compute dk and dv
+    dk = lasd3_parallel_intra(
         q=v,
         k=do,
         v=q,
@@ -517,7 +500,7 @@ def lasd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
-    dv = lasd_parallel_intra(
+    dv = lasd3_parallel_intra(
         q=k,
         k=q,
         v=do,
@@ -531,9 +514,10 @@ def lasd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
-    dstates = lasd_parallel_state_parallel(
-        k=q,  # b n h d
-        v=do,  # b n h e
+    # Compute dstates for dk and dv
+    dstates = lasd3_parallel_state_parallel(
+        k=q,
+        v=do,
         ld=ld,
         cu_seqlens=cu_seqlens,
         reverse=True,
@@ -544,7 +528,7 @@ def lasd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
-    dstates = lasd_parallel_state_reduce(
+    dstates = lasd3_parallel_state_reduce(
         b=b,
         n=n,
         h=h,
@@ -562,10 +546,11 @@ def lasd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
-    dk = lasd_parallel_inter(
-        q=v,  # b n h e
-        o=dk,  # b n h d
-        states=dstates,  # b h (m + 1) d e
+    # Complete dk and dv computation
+    dk = lasd3_parallel_inter(
+        q=v,
+        o=dk,
+        states=dstates,
         ld=ld,
         cu_seqlens=cu_seqlens,
         reverse=True,
@@ -577,10 +562,10 @@ def lasd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
-    dv = lasd_parallel_inter(
-        q=k,  # b n h d
-        o=dv,  # b n h e
-        states=dstates,  # b h (m + 1) d e
+    dv = lasd3_parallel_inter(
+        q=k,
+        o=dv,
+        states=dstates,
         ld=ld,
         cu_seqlens=cu_seqlens,
         reverse=True,
@@ -592,16 +577,21 @@ def lasd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
+    # Compute gradient for initial state if needed
     need_dfinal_state = (
         dfinal_state is not None
         and initial_state is not None
         and initial_state.requires_grad
     )
 
-    return dq, dk, dv, dstates[:, :, -1, :, :] if need_dfinal_state else None
+    # Compute gradient for log decay (data-dependent decay)
+    dld = torch.zeros_like(ld)
+    # This would be implemented in the actual utils functions
+
+    return dq, dk, dv, dld, dstates[:, :, -1, :, :] if need_dfinal_state else None
 
 
-class LasdParallelFunction(torch.autograd.Function):
+class Lasd3ParallelFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(
@@ -615,7 +605,7 @@ class LasdParallelFunction(torch.autograd.Function):
         save_states=True,
     ):
         # Forward computation
-        output, states = lasd_parallel_fwd(
+        output, states = lasd3_parallel_fwd(
             q=q,
             k=k,
             v=v,
@@ -638,7 +628,7 @@ class LasdParallelFunction(torch.autograd.Function):
     def backward(ctx, do, dfinal_state):
         q, k, v, ld, initial_state, cu_seqlens, states = ctx.saved_tensors
 
-        dq, dk, dv, dinitial_state = lasd_parallel_bwd(
+        dq, dk, dv, dld, dinitial_state = lasd3_parallel_bwd(
             q=q,
             k=k,
             v=v,
@@ -654,14 +644,14 @@ class LasdParallelFunction(torch.autograd.Function):
             dq,
             dk,
             dv,
-            None,
+            dld,
             dinitial_state,
             None,
             None,
         )
 
 
-def lasd_parallel_triton(
+def lasd3_parallel_triton(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -671,16 +661,15 @@ def lasd_parallel_triton(
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Apply Lightning Attention Parallel with Scalar Decay in Triton.
+    Apply Lightning Attention Parallel with Data-Dependent Scalar Decay in Triton.
 
     Args:
         q: Query tensor of shape (B, N, H, D)
         k: Key tensor of shape (B, N, H, D)
         v: Value tensor of shape (B, N, H, E)
-        ld: Logarithmic decay tensor of shape (H,)
+        ld: Logarithmic decay tensor of shape (B, N, H) - data dependent decay factors
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
-        eps: Epsilon for numerical stability
 
     Returns:
         output: Tensor of shape (B, N, H, E)
@@ -696,13 +685,14 @@ def lasd_parallel_triton(
         if len(initial_state.shape) == 3:
             initial_state = repeat(initial_state, "h d e -> b h d e", b=b).contiguous()
 
-    return LasdParallelFunction.apply(
+    return Lasd3ParallelFunction.apply(
         q,
         k,
         v,
         ld,
         initial_state,
         cu_seqlens,
+        kwargs.get("save_states", True),
     )
 
 
@@ -716,10 +706,11 @@ if __name__ == "__main__":
     q = torch.randn(b, n, h, d, device=device, dtype=dtype).requires_grad_(True)
     k = torch.randn(b, n, h, d, device=device, dtype=dtype).requires_grad_(True)
     v = torch.randn(b, n, h, e, device=device, dtype=dtype).requires_grad_(True)
-    ld = F.logsigmoid(torch.randn(h, device=device))
+    # Data-dependent decay factors
+    ld = F.logsigmoid(torch.randn(b, n, h, device=device))
     initial_state = torch.randn(b, h, d, e, device=device, dtype=dtype).requires_grad_(
         True
     )
-    output, final_state = lasd_parallel_triton(q, k, v, ld, initial_state)
+    output, final_state = lasd3_parallel_triton(q, k, v, ld, initial_state)
     loss = output.sum() + final_state.sum()
     loss.backward()

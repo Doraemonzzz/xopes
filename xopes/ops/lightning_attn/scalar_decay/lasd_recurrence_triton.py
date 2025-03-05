@@ -552,6 +552,7 @@ def lasd_recurrence_triton(
     if use_cu_seqlens:
         b = cu_seqlens.shape[0] - 1
     if initial_state is not None:
+        initial_state = initial_state.squeeze(0)
         # treat for varlen training
         if len(initial_state.shape) == 3:
             initial_state = repeat(initial_state, "h d e -> b h d e", b=b).contiguous()

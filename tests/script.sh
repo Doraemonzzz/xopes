@@ -70,12 +70,14 @@ folder=cumsum
 # folder=lightning_attn/scalar_decay
 
 ##### lasd_intra 250224
-# folder=lightning_attn/scalar_decay/intra
+folder=lightning_attn/scalar_decay/intra
 # folder=lightning_attn/scalar_decay/state
 # folder=lightning_attn/scalar_decay/inter
 
-##### lasd3
-folder=lightning_attn/scalar_data_dependent_decay
+# ##### lasd3 250303
+# folder=lightning_attn/scalar_data_dependent_decay
+
+folder=lightning_attn/scalar_data_dependent_decay/intra
 
 mkdir -p $folder/log
 
