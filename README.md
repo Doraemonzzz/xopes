@@ -8,6 +8,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - gate_linear
 
 # Plan
+- add contiguous decorator
 - chunk cumsum
   - [x] 250305
 - normalize with gate

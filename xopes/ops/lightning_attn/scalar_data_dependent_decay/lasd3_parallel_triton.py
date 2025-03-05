@@ -4,7 +4,7 @@ import torch
 import triton
 from einops import repeat
 
-from xopes.ops.cumsum import cumsum_fn, cumsum_torch  # noqa
+from xopes.ops.cumsum import chunk_cumsum_fn
 from xopes.ops.lightning_attn.scalar_data_dependent_decay.utils import (
     _lasd3_parallel_inter,
     _lasd3_parallel_intra,
@@ -56,20 +56,14 @@ def lasd3_parallel_intra(
 
     grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_E)
 
-    ld_ = []
-    l = (n + BLOCK_N - 1) // BLOCK_N
-    for i in range(l):
-        start = i * BLOCK_N
-        end = min(start + BLOCK_N, n)
-        ld_.append(cumsum_fn(ld[:, start:end], dim=1, reverse=reverse).contiguous())
-    ld = torch.cat(ld_, dim=1)
+    ld_cumsum = chunk_cumsum_fn(ld, dim=1, reverse=reverse, chunk_size=BLOCK_N)
 
     _lasd3_parallel_intra[grid](
         Q=q,
         K=k,
         V=v,
         O=o,
-        LOG_DECAY=ld,
+        LOG_DECAY=ld_cumsum,
         CU_SEQLENS=cu_seqlens,
         B=b,
         N=n,

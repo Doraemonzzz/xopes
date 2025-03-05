@@ -64,8 +64,6 @@ class ChunkCumSumTriton(torch.autograd.Function):
         m = (n + chunk_size - 1) // chunk_size
         BLOCK_C = triton.next_power_of_2(chunk_size)
 
-        print("CHUNK", chunk_size, "BLOCK_C", BLOCK_C, m)
-
         # allocate output
         o = torch.empty_like(x)
 
@@ -145,7 +143,7 @@ def chunk_cumsum_triton(
     if dim != -1:
         o = o.transpose(dim, -1)
 
-    return o
+    return o.contiguous()
 
 
 if __name__ == "__main__":

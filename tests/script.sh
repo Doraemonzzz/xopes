@@ -79,8 +79,8 @@ folder=lightning_attn/scalar_decay/intra
 
 folder=lightning_attn/scalar_data_dependent_decay/intra
 
-##### chunk_cumsum 250305
-folder=cumsum/chunk_cumsum
+# ##### chunk_cumsum 250305
+# folder=cumsum/chunk_cumsum
 
 mkdir -p $folder/log
 
