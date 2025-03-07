@@ -213,7 +213,7 @@ $$
 \bar{\mathbf V}_i, \\
 \mathbf O_i &= \bar{\mathbf O}_i \odot \mathbf\Rho_i, \\
 \mathbf S_{i+1}&= \frac{\mathbf A_{(i+1)c}}{\mathbf A_{ic}}\odot \mathbf S_{i} + \tilde{\mathbf K}_{i+1} \tilde{\mathbf V}_{i+1}^\top \\
-&\triangleq \Tau_i \odot \mathbf S_{i}+ \tilde{\mathbf K}_{i+1}  \tilde{\mathbf V}_{i+1}^\top.
+&\triangleq \Tau_{i+1} \odot \mathbf S_{i}+ \tilde{\mathbf K}_{i+1}  \tilde{\mathbf V}_{i+1}^\top.
 \end{aligned}
 $$
 后续会在反向传播的时候使用。

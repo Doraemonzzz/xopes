@@ -723,9 +723,9 @@ $$
 \mathbf {s}_{n+1} &= \mathbf {s} ,  \\
 \mathbf {s}_n  &= \mathbf {s}_{n+1} + \mathbf{k}_n\mathbf {v}^\top_n, \\
 
-\mathbf {s}_t &= [\lambda_{t+1}\gamma_{t+1}^\top] \odot \mathbf{ds}_{t+1} + \mathbf{k}_t\mathbf {v}^\top_t, \\
+\mathbf {s}_t &= [\lambda_{t+1}\gamma_{t+1}^\top] \odot \mathbf{s}_{t+1} + \mathbf{k}_t\mathbf {v}^\top_t, \\
 t&=1,\ldots, n- 1, \\
-\mathbf {s}_0&= \lambda \mathbf {s}_1, \\
+\mathbf {s}_0&= [\lambda_{1}\gamma_{1}^\top] \odot\mathbf {s}_1, \\
 \bar{\mathbf s}& = \mathbf s_0.
 
 \end{aligned}
