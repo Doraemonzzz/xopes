@@ -76,8 +76,8 @@ folder=lightning_attn/scalar_decay/intra
 
 # ##### lasd3 250303
 # folder=lightning_attn/scalar_data_dependent_decay
-
 folder=lightning_attn/scalar_data_dependent_decay/intra
+folder=lightning_attn/scalar_data_dependent_decay/state
 
 # ##### chunk_cumsum 250305
 # folder=cumsum/chunk_cumsum

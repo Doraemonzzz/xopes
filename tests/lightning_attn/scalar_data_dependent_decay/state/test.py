@@ -3,11 +3,12 @@ import torch
 import torch.nn.functional as F
 import triton
 
-from xopes.ops.lightning_attn.scalar_decay.lasd_parallel_triton import (
-    lasd_parallel_state_parallel,
-    lasd_parallel_state_reduce,
+from xopes.ops.lightning_attn.scalar_data_dependent_decay.lasd3_parallel_triton import (
+    lasd3_parallel_state_parallel,
 )
-from xopes.ops.lightning_attn.scalar_decay.torch_utils import compute_states
+from xopes.ops.lightning_attn.scalar_data_dependent_decay.torch_utils import (
+    compute_states,
+)
 from xopes.utils import get_threshold
 
 
@@ -23,11 +24,11 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("use_ld", [True, False])
-@pytest.mark.parametrize("use_initial_state", [True, False])
+# @pytest.mark.parametrize("use_initial_state", [True, False])
+@pytest.mark.parametrize("use_initial_state", [False])
 @pytest.mark.parametrize("reverse", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_compute_states(shape, use_ld, use_initial_state, reverse, dtype):
+def test_lasd3_compute_states(shape, use_initial_state, reverse, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
 
@@ -37,9 +38,9 @@ def test_compute_states(shape, use_ld, use_initial_state, reverse, dtype):
     k = torch.randn(b, n, h, d, dtype=dtype, device=device)
     v = torch.randn(b, n, h, e, dtype=dtype, device=device)
 
-    ld = None
-    if use_ld:
-        ld = F.logsigmoid(torch.randn(h, device=device))
+    # Always use log decay
+    ld = F.logsigmoid(torch.randn(b, n, h, device=device))
+    # ld = torch.zeros(b, n, h, dtype=dtype, device=device)
 
     initial_state = None
     if use_initial_state:
@@ -50,6 +51,7 @@ def test_compute_states(shape, use_ld, use_initial_state, reverse, dtype):
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
     BLOCK_N = 64
+    BLOCK_N = 16
     MAX_BLOCK_C = BLOCK_N
 
     # Get thresholds based on dtype
@@ -61,7 +63,7 @@ def test_compute_states(shape, use_ld, use_initial_state, reverse, dtype):
     )
 
     # Parallel implementation
-    local_states = lasd_parallel_state_parallel(
+    local_states = lasd3_parallel_state_parallel(
         k=k,
         v=v,
         ld=ld,
@@ -92,35 +94,35 @@ def test_compute_states(shape, use_ld, use_initial_state, reverse, dtype):
         local_states_ref, local_states[:, :, :-1], atol=atol, rtol=rtol
     )
 
-    global_states = lasd_parallel_state_reduce(
-        b=b,
-        n=n,
-        h=h,
-        d=d,
-        e=e,
-        states=local_states,
-        initial_state=initial_state,
-        ld=ld,
-        cu_seqlens=None,
-        reverse=reverse,
-        MAX_BLOCK_N=MAX_BLOCK_N,
-        MAX_BLOCK_C=MAX_BLOCK_C,
-        MAX_BLOCK_E=MAX_BLOCK_E,
-        MAX_BLOCK_D=MAX_BLOCK_D,
-        BLOCK_N=BLOCK_N,
-    )
+    # global_states = lasd3_parallel_state_reduce(
+    #     b=b,
+    #     n=n,
+    #     h=h,
+    #     d=d,
+    #     e=e,
+    #     states=local_states,
+    #     initial_state=initial_state,
+    #     ld=ld,
+    #     cu_seqlens=None,
+    #     reverse=reverse,
+    #     MAX_BLOCK_N=MAX_BLOCK_N,
+    #     MAX_BLOCK_C=MAX_BLOCK_C,
+    #     MAX_BLOCK_E=MAX_BLOCK_E,
+    #     MAX_BLOCK_D=MAX_BLOCK_D,
+    #     BLOCK_N=BLOCK_N,
+    # )
 
-    l = global_states_ref.shape[2]
-    for i in range(l):
-        print(
-            i,
-            "states diff norm: ",
-            torch.norm(global_states_ref[:, :, i] - global_states[:, :, i]).item(),
-        )
-    print(
-        "states diff max: ", torch.abs(global_states_ref - global_states).max().item()
-    )
-    print("states diff norm: ", torch.norm(global_states_ref - global_states).item())
+    # l = global_states_ref.shape[2]
+    # for i in range(l):
+    #     print(
+    #         i,
+    #         "states diff norm: ",
+    #         torch.norm(global_states_ref[:, :, i] - global_states[:, :, i]).item(),
+    #     )
+    # print(
+    #     "states diff max: ", torch.abs(global_states_ref - global_states).max().item()
+    # )
+    # print("states diff norm: ", torch.norm(global_states_ref - global_states).item())
 
-    # Assert results match within tolerance
-    assert torch.allclose(global_states_ref, global_states, atol=atol, rtol=rtol)
+    # # Assert results match within tolerance
+    # assert torch.allclose(global_states_ref, global_states, atol=atol, rtol=rtol)

@@ -200,7 +200,6 @@ def _lasd_parallel_state_parallel(
     offset_qk = off_b * N * H * D + off_h * D
     offset_vo = off_b * N * H * E + off_h * E
     offset_block_n = off_block_n * BLOCK_N
-    offset_block_n = off_block_n * BLOCK_N
     offset_block_qk = offset_block_n * H * D
     offset_block_vo = offset_block_n * H * E
     offset_block_d = off_block_d * BLOCK_D

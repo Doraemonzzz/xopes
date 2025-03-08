@@ -49,7 +49,6 @@ def lasd3_intra_torch(
                 start:end,
             ]
             ld_ = ld[:, start:end]
-            decay = torch.exp(ld_).unsqueeze(-1).unsqueeze(-1)
             state = torch.zeros(b, h, d, e, dtype=torch.float32, device=q.device)
             o_array = []
             if reverse:
@@ -95,7 +94,7 @@ def lasd3_intra_torch(
 def compute_states(
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: Optional[torch.Tensor] = None,
+    ld: torch.Tensor,
     initial_state: Optional[torch.Tensor] = None,
     BLOCK_N: int = 256,
     reverse: bool = False,
@@ -103,22 +102,13 @@ def compute_states(
     def _compute_states(
         k: torch.Tensor,
         v: torch.Tensor,
-        ld: Optional[torch.Tensor] = None,
+        ld: torch.Tensor,
         initial_state: Optional[torch.Tensor] = None,
         BLOCK_N: int = 256,
         reverse: bool = False,
     ):
         b, n, h, d = k.shape
         e = v.shape[-1]
-
-        if ld is None:
-            decay = (
-                torch.ones((), dtype=torch.float32, device=k.device)
-                .unsqueeze(-1)
-                .unsqueeze(-1)
-            )
-        else:
-            decay = torch.exp(ld.float()).unsqueeze(-1).unsqueeze(-1)
 
         # local state
         l = (n + BLOCK_N - 1) // BLOCK_N
@@ -129,9 +119,11 @@ def compute_states(
             m = end - start
             k_i = k[:, start:end, :, :]
             v_i = v[:, start:end, :, :]
+            ld_i = ld[:, start:end]
             state_i = torch.zeros(b, h, d, e, dtype=torch.float32, device=k.device)
             array = range(m - 1, -1, -1) if reverse else range(m)
             for j in array:
+                decay = torch.exp(ld_i[:, j]).unsqueeze(-1).unsqueeze(-1)
                 state_ = torch.einsum(
                     "b h d, b h e -> b h d e", k_i[:, j, :, :], v_i[:, j, :, :]
                 )
@@ -157,6 +149,7 @@ def compute_states(
             c = 0
 
         for i in range(n):
+            decay = torch.exp(ld[:, i]).unsqueeze(-1).unsqueeze(-1)
             state_ = torch.einsum(
                 "b h d, b h e -> b h d e", k[:, i, :, :], v[:, i, :, :]
             )

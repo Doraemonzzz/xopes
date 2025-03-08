@@ -56,7 +56,9 @@ def lasd3_parallel_intra(
 
     grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_E)
 
-    ld_cumsum = chunk_cumsum_fn(ld, dim=1, reverse=reverse, chunk_size=BLOCK_N)
+    ld_cumsum = chunk_cumsum_fn(
+        ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
+    ).contiguous()
 
     _lasd3_parallel_intra[grid](
         Q=q,
@@ -81,7 +83,8 @@ def lasd3_parallel_intra(
 def lasd3_parallel_state_parallel(
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: Optional[torch.Tensor] = None,
+    ld: torch.Tensor,
+    ld_cumsum: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     MAX_BLOCK_N: int = 256,
@@ -99,7 +102,6 @@ def lasd3_parallel_state_parallel(
 
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
-    use_ld = ld is not None
 
     states = torch.empty(
         (b, h, NUM_BLOCK_N + 1, d, e), dtype=torch.float32, device=k.device
@@ -119,11 +121,24 @@ def lasd3_parallel_state_parallel(
 
     grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
 
+    if ld_cumsum is None:
+        ld_cumsum = chunk_cumsum_fn(
+            ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
+        ).contiguous()
+
+    tmp = torch.cumsum(ld, dim=1)
+    diff = tmp - ld_cumsum
+    l = (n + BLOCK_N - 1) // BLOCK_N
+    for i in range(l):
+        start = i * BLOCK_N
+        end = min(start + BLOCK_N, n)
+        print(i, torch.norm(diff[:, start:end, :]))
+
     _lasd3_parallel_state_parallel[grid](
         K=k,
         V=v,
         STATES=states,
-        LOG_DECAY=ld,
+        LOG_DECAY=ld_cumsum,
         CU_SEQLENS=cu_seqlens,
         B=b,
         N=n,
@@ -131,7 +146,6 @@ def lasd3_parallel_state_parallel(
         D=d,
         E=e,
         USE_CU_SEQLENS=use_cu_seqlens,
-        USE_LOG_DECAY=use_ld,
         USE_PAD=use_pad,
         REVERSE=reverse,
         BLOCK_N=BLOCK_N,
@@ -147,8 +161,9 @@ def lasd3_parallel_state_reduce(
     d: int,
     e: int,
     states: torch.Tensor,
+    ld: torch.Tensor,
+    ld_cumsum: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
-    ld: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     MAX_BLOCK_N: int = 256,
@@ -162,7 +177,7 @@ def lasd3_parallel_state_reduce(
         b = cu_seqlens.shape[0] - 1
 
     use_initial_state = initial_state is not None
-    use_ld = ld is not None
+    ld is not None
 
     def grid_partial(MAX_BLOCK_D, MAX_BLOCK_E):
         def grid(meta):
@@ -178,10 +193,13 @@ def lasd3_parallel_state_reduce(
 
     grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
 
+    if ld_cumsum is None:
+        ld_cumsum = chunk_cumsum_fn(ld, dim=1, reverse=reverse, chunk_size=BLOCK_N)
+
     _lasd3_parallel_state_reduce[grid](
         STATE=initial_state,
         STATES=states,
-        LOG_DECAY=ld,
+        LOG_DECAY=ld_cumsum,
         CU_SEQLENS=cu_seqlens,
         B=b,
         N=n,
@@ -189,7 +207,6 @@ def lasd3_parallel_state_reduce(
         D=d,
         E=e,
         USE_CU_SEQLENS=use_cu_seqlens,
-        USE_LOG_DECAY=use_ld,
         USE_INITIAL_STATE=use_initial_state,
         REVERSE=reverse,
         BLOCK_N=BLOCK_N,

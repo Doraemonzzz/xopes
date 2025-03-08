@@ -93,7 +93,6 @@ def _lasd3_parallel_intra(
         stride = 1
         NUM_LOOP = off_block_c + 1
 
-    # compute cumsum of ldq
     ldq_block_ptr = (
         LOG_DECAY + offset_ld + offset_block_ld + (offset_block_c + array_c) * H
     )
@@ -166,14 +165,21 @@ def _lasd3_parallel_intra(
             "BLOCK_E": [128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=[
+        "B",
+        "N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+    ],
 )
 @triton.jit
 def _lasd3_parallel_state_parallel(
     K,  # B N H D
     V,  # B N H E
     STATES,  # B H L D E
-    LOG_DECAY,  # H
+    LOG_DECAY,  # B N H
     CU_SEQLENS,  # M
     B: tl.constexpr,
     N: tl.constexpr,
@@ -181,7 +187,6 @@ def _lasd3_parallel_state_parallel(
     D: tl.constexpr,
     E: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
-    USE_LOG_DECAY: tl.constexpr,
     USE_PAD: tl.constexpr,
     REVERSE: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -202,10 +207,11 @@ def _lasd3_parallel_state_parallel(
 
     offset_qk = off_b * N * H * D + off_h * D
     offset_vo = off_b * N * H * E + off_h * E
-    offset_block_n = off_block_n * BLOCK_N
+    offset_ld = off_b * N * H + off_h
     offset_block_n = off_block_n * BLOCK_N
     offset_block_qk = offset_block_n * H * D
     offset_block_vo = offset_block_n * H * E
+    offset_block_ld = offset_block_n * H
     offset_block_d = off_block_d * BLOCK_D
     offset_block_e = off_block_e * BLOCK_E
     offset_state = off_bh * (NUM_BLOCK_N + 1) * D * E
@@ -218,14 +224,20 @@ def _lasd3_parallel_state_parallel(
     # for reverse, local loop start from the last block
     if REVERSE:
         stride = -1
-        # TODO: test speed
-        # BLOCK_N - BLOCK_C, ... , BLOCK_N - 1
-        # array_c = BLOCK_N - BLOCK_C + array_c
         # BLOCK_N - 1, ... , BLOCK_N - BLOCK_C
         array_c = BLOCK_N - 1 - array_c
+        offset_ld_sum = 0
     else:
         stride = 1
         array_c = array_c
+        # last block
+        if off_block_n == NUM_BLOCK_N - 1:
+            if USE_PAD:
+                offset_ld_sum = (N % BLOCK_N - 1) * H
+            else:
+                offset_ld_sum = (BLOCK_N - 1) * H
+        else:
+            offset_ld_sum = (BLOCK_N - 1) * H
 
     offset_block_state = off_block_n * D * E
 
@@ -250,26 +262,11 @@ def _lasd3_parallel_state_parallel(
         + (offset_block_d + array_d[:, None]) * E
         + (offset_block_e + array_e[None, :])
     )
+    ld_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array_c * H
+    ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + offset_ld_sum
 
     mask_d = (array_d + offset_block_d) < D
     mask_e = (array_e + offset_block_e) < E
-
-    if USE_LOG_DECAY:
-        log_decay = tl.load(LOG_DECAY + off_h).to(tl.float32)
-        block_decay = tl.exp(log_decay * BLOCK_C)
-        k_decay = tl.exp(log_decay * (BLOCK_C - 1 - tl.arange(0, BLOCK_C)))
-
-        if USE_PAD:
-            M = N % BLOCK_C
-            last_decay = tl.exp(log_decay * M)
-            if REVERSE:
-                array = tl.arange(0, BLOCK_C)
-            else:
-                array = M - 1 - tl.arange(0, BLOCK_C)
-            array = tl.where(
-                array >= 0, array, 0
-            )  # !!! important, otherwise the decay will be nan, nan * 0 != 0
-            last_k_decay = tl.exp(log_decay * array)
 
     state = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
 
@@ -277,35 +274,32 @@ def _lasd3_parallel_state_parallel(
     for i in range(NUM_BLOCK_C):
         array = offset_block_n + array_c
         mask_c = array < N
+        log_decay = tl.load(ld_block_ptr, mask=mask_c, other=0.0).to(tl.float32)
+        log_decay_sum = tl.load(ld_sum_block_ptr).to(tl.float32)
+        log_k_decay = log_decay_sum - log_decay
+        if USE_PAD and (off_block_n == NUM_BLOCK_N - 1):
+            M = N % BLOCK_C
+            if REVERSE:
+                array = tl.arange(0, BLOCK_C)
+            else:
+                array = M - 1 - tl.arange(0, BLOCK_C)
+            log_k_decay = tl.where(
+                array >= 0, log_k_decay, 0
+            )  # !!! important, otherwise the decay will be nan, nan * 0 != 0
+
         k_trans = tl.load(
             k_trans_block_ptr, mask=mask_c[None, :] & mask_d[:, None], other=0.0
         )
         v = tl.load(v_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0)
 
-        if USE_LOG_DECAY:
-            if cnt < N:
-                # last step
-                if USE_PAD:
-                    if off_block_n == NUM_BLOCK_N - 1:
-                        if cnt + BLOCK_C >= N:
-                            k_trans = (k_trans * last_k_decay[None, :]).to(
-                                k_trans.dtype
-                            )
-                            state = last_decay * state + tl.dot(k_trans, v)
-                        else:
-                            k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
-                            state = block_decay * state + tl.dot(k_trans, v)
-                    else:
-                        k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
-                        state = block_decay * state + tl.dot(k_trans, v)
-                else:
-                    k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
-                    state = block_decay * state + tl.dot(k_trans, v)
-        else:
-            state += tl.dot(k_trans, v)
+        block_decay = tl.exp(log_decay_sum)
+        k_decay = tl.exp(log_k_decay)
+        k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
+        state = block_decay * state + tl.dot(k_trans, v)
 
         k_trans_block_ptr += BLOCK_C * H * D * stride
         v_block_ptr += BLOCK_C * H * E * stride
+        ld_block_ptr += BLOCK_C * H * stride
         array_c += BLOCK_C * stride
         cnt += BLOCK_C * stride
 
@@ -324,13 +318,20 @@ def _lasd3_parallel_state_parallel(
             "BLOCK_E": [128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=[
+        "B",
+        "N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+    ],
 )
 @triton.jit
 def _lasd3_parallel_state_reduce(
     STATE,  # B H D E
     STATES,  # B H L D E
-    LOG_DECAY,  # H
+    LOG_DECAY,  # B N H
     CU_SEQLENS,  # M
     B: tl.constexpr,
     N: tl.constexpr,
@@ -338,7 +339,6 @@ def _lasd3_parallel_state_reduce(
     D: tl.constexpr,
     E: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
-    USE_LOG_DECAY: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     REVERSE: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -358,6 +358,7 @@ def _lasd3_parallel_state_reduce(
     offset_state = off_b * H * D * E + off_h * D * E
     offset_block_d = off_block_d * BLOCK_D
     offset_block_e = off_block_e * BLOCK_E
+    offset_ld = off_b * N * H + off_h
 
     # compute array for block ptr
     array_d = tl.arange(0, BLOCK_D)
@@ -366,9 +367,12 @@ def _lasd3_parallel_state_reduce(
     if REVERSE:
         stride = -1
         states_start = (NUM_BLOCK_N - 1) * D * E
+        offset_ld_sum = 0
     else:
         stride = 1
         states_start = 0
+        # last block
+        offset_ld_sum = (BLOCK_N - N % BLOCK_N) % BLOCK_N * H
 
     states_block_ptr = (
         STATES
@@ -385,6 +389,7 @@ def _lasd3_parallel_state_reduce(
         + (offset_block_d + array_d[:, None]) * E
         + (offset_block_e + array_e[None, :])
     )
+    LOG_DECAY + offset_ld + offset_ld_sum
 
     mask_d = (array_d + offset_block_d) < D
     mask_e = (array_e + offset_block_e) < E
