@@ -15,7 +15,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [x] 250301
 - lightning attn scalar decay
   - [x] 250227
-  - [x] add dld
+  - [x] add dld 250309
   - [ ] varlen and dld
   - [ ] note
 - gate_linear

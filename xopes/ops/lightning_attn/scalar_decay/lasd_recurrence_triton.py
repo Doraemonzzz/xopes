@@ -482,7 +482,7 @@ class LasdRecurrenceFunction(torch.autograd.Function):
         initial_state=None,
         cu_seqlens=None,
     ):
-        use_initial_state = initial_state is not None
+        initial_state is not None
         # Forward computation
         output, final_state = lasd_recurrence_fwd(
             q=q,
@@ -494,7 +494,6 @@ class LasdRecurrenceFunction(torch.autograd.Function):
         )
 
         # Save tensors needed for backward
-        print("forward time", use_initial_state)
         ctx.save_for_backward(q, k, v, ld, initial_state, final_state, cu_seqlens)
 
         return output, final_state
