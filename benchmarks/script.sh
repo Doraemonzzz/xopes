@@ -58,6 +58,9 @@ folder=normalize/normalize_with_gate
 # ##### lasd 250220
 # folder=lightning_attention/scalar_decay
 
+##### lape 250309
+folder=lightning_attention/positional_encoding
+
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0

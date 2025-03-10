@@ -5,10 +5,9 @@ import torch
 import torch.nn.functional as F
 import triton
 
-from xopes.ops.lightning_attn.baseline import flash_attn_wrapper, lightning_attn_wrapper
-from xopes.ops.lightning_attn.scalar_decay import (
-    lasd_parallel_triton,
-    lasd_recurrence_triton,
+from xopes.ops.lightning_attn.positional_encoding import (
+    lape_parallel_triton,
+    lape_recurrence_triton,
 )
 from xopes.utils import get_memory
 
@@ -21,33 +20,17 @@ dtype_map = {
 }
 
 
-def lasd_recurrence(q, k, v, ld):
-    return lasd_recurrence_triton(q, k, v, ld=ld)[0]
+def lape_recurrence(q, k, v, ld):
+    return lape_recurrence_triton(q, k, v, ld=ld)[0]
 
 
-def lasd_parallel(q, k, v, ld):
-    return lasd_parallel_triton(q, k, v, ld=ld)[0]
-
-
-def land_parallel(q, k, v, ld):
-    return lasd_parallel_triton(q, k, v)[0]
-
-
-def lightning_parallel(q, k, v, ld):
-    return lightning_attn_wrapper(q, k, v, ld=ld, variant="parallel")
-
-
-def lightning_chunk_loop(q, k, v, ld):
-    return lightning_attn_wrapper(q, k, v, ld=ld, variant="chunk_loop")
+def lape_parallel(q, k, v, ld):
+    return lape_parallel_triton(q, k, v, ld=ld)[0]
 
 
 module_map = {
-    "lasd_r": lasd_recurrence,
-    "lasd_p": lasd_parallel,
-    "land_p": land_parallel,
-    "flash": flash_attn_wrapper,
-    "lightning_p": lightning_parallel,
-    "lightning_c": lightning_chunk_loop,
+    "lape_r": lape_recurrence,
+    "lape_p": lape_parallel,
 }
 
 configs = [
@@ -55,33 +38,22 @@ configs = [
         x_names=["n"],
         x_vals=[2**i for i in range(8, 16)],
         xlabel="Sequence Length",
-        ylabel="Execution Time(ms)",
+        ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory Usage(MB)",
         line_arg="provider",
         line_vals=[
-            "lasd_r",
-            "lasd_p",
-            "land_p",
-            "flash",
-            "lightning_p",
-            "lightning_c",
+            "lape_r",
+            "lape_p",
         ],
         line_names=[
-            "LASD_R",
-            "LASD_P",
-            "LAND_P",
-            "Flash",
-            "Lightning_P",
-            "Lightning_C",
+            "LAPE_Recurrence",
+            "LAPE_Parallel",
         ],
         styles=[
             ("red", "-"),
             ("blue", "-"),
             ("green", "-"),
-            ("orange", "-"),
-            ("purple", "-"),
-            ("pink", "-"),
         ],
-        plot_name=f"lasd-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
+        plot_name=f"lape-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
             "b": b,
             "h": h,
@@ -102,7 +74,6 @@ configs = [
     ]
     for dtype_name in ["bf16"]
     for b, h, d in [[4, 32, 128]]
-    # for b, h, d in [[4, 32, 128], [4, 32, 64], [1, 32, 128], [4, 1, 128]]
 ]
 
 
@@ -123,10 +94,10 @@ def benchmark(
     warmup = 25
     rep = 100
 
-    shape = (b, n, h, d)
-    q = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
-    k = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
-    v = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
+    # Generate input tensors
+    q = torch.randn((h, d), dtype=dtype, device=device).requires_grad_()
+    k = torch.randn((h, d), dtype=dtype, device=device).requires_grad_()
+    v = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
     ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device)).requires_grad_()
 
     module = module_map[provider]
@@ -143,18 +114,18 @@ def benchmark(
             do = torch.randn_like(o)
             fn = lambda: o.backward(do, retain_graph=True)
         except Exception as e:
-            print(f"Error in speed benchmark for {provider}: {e}")
+            print(f"Error in backward benchmark for {provider}: {e}")
             fn = None
 
     if bench_type == "speed":
         try:
             ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
         except Exception as e:
-            print(f"Error setting up {provider}: {e}")
+            print(f"Error in speed benchmark for {provider}: {e}")
             ms = -1
 
         return ms
-    else:
+    else:  # memory benchmark
         rep = 20
         try:
             torch.cuda.reset_peak_memory_stats(device)
@@ -170,6 +141,6 @@ def benchmark(
         return mb
 
 
-save_path = "stat/lasd"
+save_path = "stat/lape"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
