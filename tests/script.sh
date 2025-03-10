@@ -82,6 +82,9 @@ folder=lightning_attn/scalar_decay
 # ##### chunk_cumsum 250305
 # folder=cumsum/chunk_cumsum
 
+##### lape 250309
+folder=lightning_attn/positional_encoding
+
 mkdir -p $folder/log
 
 
