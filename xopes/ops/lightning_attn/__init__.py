@@ -2,6 +2,7 @@ from typing import Optional, Tuple
 
 import torch
 
+from .positional_encoding import lape_fn
 from .scalar_decay import lasd_fn
 
 
@@ -14,7 +15,11 @@ def lightning_attn_func(
     cu_seqlens: Optional[torch.LongTensor] = None,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    fn = lasd_fn
+    if len(q.shape) == 2:
+        fn = lape_fn
+    else:
+        fn = lasd_fn
+
     return fn(
         q=q,
         k=k,
