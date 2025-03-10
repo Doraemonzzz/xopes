@@ -179,7 +179,7 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         else:
             log_rho = rearrange(log_rho, "b m c h e -> b (m c) h e")[:, :n]
 
-        return o.to(dtype), state.to(dtype)  # , states, log_pi, log_rho
+        return o.to(dtype), state.to(dtype)
 
     @staticmethod
     @contiguous
@@ -416,6 +416,9 @@ class LavdChunkParallelFunction(torch.autograd.Function):
         dldv = rev_cumsum(dldv_, dim=1)
 
         # b h d e -> b h d -> b 1 h d
+        print("aaa", (dstate_clone * state_clone).sum(dim=-1).mean())
+        print(torch.max(dstate_clone), torch.min(dstate_clone))
+        print(torch.max(state_clone), torch.min(state_clone))
         dldk += (dstate_clone * state_clone).sum(dim=-1).unsqueeze(1)
         # b h d e -> b h e -> b 1 h e
         dldv += (dstate_clone * state_clone).sum(dim=-2).unsqueeze(1)

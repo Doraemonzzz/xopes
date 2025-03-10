@@ -104,6 +104,10 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, no_dstate, dtype):
     dq_torch, q.grad = q.grad.clone(), None
     dk_torch, k.grad = k.grad.clone(), None
     dv_torch, v.grad = v.grad.clone(), None
+    if use_log_decay:
+        ld_torch, ld.grad = ld.grad.clone(), None
+    else:
+        ld_torch = None
     if use_initial_state:
         ds_torch, initial_state.grad = initial_state.grad.clone(), None
 
@@ -112,6 +116,10 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, no_dstate, dtype):
     dq_triton, q.grad = q.grad.clone(), None
     dk_triton, k.grad = k.grad.clone(), None
     dv_triton, v.grad = v.grad.clone(), None
+    if use_log_decay:
+        ld_triton, ld.grad = ld.grad.clone(), None
+    else:
+        ld_triton = None
     if use_initial_state:
         ds_triton, initial_state.grad = initial_state.grad.clone(), None
 
@@ -120,6 +128,10 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, no_dstate, dtype):
     dq_parallel_triton, q.grad = q.grad.clone(), None
     dk_parallel_triton, k.grad = k.grad.clone(), None
     dv_parallel_triton, v.grad = v.grad.clone(), None
+    if use_log_decay:
+        ld_parallel_triton, ld.grad = ld.grad.clone(), None
+    else:
+        ld_parallel_triton = None
     if use_initial_state:
         ds_parallel_triton, initial_state.grad = initial_state.grad.clone(), None
 
@@ -274,3 +286,24 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, no_dstate, dtype):
             torch.norm(ds_torch - ds_parallel_triton).item(),
         )
         assert torch.allclose(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)
+
+    if use_log_decay:
+        print(
+            "ld diff max (torch parallel Vs triton recurrence): ",
+            torch.abs(ld_torch - ld_triton).max().item(),
+        )
+        print(
+            "ld diff norm (torch parallel Vs triton recurrence): ",
+            torch.norm(ld_torch - ld_triton).item(),
+        )
+        assert torch.allclose(ld_torch, ld_triton, atol=atol, rtol=rtol)
+
+        print(
+            "ld diff max (torch parallel Vs triton parallel): ",
+            torch.abs(ld_torch - ld_parallel_triton).max().item(),
+        )
+        print(
+            "ld diff norm (torch parallel Vs triton parallel): ",
+            torch.norm(ld_torch - ld_parallel_triton).item(),
+        )
+        assert torch.allclose(ld_torch, ld_parallel_triton, atol=atol, rtol=rtol)

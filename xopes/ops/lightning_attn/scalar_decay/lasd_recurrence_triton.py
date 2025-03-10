@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 from einops import repeat
 
+from xopes.ops.cumsum import cumsum_fn
 from xopes.utils import contiguous, generate_configs
 
 
@@ -481,6 +482,7 @@ class LasdRecurrenceFunction(torch.autograd.Function):
         initial_state=None,
         cu_seqlens=None,
     ):
+        use_initial_state = initial_state is not None
         # Forward computation
         output, final_state = lasd_recurrence_fwd(
             q=q,
@@ -492,6 +494,7 @@ class LasdRecurrenceFunction(torch.autograd.Function):
         )
 
         # Save tensors needed for backward
+        print("forward time", use_initial_state)
         ctx.save_for_backward(q, k, v, ld, initial_state, final_state, cu_seqlens)
 
         return output, final_state
@@ -513,11 +516,26 @@ class LasdRecurrenceFunction(torch.autograd.Function):
             cu_seqlens=cu_seqlens,
         )
 
+        if ld is not None and ld.requires_grad:
+            # b n h d -> n h
+            dld = (q * dq - k * dk).sum(-1).sum(0)
+            dld = cumsum_fn(dld, dim=0, reverse=True).sum(0)
+
+            if dfinal_state is not None:
+                n = q.shape[1]
+                # !!! important, the following line is equivalent to the following line
+                # dld = cumsum_fn(dld, dim=0, reverse=True)
+                # dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0))
+                # dld = dld.sum(0)
+                dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0) * n)
+        else:
+            dld = None
+
         return (
             dq,
             dk,
             dv,
-            None,
+            dld,
             dinitial_state,
             None,
         )

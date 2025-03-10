@@ -57,11 +57,11 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=linear_cross_entropy
 
 # ##### lavd 250122
-# folder=lightning_attn/vector_decay
+folder=lightning_attn/vector_decay
 # folder=lightning_attn/vector_decay_unit_test
 
 ##### cumsum 250129
-folder=cumsum
+# folder=cumsum
 
 # ##### gate_linear 250201
 # folder=gate_linear
@@ -69,15 +69,15 @@ folder=cumsum
 # ##### lasd 250219
 # folder=lightning_attn/scalar_decay
 
-##### lasd_intra 250224
-folder=lightning_attn/scalar_decay/intra
+##### lasd_part 250224
+# folder=lightning_attn/scalar_decay/intra
 # folder=lightning_attn/scalar_decay/state
 # folder=lightning_attn/scalar_decay/inter
 
 # ##### lasd3 250303
 # folder=lightning_attn/scalar_data_dependent_decay
-folder=lightning_attn/scalar_data_dependent_decay/intra
-folder=lightning_attn/scalar_data_dependent_decay/state
+# folder=lightning_attn/scalar_data_dependent_decay/intra
+# folder=lightning_attn/scalar_data_dependent_decay/state
 
 # ##### chunk_cumsum 250305
 # folder=cumsum/chunk_cumsum

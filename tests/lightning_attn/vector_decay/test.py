@@ -23,16 +23,10 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
-# @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("share_k", [True, False])
 @pytest.mark.parametrize("share_v", [True, False])
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("use_zero_ld", [True, False])
-
-# @pytest.mark.parametrize("share_k", [True, False])
-# @pytest.mark.parametrize("share_v", [True, False])
-# @pytest.mark.parametrize("use_initial_state", [True])
-# @pytest.mark.parametrize("use_zero_ld", [True])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test(shape, share_k, share_v, use_initial_state, use_zero_ld, dtype):
     use_ldk = True

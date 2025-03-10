@@ -4,6 +4,7 @@ import torch
 import triton
 from einops import repeat
 
+from xopes.ops.cumsum import cumsum_fn
 from xopes.ops.lightning_attn.scalar_decay.utils import (
     _lasd_parallel_inter,
     _lasd_parallel_intra,
@@ -508,6 +509,7 @@ def lasd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
+    final_state = states[:, :, -1, :, :]
     del states
 
     # for dk and dv, use the same states
@@ -606,7 +608,13 @@ def lasd_parallel_bwd(
         and initial_state.requires_grad
     )
 
-    return dq, dk, dv, dstates[:, :, -1, :, :] if need_dfinal_state else None
+    return (
+        dq,
+        dk,
+        dv,
+        dstates[:, :, -1, :, :] if need_dfinal_state else None,
+        final_state,
+    )
 
 
 class LasdParallelFunction(torch.autograd.Function):
@@ -646,7 +654,7 @@ class LasdParallelFunction(torch.autograd.Function):
     def backward(ctx, do, dfinal_state):
         q, k, v, ld, initial_state, cu_seqlens, states = ctx.saved_tensors
 
-        dq, dk, dv, dinitial_state = lasd_parallel_bwd(
+        dq, dk, dv, dinitial_state, final_state = lasd_parallel_bwd(
             q=q,
             k=k,
             v=v,
@@ -658,11 +666,31 @@ class LasdParallelFunction(torch.autograd.Function):
             states=states,
         )
 
+        if ld is not None and ld.requires_grad:
+            # b n h d -> n h
+            dld = (q * dq - k * dk).sum(-1).sum(0)
+            dld = cumsum_fn(dld, dim=0, reverse=True).sum(0)
+
+        if ld is not None and ld.requires_grad:
+            # b n h d -> n h
+            dld = (q * dq - k * dk).sum(-1).sum(0)
+            dld = cumsum_fn(dld, dim=0, reverse=True).sum(0)
+
+            if dfinal_state is not None:
+                n = q.shape[1]
+                # !!! important, the following line is equivalent to the following line
+                # dld = cumsum_fn(dld, dim=0, reverse=True)
+                # dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0))
+                # dld = dld.sum(0)
+                dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0) * n)
+        else:
+            dld = None
+
         return (
             dq,
             dk,
             dv,
-            None,
+            dld,
             dinitial_state,
             None,
             None,
