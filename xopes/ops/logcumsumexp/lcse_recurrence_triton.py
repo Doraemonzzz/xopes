@@ -36,10 +36,12 @@ def _lcse_recurrence_fwd(
         state_block_ptr = STATE + offset_state + tl.arange(0, 1)
         state = tl.load(state_block_ptr).to(tl.float32)
         m = state
+        state = state - m  # !!! important
+        x_min = state
     else:
         state = tl.full([1], -float("inf"), dtype=tl.float32)
         m = state
-    x_min = tl.full([1], float("inf"), dtype=tl.float32)
+        x_min = tl.full([1], float("inf"), dtype=tl.float32)
     o = tl.zeros([1], dtype=tl.float32)
 
     for i in range(N):
@@ -48,8 +50,8 @@ def _lcse_recurrence_fwd(
         m_ = tl.maximum(x, m)
 
         state = tl.log(tl.exp(state + m - m_) + tl.exp(x - m_))
+        o = state + m_
         m = m_
-        o = state + m
 
         tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty))
 
@@ -119,9 +121,13 @@ def _lcse_recurrence_bwd(
 
     if USE_INITIAL_STATE:
         state_block_ptr = STATE + offset_state + tl.arange(0, 1)
+        dinitial_state_block_ptr = DINITIAL_STATE + offset_state + tl.arange(0, 1)
         state = tl.load(state_block_ptr).to(tl.float32)
         dstate = dx * tl.exp(state - x_min)
-        tl.store(dstate_block_ptr, dstate.to(dstate_block_ptr.dtype.element_ty))
+        tl.store(
+            dinitial_state_block_ptr,
+            dstate.to(dinitial_state_block_ptr.dtype.element_ty),
+        )
 
 
 class LcseRecurrence(torch.autograd.Function):
@@ -215,7 +221,11 @@ def lcse_recurrence_triton(
     x = x.reshape(-1, x.shape[-1]).contiguous()
     if initial_state is not None and len(initial_state.shape) == 1:
         initial_state = repeat(initial_state, "n -> b n", b=x.shape[0])
+    if initial_state is not None:
+        initial_state = initial_state.reshape(-1, initial_state.shape[-1]).contiguous()
+
     o, state = LcseRecurrence.apply(x, initial_state)
+
     o = o.reshape(shape)
     state = state.reshape(shape[:-1] + [1])
 

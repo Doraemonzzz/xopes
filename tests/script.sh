@@ -85,6 +85,9 @@ folder=lightning_attn/scalar_decay
 ##### lape 250309
 folder=lightning_attn/positional_encoding
 
+##### lcse 250312
+folder=logcumsumexp
+
 mkdir -p $folder/log
 
 

@@ -1,114 +1,125 @@
 import pytest
 import torch
 
-from xopes.ops import (
-    logcumsumexp_block_parallel_triton,
-    logcumsumexp_block_recurrence_triton,
-    logcumsumexp_recurrence_triton,
-    logcumsumexp_torch,
-)
+from xopes.ops.logcumsumexp import lcse_recurrence_triton, lcse_torch
+from xopes.utils import get_threshold
 
 
 def get_params():
-    shape = [
-        # (1, 1, 4),
-        # (1, 2, 4),
-        # (1, 16, 4),
-        # (1, 17, 4),
-        # (1, 100, 4),
-        # (1, 1000, 4),
-        # (1, 1, 5),
-        (1, 1, 16),
-        # (1, 2, 16),
-        # (1, 1000, 16), # not pass
-        # (2, 1, 64),
-        # (6, 1, 256),
-        # (2, 16, 4),
-        # (1, 100, 16),
-        # (6, 100, 256),
-        # (6, 100, 1000),
-        # (6, 100, 257),
-        # (6, 128, 257),
-        # (6, 129, 257),
-        # (6, 1000, 257),
-        # (6, 1000, 256),
-        # (1, 1000, 256),
+    shapes = [
+        (512,),
+        (6, 128),
+        (6, 129),
+        (4, 4, 255),
+        (4, 8, 256),
     ]
 
-    return shape
+    return shapes
 
 
-# @pytest.mark.parametrize("dim", [-1, -2])
-# @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
-# @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("dim", [-1])
-@pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize("shape", get_params())
-def test(dim, dtype, shape):
+@pytest.mark.parametrize("dim", [0, -1])
+@pytest.mark.parametrize("use_initial_state", [True, False])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float32,
+    ],
+)
+def test(shape, dim, use_initial_state, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
-    x = torch.randn(*shape, dtype=dtype, device=device).requires_grad_()
-    do = torch.randn(*shape, dtype=dtype, device=device)
+    scale = 5
+    if len(shape) == 1:
+        dim = 0
 
-    # forward
-    o_logcumsumexp_torch = logcumsumexp_torch(x, dim=dim)
-    o_logcumsumexp_recurrence_triton = logcumsumexp_recurrence_triton(x, dim=dim)
-    o_logcumsumexp_block_recurrence_triton = logcumsumexp_block_recurrence_triton(
-        x, dim=dim
+    # Generate input tensor
+    x = (torch.randn(shape, dtype=dtype, device=device) * scale).requires_grad_()
+
+    # Generate initial state if needed
+    if use_initial_state:
+        # Create initial state with shape matching x except for dim dimension
+        initial_shape = list(shape)
+        initial_shape[dim] = 1
+        initial_state = (
+            torch.randn(initial_shape, dtype=dtype, device=device) * scale
+        ).requires_grad_()
+    else:
+        initial_state = None
+
+    # Forward pass
+    o_torch, state_torch = lcse_torch(x, dim=dim, initial_state=initial_state)
+    o_torch_sum = o_torch + state_torch.sum()
+    o_triton_recurrence, state_triton_recurrence = lcse_recurrence_triton(
+        x, dim=dim, initial_state=initial_state
     )
-    o_logcumsumexp_block_parallel_triton = logcumsumexp_block_parallel_triton(
-        x, dim=dim
-    )
+    o_triton_recurrence_sum = o_triton_recurrence + state_triton_recurrence.sum()
+    # Generate gradients for backward pass
+    do = torch.randn_like(o_torch)
 
-    # backward
-    o_logcumsumexp_torch.backward(do, retain_graph=True)
-    dx_logcumsumexp_torch, x.grad = x.grad.clone(), None
+    # Backward pass for torch implementation
+    o_torch_sum.backward(do, retain_graph=True)
+    dx_torch, x.grad = x.grad.clone(), None
+    if use_initial_state:
+        dinitial_state_torch, initial_state.grad = initial_state.grad.clone(), None
 
-    o_logcumsumexp_recurrence_triton.backward(do, retain_graph=True)
-    dx_logcumsumexp_recurrence_triton, x.grad = x.grad.clone(), None
+    # Backward pass for triton implementation
+    o_triton_recurrence_sum.backward(do, retain_graph=True)
+    dx_triton_recurrence, x.grad = x.grad.clone(), None
+    if use_initial_state:
+        dinitial_state_triton_recurrence, initial_state.grad = (
+            initial_state.grad.clone(),
+            None,
+        )
 
-    o_logcumsumexp_block_recurrence_triton.backward(do, retain_graph=True)
-    dx_logcumsumexp_block_recurrence_triton, x.grad = x.grad.clone(), None
+    # Get tolerance thresholds based on dtype
+    atol, rtol = get_threshold(dtype)
 
-    # # forward
-    # assert torch.allclose(
-    #     o_logcumsumexp_torch, o_logcumsumexp_recurrence_triton, atol=atol, rtol=rtol
-    # ), f"o diff: {torch.abs(o_logcumsumexp_torch - o_logcumsumexp_recurrence_triton).max().item()}"
-    # assert torch.allclose(
-    #     o_logcumsumexp_torch,
-    #     o_logcumsumexp_block_recurrence_triton,
-    #     atol=atol,
-    #     rtol=rtol,
-    # ), f"o diff: {torch.abs(o_logcumsumexp_torch - o_logcumsumexp_block_recurrence_triton).max().item()}"
-    # assert torch.allclose(
-    #     o_logcumsumexp_torch, o_logcumsumexp_block_parallel_triton, atol=atol, rtol=rtol
-    # ), f"o diff: {torch.abs(o_logcumsumexp_torch - o_logcumsumexp_block_parallel_triton).max().item()}"
-
-    # # backward
-    # assert torch.allclose(
-    #     dx_logcumsumexp_torch, dx_logcumsumexp_recurrence_triton, atol=atol, rtol=rtol
-    # ), f"dx diff: {torch.abs(dx_logcumsumexp_torch - dx_logcumsumexp_recurrence_triton).max().item()}"
-
-    # print(o_logcumsumexp_block_triton[0])
-    # print(o_logcumsumexp_torch[0])
-    # print(torch.norm(o_logcumsumexp_block_triton[0] - o_logcumsumexp_torch[0]).item())
-    # print(torch.norm(o_logcumsumexp_block_triton[1] - o_logcumsumexp_torch[1]).item())
-
-    # print(torch.norm(o_logcumsumexp_recurrence_triton - o_logcumsumexp_torch).item())
-    # print(torch.norm(o_logcumsumexp_block_recurrence_triton - o_logcumsumexp_torch).item())
-    # print(torch.norm(o_logcumsumexp_block_parallel_triton - o_logcumsumexp_torch).item())
-
-    # print(torch.norm(dx_logcumsumexp_torch - dx_logcumsumexp_recurrence_triton).item())
+    # Forward check for output
     print(
-        torch.norm(
-            dx_logcumsumexp_torch - dx_logcumsumexp_block_recurrence_triton
-        ).item()
+        "o diff max (Vs recurrence triton): ",
+        torch.abs(o_torch - o_triton_recurrence).max().item(),
     )
-    print(dx_logcumsumexp_torch[0, -1, :5])
-    print(dx_logcumsumexp_block_recurrence_triton[0, -1, :5])
-    print(dx_logcumsumexp_torch[0, 0, :5])
-    print(dx_logcumsumexp_block_recurrence_triton[0, 0, :5])
-    # print(dx_logcumsumexp_torch[-1, -1, :5])
-    # print(dx_logcumsumexp_block_recurrence_triton[-1, -1, :5])
-    # print(dx_logcumsumexp_recurrence_triton[0, -1])
-    assert False
+    print(
+        "o diff norm (Vs recurrence triton): ",
+        torch.norm(o_torch - o_triton_recurrence).item(),
+    )
+    assert torch.allclose(o_torch, o_triton_recurrence, atol=atol, rtol=rtol)
+
+    # Forward check for state
+    print(
+        "state diff max (Vs recurrence triton): ",
+        torch.abs(state_torch - state_triton_recurrence).max().item(),
+    )
+    print(
+        "state diff norm (Vs recurrence triton): ",
+        torch.norm(state_torch - state_triton_recurrence).item(),
+    )
+    assert torch.allclose(state_torch, state_triton_recurrence, atol=atol, rtol=rtol)
+
+    # Backward check for input gradients
+    print(
+        "dx diff max (Vs recurrence triton): ",
+        torch.abs(dx_torch - dx_triton_recurrence).max().item(),
+    )
+    print(
+        "dx diff norm (Vs recurrence triton): ",
+        torch.norm(dx_torch - dx_triton_recurrence).item(),
+    )
+    assert torch.allclose(dx_torch, dx_triton_recurrence, atol=atol, rtol=rtol)
+
+    # Backward check for initial state gradients if used
+    if use_initial_state:
+        print(
+            "dinitial_state diff max (Vs recurrence triton): ",
+            torch.abs(dinitial_state_torch - dinitial_state_triton_recurrence)
+            .max()
+            .item(),
+        )
+        print(
+            "dinitial_state diff norm (Vs recurrence triton): ",
+            torch.norm(dinitial_state_torch - dinitial_state_triton_recurrence).item(),
+        )
+        assert torch.allclose(
+            dinitial_state_torch, dinitial_state_triton_recurrence, atol=atol, rtol=rtol
+        )

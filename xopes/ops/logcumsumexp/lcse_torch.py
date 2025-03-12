@@ -32,21 +32,24 @@ def lcse_torch(
     if initial_state is not None and len(initial_state.shape) == 1:
         initial_state = repeat(initial_state, "n -> b n", b=x.shape[0])
 
+    if initial_state is not None:
+        initial_state = initial_state.reshape(-1, initial_state.shape[-1]).contiguous()
+
     offset = 0
     if initial_state is not None:
         x = torch.cat([initial_state, x], dim=-1)
         offset = 1
 
     o = torch.logcumsumexp(x, dim=-1)[..., offset:]
-    state = x[..., -1:]
+    state = o[..., -1:]
     o = o.reshape(shape)
     state = state.reshape(shape[:-1] + [1])
 
     if dim != -1:
-        x = x.transpose(dim, -1)
+        o = o.transpose(dim, -1)
         state = state.transpose(dim, -1)
 
-    return x, state
+    return o, state
 
 
 if __name__ == "__main__":
