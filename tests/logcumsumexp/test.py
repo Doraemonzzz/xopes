@@ -1,12 +1,19 @@
 import pytest
 import torch
 
-from xopes.ops.logcumsumexp import lcse_recurrence_triton, lcse_torch
+from xopes.ops.logcumsumexp import (
+    lcse_parallel_triton,
+    lcse_recurrence_triton,
+    lcse_torch,
+)
 from xopes.utils import get_threshold
 
 
 def get_params():
-    shapes = [(1024, 256), (1023, 256), (129, 255), (257, 123)]
+    shapes = [(1024, 256), (1023, 256), (129, 255), (257, 123), (257, 257)]
+
+    # shapes = [(1024, 255),]
+    # shapes = [(1, 16)]
 
     return shapes
 
@@ -19,6 +26,14 @@ def get_params():
     "dtype",
     [torch.float32],
 )
+
+# @pytest.mark.parametrize("dim", [-1])
+# @pytest.mark.parametrize("use_initial_state", [True,])
+# @pytest.mark.parametrize("scale", [10,])
+# @pytest.mark.parametrize(
+#     "dtype",
+#     [torch.float32],
+# )
 def test(shape, dim, use_initial_state, scale, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
@@ -44,10 +59,17 @@ def test(shape, dim, use_initial_state, scale, dtype):
         x, dim=dim, initial_state=initial_state, scale=scale
     )
     o_torch_sum = o_torch + state_torch.sum()
+
     o_triton_recurrence, state_triton_recurrence = lcse_recurrence_triton(
         x, dim=dim, initial_state=initial_state, scale=scale
     )
     o_triton_recurrence_sum = o_triton_recurrence + state_triton_recurrence.sum()
+
+    o_triton_parallel, state_triton_parallel = lcse_parallel_triton(
+        x, dim=dim, initial_state=initial_state, scale=scale
+    )
+    o_triton_parallel_sum = o_triton_parallel + state_triton_parallel.sum()
+
     # Generate gradients for backward pass
     do = torch.randn_like(o_torch)
 
@@ -57,11 +79,20 @@ def test(shape, dim, use_initial_state, scale, dtype):
     if use_initial_state:
         dinitial_state_torch, initial_state.grad = initial_state.grad.clone(), None
 
-    # Backward pass for triton implementation
+    # Backward pass for triton recurrence implementation
     o_triton_recurrence_sum.backward(do, retain_graph=True)
     dx_triton_recurrence, x.grad = x.grad.clone(), None
     if use_initial_state:
         dinitial_state_triton_recurrence, initial_state.grad = (
+            initial_state.grad.clone(),
+            None,
+        )
+
+    # Backward pass for triton parallel implementation
+    o_triton_parallel_sum.backward(do, retain_graph=True)
+    dx_triton_parallel, x.grad = x.grad.clone(), None
+    if use_initial_state:
+        dinitial_state_triton_parallel, initial_state.grad = (
             initial_state.grad.clone(),
             None,
         )
@@ -80,6 +111,16 @@ def test(shape, dim, use_initial_state, scale, dtype):
     )
     assert torch.allclose(o_torch, o_triton_recurrence, atol=atol, rtol=rtol)
 
+    print(
+        "o diff max (Vs parallel triton): ",
+        torch.abs(o_torch - o_triton_parallel).max().item(),
+    )
+    print(
+        "o diff norm (Vs parallel triton): ",
+        torch.norm(o_torch - o_triton_parallel).item(),
+    )
+    assert torch.allclose(o_torch, o_triton_parallel, atol=atol, rtol=rtol)
+
     # Forward check for state
     print(
         "state diff max (Vs recurrence triton): ",
@@ -91,6 +132,16 @@ def test(shape, dim, use_initial_state, scale, dtype):
     )
     assert torch.allclose(state_torch, state_triton_recurrence, atol=atol, rtol=rtol)
 
+    print(
+        "state diff max (Vs parallel triton): ",
+        torch.abs(state_torch - state_triton_parallel).max().item(),
+    )
+    print(
+        "state diff norm (Vs parallel triton): ",
+        torch.norm(state_torch - state_triton_parallel).item(),
+    )
+    assert torch.allclose(state_torch, state_triton_parallel, atol=atol, rtol=rtol)
+
     # Backward check for input gradients
     print(
         "dx diff max (Vs recurrence triton): ",
@@ -101,6 +152,16 @@ def test(shape, dim, use_initial_state, scale, dtype):
         torch.norm(dx_torch - dx_triton_recurrence).item(),
     )
     assert torch.allclose(dx_torch, dx_triton_recurrence, atol=atol, rtol=rtol)
+
+    print(
+        "dx diff max (Vs parallel triton): ",
+        torch.abs(dx_torch - dx_triton_parallel).max().item(),
+    )
+    print(
+        "dx diff norm (Vs parallel triton): ",
+        torch.norm(dx_torch - dx_triton_parallel).item(),
+    )
+    assert torch.allclose(dx_torch, dx_triton_parallel, atol=atol, rtol=rtol)
 
     # Backward check for initial state gradients if used
     if use_initial_state:
@@ -116,4 +177,18 @@ def test(shape, dim, use_initial_state, scale, dtype):
         )
         assert torch.allclose(
             dinitial_state_torch, dinitial_state_triton_recurrence, atol=atol, rtol=rtol
+        )
+
+        print(
+            "dinitial_state diff max (Vs parallel triton): ",
+            torch.abs(dinitial_state_torch - dinitial_state_triton_parallel)
+            .max()
+            .item(),
+        )
+        print(
+            "dinitial_state diff norm (Vs parallel triton): ",
+            torch.norm(dinitial_state_torch - dinitial_state_triton_parallel).item(),
+        )
+        assert torch.allclose(
+            dinitial_state_torch, dinitial_state_triton_parallel, atol=atol, rtol=rtol
         )

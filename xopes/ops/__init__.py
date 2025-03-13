@@ -16,6 +16,7 @@ from .grpe import (
 )
 from .householder import householder_fn
 from .lightning_attn import lightning_attn_func
+from .logcumsumexp import lcse_fn
 from .lrpe import lrpe_bwd_fn, lrpe_fn, lrpe_fwd_fn
 from .multinomial import (
     gumbel_multinomial_reduce_torch,

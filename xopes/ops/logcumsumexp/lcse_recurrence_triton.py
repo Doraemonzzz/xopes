@@ -48,23 +48,28 @@ def _lcse_recurrence_fwd(
         state = tl.load(state_block_ptr, mask=mask, other=-float("inf")).to(tl.float32)
         if SCALE != -1:
             state = tl.clamp(state, min=-SCALE, max=SCALE)
-        x_max = tl.max(state, keep_dims=True)
+        x_max = state
         state = state - x_max  # !!! important
-        x_min = tl.min(state, keep_dims=True)
+        x_min = state
     else:
         state = tl.full([BLOCK], -float("inf"), dtype=tl.float32)
-        x_max = tl.full([1], -float("inf"), dtype=tl.float32)
-        x_min = tl.full([1], float("inf"), dtype=tl.float32)
+        x_max = tl.full([BLOCK], -float("inf"), dtype=tl.float32)
+        x_min = tl.full([BLOCK], float("inf"), dtype=tl.float32)
+
     o = tl.zeros([BLOCK], dtype=tl.float32)
 
     for i in range(N):
         x = tl.load(x_block_ptr, mask=mask, other=-float("inf")).to(tl.float32)
         if SCALE != -1:
             x = tl.clamp(x, min=-SCALE, max=SCALE)
-        x_min_ = tl.min(tl.where(mask, x, 0), keep_dims=True)
+        # x_min_ = tl.min(tl.where(mask, x, 0), keep_dims=True)
+        # x_min = tl.minimum(x_min, x_min_)
+        # x_max_ = tl.max(x, keep_dims=True)
+        # x_max_ = tl.maximum(x_max, x_max_)
+
+        x_min_ = tl.where(mask, x, 0)
         x_min = tl.minimum(x_min, x_min_)
-        x_max_ = tl.max(x, keep_dims=True)
-        x_max_ = tl.maximum(x_max, x_max_)
+        x_max_ = tl.maximum(x_max, x)
 
         state = tl.log(tl.exp(state + x_max - x_max_) + tl.exp(x - x_max_))
         o = state + x_max_
@@ -143,7 +148,7 @@ def _lcse_recurrence_bwd(
             x = tl.clamp(x, min=-SCALE, max=SCALE)
         o = tl.load(o_block_ptr, mask=mask, other=0).to(tl.float32)
         do = tl.load(do_block_ptr, mask=mask, other=0).to(tl.float32)
-        if i == 0:
+        if i == 0 and USE_DFINAL_STATE:
             do += dstate
 
         dz = do * tl.exp(x_min - o)

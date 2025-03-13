@@ -5,7 +5,11 @@ import torch
 import triton
 from lightning_attn.utils import get_memory
 
-from xopes.ops.logcumsumexp import lcse_recurrence_triton, lcse_torch
+from xopes.ops.logcumsumexp import (
+    lcse_parallel_triton,
+    lcse_recurrence_triton,
+    lcse_torch,
+)
 
 torch._functorch.config.donated_buffer = False
 
@@ -21,6 +25,7 @@ dtype_map = {
 
 module_map = {
     "lcse_recurrence_triton": lcse_recurrence_triton,
+    "lcse_parallel_triton": lcse_parallel_triton,
     "lcse_torch": lcse_torch,
     "lcse_torch_compile": torch.compile(lcse_torch),
 }
@@ -35,11 +40,13 @@ configs = [
         line_arg="provider",
         line_vals=[
             "lcse_recurrence_triton",
+            "lcse_parallel_triton",
             "lcse_torch",
             "lcse_torch_compile",
         ],
         line_names=[
             "rtr",
+            "ptr",
             "to",
             "toc",
         ],

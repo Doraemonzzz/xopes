@@ -14,7 +14,7 @@ from xopes.utils import contiguous, generate_configs
             "num_warps": [2, 4, 8, 16, 32],
             "num_stages": [2, 3, 4],
             "BLOCK_B": [16, 32, 64],
-            "BLOCK_N": [128, 256, 512],
+            "BLOCK_N": [64, 128],
         }
     ),
     key=["b", "n"],
@@ -108,7 +108,7 @@ def _lcse_parallel_fwd(
             "num_warps": [2, 4, 8, 16, 32],
             "num_stages": [2, 3, 4],
             "BLOCK_B": [16, 32, 64],
-            "BLOCK_N": [128, 256, 512],
+            "BLOCK_N": [64, 128],
         }
     ),
     key=["b", "n"],
@@ -173,14 +173,14 @@ def _lcse_parallel_bwd(
             x = tl.clamp(x, min=-SCALE, max=SCALE)
         o = tl.load(o_block_ptr, mask=mask, other=0).to(tl.float32)
         do = tl.load(do_block_ptr, mask=mask, other=0).to(tl.float32)
-        if i == 0:
+        if i == 0 and USE_DFINAL_STATE:
             array = tl.arange(0, BLOCK_N)
             do_ = tl.where(array == BLOCK_N - 1, dstate, 0)
             do += do_
 
         # B N
         do_ = do * tl.exp(x_min - o)
-        dz = tl.cumsum(do_, axis=-1)
+        dz = tl.cumsum(do_, axis=-1, reverse=True)
         dx = dx_cumsum + dz
         dx_cumsum += tl.sum(do_, axis=-1, keep_dims=True)
 
@@ -219,8 +219,8 @@ class Lcseparallel(torch.autograd.Function):
 
         def grid(meta):
             BLOCK_B = min(meta["BLOCK_B"], MAX_BLOCK_B)
-            BLOCK_N = min(meta["BLOCK_N"], MAX_BLOCK_N)
-            return (triton.cdiv(b, BLOCK_B), triton.cdiv(n, BLOCK_N))
+            meta["BLOCK_N"] = min(meta["BLOCK_N"], MAX_BLOCK_N)
+            return (triton.cdiv(b, BLOCK_B),)
 
         o = torch.empty_like(x)
         use_initial_state = initial_state is not None
@@ -264,8 +264,8 @@ class Lcseparallel(torch.autograd.Function):
 
         def grid(meta):
             BLOCK_B = min(meta["BLOCK_B"], MAX_BLOCK_B)
-            BLOCK_N = min(meta["BLOCK_N"], MAX_BLOCK_N)
-            return (triton.cdiv(b, BLOCK_B), triton.cdiv(n, BLOCK_N))
+            meta["BLOCK_N"] = min(meta["BLOCK_N"], MAX_BLOCK_N)
+            return (triton.cdiv(b, BLOCK_B),)
 
         _lcse_parallel_bwd[grid](
             X=x,
