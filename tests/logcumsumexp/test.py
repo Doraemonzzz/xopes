@@ -20,16 +20,14 @@ def get_params():
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("dim", [0, -1])
 @pytest.mark.parametrize("use_initial_state", [True, False])
+@pytest.mark.parametrize("scale", [5, 10])
 @pytest.mark.parametrize(
     "dtype",
-    [
-        torch.float32,
-    ],
+    [torch.float32],
 )
-def test(shape, dim, use_initial_state, dtype):
+def test(shape, dim, use_initial_state, scale, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
-    scale = 5
     if len(shape) == 1:
         dim = 0
 
@@ -48,10 +46,12 @@ def test(shape, dim, use_initial_state, dtype):
         initial_state = None
 
     # Forward pass
-    o_torch, state_torch = lcse_torch(x, dim=dim, initial_state=initial_state)
+    o_torch, state_torch = lcse_torch(
+        x, dim=dim, initial_state=initial_state, scale=scale
+    )
     o_torch_sum = o_torch + state_torch.sum()
     o_triton_recurrence, state_triton_recurrence = lcse_recurrence_triton(
-        x, dim=dim, initial_state=initial_state
+        x, dim=dim, initial_state=initial_state, scale=scale
     )
     o_triton_recurrence_sum = o_triton_recurrence + state_triton_recurrence.sum()
     # Generate gradients for backward pass

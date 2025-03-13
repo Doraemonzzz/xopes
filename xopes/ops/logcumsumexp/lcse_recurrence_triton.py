@@ -22,6 +22,7 @@ def _lcse_recurrence_fwd(
     B: tl.constexpr,
     N: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
+    SCALE: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     # compute offset
@@ -35,6 +36,8 @@ def _lcse_recurrence_fwd(
     if USE_INITIAL_STATE:
         state_block_ptr = STATE + offset_state + tl.arange(0, 1)
         state = tl.load(state_block_ptr).to(tl.float32)
+        if SCALE != -1:
+            state = tl.clamp(state, min=-SCALE, max=SCALE)
         m = state
         state = state - m  # !!! important
         x_min = state
@@ -46,6 +49,8 @@ def _lcse_recurrence_fwd(
 
     for i in range(N):
         x = tl.load(x_block_ptr).to(tl.float32)
+        if SCALE != -1:
+            x = tl.clamp(x, min=-SCALE, max=SCALE)
         x_min = tl.minimum(x_min, x)
         m_ = tl.maximum(x, m)
 
@@ -80,6 +85,7 @@ def _lcse_recurrence_bwd(
     N: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_DFINAL_STATE: tl.constexpr,
+    SCALE: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     # compute offset
@@ -108,6 +114,9 @@ def _lcse_recurrence_bwd(
         do_block_ptr -= 1
 
         x = tl.load(x_block_ptr).to(tl.float32)
+        if SCALE != -1:
+            flag = (x >= -SCALE) and (x <= SCALE)
+            x = tl.clamp(x, min=-SCALE, max=SCALE)
         o = tl.load(o_block_ptr).to(tl.float32)
         do = tl.load(do_block_ptr).to(tl.float32)
         if i == 0:
@@ -116,14 +125,22 @@ def _lcse_recurrence_bwd(
         dz = do * tl.exp(x_min - o)
         dx += dz
 
+        # https://github.com/pytorch/pytorch/blob/53fe804322640653d2dddaed394838b868ce9a26/torch/autograd/_functions/pointwise.py#L95
         dx_ = dx * tl.exp(x - x_min)
+        if SCALE != -1:
+            dx_ = tl.where(flag, dx_, 0)
         tl.store(dx_block_ptr, dx_.to(dx_block_ptr.dtype.element_ty))
 
     if USE_INITIAL_STATE:
         state_block_ptr = STATE + offset_state + tl.arange(0, 1)
         dinitial_state_block_ptr = DINITIAL_STATE + offset_state + tl.arange(0, 1)
         state = tl.load(state_block_ptr).to(tl.float32)
+        if SCALE != -1:
+            flag = (state >= -SCALE) and (state <= SCALE)
+            state = tl.clamp(state, min=-SCALE, max=SCALE)
         dstate = dx * tl.exp(state - x_min)
+        if SCALE != -1:
+            dstate = tl.where(flag, dstate, 0)
         tl.store(
             dinitial_state_block_ptr,
             dstate.to(dinitial_state_block_ptr.dtype.element_ty),
@@ -133,7 +150,7 @@ def _lcse_recurrence_bwd(
 class LcseRecurrence(torch.autograd.Function):
     @staticmethod
     @contiguous
-    def forward(ctx, x, initial_state=None):
+    def forward(ctx, x, initial_state=None, scale=-1):
         b, n = x.shape
 
         def grid(meta):
@@ -153,9 +170,11 @@ class LcseRecurrence(torch.autograd.Function):
             N=n,
             USE_INITIAL_STATE=use_initial_state,
             X_MIN=x_min,
+            SCALE=scale,
         )
 
         ctx.save_for_backward(x, o, initial_state, x_min)
+        ctx.scale = scale
 
         return o, final_state
 
@@ -163,6 +182,7 @@ class LcseRecurrence(torch.autograd.Function):
     @contiguous
     def backward(ctx, do, dfinal_state):
         x, o, initial_state, x_min = ctx.saved_tensors
+        scale = ctx.scale
         b, n = x.shape
 
         use_initial_state = initial_state is not None
@@ -190,15 +210,17 @@ class LcseRecurrence(torch.autograd.Function):
             N=n,
             USE_INITIAL_STATE=use_initial_state,
             USE_DFINAL_STATE=use_dfinal_state,
+            SCALE=scale,
         )
 
-        return dx, dinitial_state
+        return dx, dinitial_state, None
 
 
 def lcse_recurrence_triton(
     x: torch.Tensor,
     dim: int = -1,
     initial_state: Optional[torch.Tensor] = None,
+    scale: float = -1,
 ):
     """
     Apply logcumsumexp on the dim dimension of x.
@@ -207,6 +229,7 @@ def lcse_recurrence_triton(
         x: Input tensor of shape (...)
         dim: Dimension to apply the operation on
         initial_state: Initial state, the same shape as x, except the dim dimension, which is 1
+        scale: Clamp the input tensor to [-scale, scale]
 
     Returns:
         output: Tensor of shape (...)
@@ -224,7 +247,7 @@ def lcse_recurrence_triton(
     if initial_state is not None:
         initial_state = initial_state.reshape(-1, initial_state.shape[-1]).contiguous()
 
-    o, state = LcseRecurrence.apply(x, initial_state)
+    o, state = LcseRecurrence.apply(x, initial_state, scale)
 
     o = o.reshape(shape)
     state = state.reshape(shape[:-1] + [1])
