@@ -5,6 +5,7 @@ import triton
 
 from xopes.ops.lightning_attn.scalar_data_dependent_decay.lasd3_parallel_triton import (
     lasd3_parallel_state_parallel,
+    lasd3_parallel_state_reduce,
 )
 from xopes.ops.lightning_attn.scalar_data_dependent_decay.torch_utils import (
     compute_states,
@@ -24,8 +25,7 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
-# @pytest.mark.parametrize("use_initial_state", [True, False])
-@pytest.mark.parametrize("use_initial_state", [False])
+@pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("reverse", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_lasd3_compute_states(shape, use_initial_state, reverse, dtype):
@@ -40,7 +40,7 @@ def test_lasd3_compute_states(shape, use_initial_state, reverse, dtype):
 
     # Always use log decay
     ld = F.logsigmoid(torch.randn(b, n, h, device=device))
-    # ld = torch.zeros(b, n, h, dtype=dtype, device=device)
+    # ld = torch.zeros(b, n, h, device=device)
 
     initial_state = None
     if use_initial_state:
@@ -51,7 +51,6 @@ def test_lasd3_compute_states(shape, use_initial_state, reverse, dtype):
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
     BLOCK_N = 64
-    BLOCK_N = 16
     MAX_BLOCK_C = BLOCK_N
 
     # Get thresholds based on dtype
@@ -94,35 +93,35 @@ def test_lasd3_compute_states(shape, use_initial_state, reverse, dtype):
         local_states_ref, local_states[:, :, :-1], atol=atol, rtol=rtol
     )
 
-    # global_states = lasd3_parallel_state_reduce(
-    #     b=b,
-    #     n=n,
-    #     h=h,
-    #     d=d,
-    #     e=e,
-    #     states=local_states,
-    #     initial_state=initial_state,
-    #     ld=ld,
-    #     cu_seqlens=None,
-    #     reverse=reverse,
-    #     MAX_BLOCK_N=MAX_BLOCK_N,
-    #     MAX_BLOCK_C=MAX_BLOCK_C,
-    #     MAX_BLOCK_E=MAX_BLOCK_E,
-    #     MAX_BLOCK_D=MAX_BLOCK_D,
-    #     BLOCK_N=BLOCK_N,
-    # )
+    global_states = lasd3_parallel_state_reduce(
+        b=b,
+        n=n,
+        h=h,
+        d=d,
+        e=e,
+        states=local_states.contiguous(),
+        ld=ld.contiguous(),
+        initial_state=initial_state,
+        cu_seqlens=None,
+        reverse=reverse,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
 
-    # l = global_states_ref.shape[2]
-    # for i in range(l):
-    #     print(
-    #         i,
-    #         "states diff norm: ",
-    #         torch.norm(global_states_ref[:, :, i] - global_states[:, :, i]).item(),
-    #     )
-    # print(
-    #     "states diff max: ", torch.abs(global_states_ref - global_states).max().item()
-    # )
-    # print("states diff norm: ", torch.norm(global_states_ref - global_states).item())
+    l = global_states_ref.shape[2]
+    for i in range(l):
+        print(
+            i,
+            "states diff norm: ",
+            torch.norm(global_states_ref[:, :, i] - global_states[:, :, i]).item(),
+        )
+    print(
+        "states diff max: ", torch.abs(global_states_ref - global_states).max().item()
+    )
+    print("states diff norm: ", torch.norm(global_states_ref - global_states).item())
 
-    # # Assert results match within tolerance
-    # assert torch.allclose(global_states_ref, global_states, atol=atol, rtol=rtol)
+    # Assert results match within tolerance
+    assert torch.allclose(global_states_ref, global_states, atol=atol, rtol=rtol)

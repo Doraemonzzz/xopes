@@ -14,6 +14,7 @@ from xopes.ops.lightning_attn.scalar_data_dependent_decay.utils import (
 from xopes.utils import contiguous
 
 
+@contiguous
 def lasd3_parallel_intra(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -80,6 +81,7 @@ def lasd3_parallel_intra(
     return o
 
 
+@contiguous
 def lasd3_parallel_state_parallel(
     k: torch.Tensor,
     v: torch.Tensor,
@@ -126,14 +128,6 @@ def lasd3_parallel_state_parallel(
             ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
         ).contiguous()
 
-    tmp = torch.cumsum(ld, dim=1)
-    diff = tmp - ld_cumsum
-    l = (n + BLOCK_N - 1) // BLOCK_N
-    for i in range(l):
-        start = i * BLOCK_N
-        end = min(start + BLOCK_N, n)
-        print(i, torch.norm(diff[:, start:end, :]))
-
     _lasd3_parallel_state_parallel[grid](
         K=k,
         V=v,
@@ -154,6 +148,7 @@ def lasd3_parallel_state_parallel(
     return states
 
 
+@contiguous
 def lasd3_parallel_state_reduce(
     b: int,
     n: int,
@@ -194,12 +189,15 @@ def lasd3_parallel_state_reduce(
     grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
 
     if ld_cumsum is None:
-        ld_cumsum = chunk_cumsum_fn(ld, dim=1, reverse=reverse, chunk_size=BLOCK_N)
+        ld_cumsum = chunk_cumsum_fn(
+            ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
+        ).contiguous()
 
     _lasd3_parallel_state_reduce[grid](
         STATE=initial_state,
         STATES=states,
-        LOG_DECAY=ld_cumsum,
+        LOG_DECAY=ld,
+        LOG_DECAY_CUMSUM=ld_cumsum,
         CU_SEQLENS=cu_seqlens,
         B=b,
         N=n,
@@ -215,6 +213,7 @@ def lasd3_parallel_state_reduce(
     return states
 
 
+@contiguous
 def lasd3_parallel_inter(
     q: torch.Tensor,
     o: torch.Tensor,

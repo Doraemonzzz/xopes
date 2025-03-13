@@ -77,16 +77,16 @@ folder=lightning_attn/scalar_decay
 # ##### lasd3 250303
 # folder=lightning_attn/scalar_data_dependent_decay
 # folder=lightning_attn/scalar_data_dependent_decay/intra
-# folder=lightning_attn/scalar_data_dependent_decay/state
+folder=lightning_attn/scalar_data_dependent_decay/state
 
 # ##### chunk_cumsum 250305
 # folder=cumsum/chunk_cumsum
 
-##### lape 250309
-folder=lightning_attn/positional_encoding
+# ##### lape 250309
+# folder=lightning_attn/positional_encoding
 
-##### lcse 250312
-folder=logcumsumexp
+# ##### lcse 250312
+# folder=logcumsumexp
 
 mkdir -p $folder/log
 

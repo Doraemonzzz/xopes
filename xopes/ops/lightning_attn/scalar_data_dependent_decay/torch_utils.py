@@ -2,8 +2,11 @@ from typing import Optional
 
 import torch
 
+from xopes.utils import contiguous
+
 
 ########## pytorch implementation reference ##########
+@contiguous
 def lasd3_intra_torch(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -91,6 +94,7 @@ def lasd3_intra_torch(
     return o
 
 
+@contiguous
 def compute_states(
     k: torch.Tensor,
     v: torch.Tensor,
@@ -140,6 +144,7 @@ def compute_states(
         if reverse:
             k = torch.flip(k, dims=[1])
             v = torch.flip(v, dims=[1])
+            ld = torch.flip(ld, dims=[1])
 
         global_states = [state.unsqueeze(2)]
 
@@ -185,6 +190,7 @@ def compute_states(
     return local_states, global_states
 
 
+@contiguous
 def lasd3_inter_torch(
     q: torch.Tensor,
     k: torch.Tensor,

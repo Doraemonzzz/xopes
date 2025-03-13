@@ -12,9 +12,8 @@ from .constant import ACT_SET, THRESHOLD_DICT, XOPES_DEBUG
 
 def contiguous(fn):
     @functools.wraps(fn)
-    def wrapper(ctx, *args, **kwargs):
+    def wrapper(*args, **kwargs):
         return fn(
-            ctx,
             *(i if not isinstance(i, torch.Tensor) else i.contiguous() for i in args),
             **{
                 k: (v if not isinstance(v, torch.Tensor) else v.contiguous())
