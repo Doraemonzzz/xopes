@@ -8,6 +8,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - gate_linear
 
 # Plan
+- logcumsumexp
+  - [x] 250313
 - lightning attn positional encoding
   - [x] 250310
 - add contiguous decorator
