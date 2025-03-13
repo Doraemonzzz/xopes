@@ -61,6 +61,9 @@ folder=normalize/normalize_with_gate
 ##### lape 250309
 folder=lightning_attention/positional_encoding
 
+##### logcumsumexp 250312
+folder=logcumsumexp
+
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0

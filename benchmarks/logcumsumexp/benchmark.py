@@ -5,15 +5,12 @@ import torch
 import triton
 from lightning_attn.utils import get_memory
 
-from xopes.ops import (
-    logcumsumexp_block_parallel_triton,
-    logcumsumexp_block_recurrence_triton,
-    logcumsumexp_recurrence_triton,
-    logcumsumexp_torch,
-)
+from xopes.ops.logcumsumexp import lcse_recurrence_triton, lcse_torch
+
+torch._functorch.config.donated_buffer = False
 
 b, n, d = 12, 8192, 2048
-b, n, d = 1, 8192, 2048
+# b, n, d = 1, 8192, 2048
 device = torch.device("cuda")
 
 dtype_map = {
@@ -23,30 +20,28 @@ dtype_map = {
 }
 
 module_map = {
-    "recurrence_triton": logcumsumexp_recurrence_triton,
-    "block_recurrence_triton": logcumsumexp_block_recurrence_triton,
-    "block_parallel_triton": logcumsumexp_block_parallel_triton,
-    "torch": logcumsumexp_torch,
+    "lcse_recurrence_triton": lcse_recurrence_triton,
+    "lcse_torch": lcse_torch,
+    "lcse_torch_compile": torch.compile(lcse_torch),
 }
 
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         x_vals=[2**i for i in range(9, 16)],
+        # x_vals=[2**i for i in range(9, 11)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            # "recurrence_triton",
-            "block_recurrence_triton",
-            # "block_parallel_triton",
-            "torch",
+            "lcse_recurrence_triton",
+            "lcse_torch",
+            "lcse_torch_compile",
         ],
         line_names=[
-            "R_Triton",
-            # "BR_Triton",
-            # "BP_Triton",
-            "Torch",
+            "rtr",
+            "to",
+            "toc",
         ],
         styles=[
             ("red", "-"),
@@ -65,10 +60,7 @@ configs = [
             "bench_type": bench_type,
         },
     )
-    for mode in [
-        # "fwd",
-        "bwd"
-    ]
+    for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
     for bench_type in ["speed", "memory"]
 ]
@@ -86,7 +78,7 @@ def benchmark(b, n, d, dtype, device, mode, provider, dim=-2, bench_type="speed"
 
     fn = lambda: module(x)
     if mode == "bwd":
-        y = fn()
+        y, _ = fn()
         dy = torch.randn((b, n, d), dtype=dtype, device=device)
         fn = lambda: y.backward(dy, retain_graph=True)
 
@@ -103,7 +95,8 @@ def benchmark(b, n, d, dtype, device, mode, provider, dim=-2, bench_type="speed"
                 fn()
                 mb_arr.append(get_memory(device))
             mb = np.mean(mb_arr)
-        except:
+        except Exception as e:
+            print(f"Error in memory benchmark for {provider}: {e}")
             mb = -1
 
         return mb

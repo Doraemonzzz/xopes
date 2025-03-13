@@ -6,13 +6,7 @@ from xopes.utils import get_threshold
 
 
 def get_params():
-    shapes = [
-        (512,),
-        (6, 128),
-        (6, 129),
-        (4, 4, 255),
-        (4, 8, 256),
-    ]
+    shapes = [(1024, 256), (1023, 256), (129, 255), (257, 123)]
 
     return shapes
 

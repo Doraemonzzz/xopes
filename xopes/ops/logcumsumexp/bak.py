@@ -9,13 +9,8 @@ from xopes.utils import contiguous, generate_configs
 
 
 @triton.autotune(
-    generate_configs(
-        {
-            "num_warps": [2, 4, 8, 16, 32],
-            "num_stages": [2, 3, 4],
-            "BLOCK_SIZE": [16, 32, 64],
-        }
-    ),
+    generate_configs({"num_warps": [2, 4, 8, 16, 32], "num_stages": [2, 3, 4]}),
+    # generate_configs({"num_warps": [4], "num_stages": [3]}),
     key=["b", "n"],
 )
 @triton.jit
@@ -29,66 +24,53 @@ def _lcse_recurrence_fwd(
     N: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     SCALE: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     # compute offset
-    offset_b = off_b * BLOCK_SIZE
-    offset = offset_b * N
-    offset_state = offset_b
-    array = tl.arange(0, BLOCK_SIZE)
-    mask = (offset_b + array) < B
+    offset = off_b * N
+    offset_state = off_b
 
-    x_block_ptr = X + offset + array * N
-    o_block_ptr = O + offset + array * N
-    final_state_block_ptr = FINAL_STATE + offset_state + array
-    x_min_block_ptr = X_MIN + offset_state + array
+    x_block_ptr = X + offset + tl.arange(0, 1)
+    o_block_ptr = O + offset + tl.arange(0, 1)
+    final_state_block_ptr = FINAL_STATE + offset_state + tl.arange(0, 1)
+    x_min_block_ptr = X_MIN + offset_state + tl.arange(0, 1)
     if USE_INITIAL_STATE:
-        state_block_ptr = STATE + offset_state + array
-        state = tl.load(state_block_ptr, mask=mask, other=-float("inf")).to(tl.float32)
+        state_block_ptr = STATE + offset_state + tl.arange(0, 1)
+        state = tl.load(state_block_ptr).to(tl.float32)
         if SCALE != -1:
             state = tl.clamp(state, min=-SCALE, max=SCALE)
-        x_max = tl.max(state, keep_dims=True)
-        state = state - x_max  # !!! important
-        x_min = tl.min(state, keep_dims=True)
+        m = state
+        state = state - m  # !!! important
+        x_min = state
     else:
-        state = tl.full([BLOCK_SIZE], -float("inf"), dtype=tl.float32)
-        x_max = tl.full([1], -float("inf"), dtype=tl.float32)
+        state = tl.full([1], -float("inf"), dtype=tl.float32)
+        m = state
         x_min = tl.full([1], float("inf"), dtype=tl.float32)
-    o = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    o = tl.zeros([1], dtype=tl.float32)
 
     for i in range(N):
-        x = tl.load(x_block_ptr, mask=mask, other=-float("inf")).to(tl.float32)
+        x = tl.load(x_block_ptr).to(tl.float32)
         if SCALE != -1:
             x = tl.clamp(x, min=-SCALE, max=SCALE)
-        x_min_ = tl.min(tl.where(mask, x, 0), keep_dims=True)
-        x_min = tl.minimum(x_min, x_min_)
-        x_max_ = tl.max(x, keep_dims=True)
-        x_max_ = tl.maximum(x_max, x_max_)
+        x_min = tl.minimum(x_min, x)
+        m_ = tl.maximum(x, m)
 
-        state = tl.log(tl.exp(state + x_max - x_max_) + tl.exp(x - x_max_))
-        o = state + x_max_
-        x_max = x_max_
+        state = tl.log(tl.exp(state + m - m_) + tl.exp(x - m_))
+        o = state + m_
+        m = m_
 
-        tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
+        tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty))
 
         x_block_ptr += 1
         o_block_ptr += 1
 
-    tl.store(
-        final_state_block_ptr, o.to(final_state_block_ptr.dtype.element_ty), mask=mask
-    )
-    tl.store(x_min_block_ptr, x_min.to(x_min_block_ptr.dtype.element_ty), mask=mask)
+    tl.store(final_state_block_ptr, o.to(final_state_block_ptr.dtype.element_ty))
+    tl.store(x_min_block_ptr, x_min.to(x_min_block_ptr.dtype.element_ty))
 
 
 @triton.autotune(
-    generate_configs(
-        {
-            "num_warps": [2, 4, 8, 16, 32],
-            "num_stages": [2, 3, 4],
-            "BLOCK_SIZE": [16, 32, 64],
-        }
-    ),
+    generate_configs({"num_warps": [2, 4, 8, 16, 32], "num_stages": [2, 3, 4]}),
+    # generate_configs({"num_warps": [4], "num_stages": [3]}),
     key=["b", "n"],
 )
 @triton.jit
@@ -106,30 +88,26 @@ def _lcse_recurrence_bwd(
     USE_INITIAL_STATE: tl.constexpr,
     USE_DFINAL_STATE: tl.constexpr,
     SCALE: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     # compute offset
-    offset_b = off_b * BLOCK_SIZE
-    offset = offset_b * N + N
-    offset_state = offset_b
-    array = tl.arange(0, BLOCK_SIZE)
-    mask = (offset_b + array) < B
+    offset = off_b * N + N
+    offset_state = off_b
 
-    x_block_ptr = X + offset + array * N
-    o_block_ptr = O + offset + array * N
-    dx_block_ptr = DX + offset + array * N
-    do_block_ptr = DO + offset + array * N
-    x_min_block_ptr = X_MIN + offset_state + array
+    x_block_ptr = X + offset + tl.arange(0, 1)
+    o_block_ptr = O + offset + tl.arange(0, 1)
+    dx_block_ptr = DX + offset + tl.arange(0, 1)
+    do_block_ptr = DO + offset + tl.arange(0, 1)
+    x_min_block_ptr = X_MIN + offset_state + tl.arange(0, 1)
 
     if USE_DFINAL_STATE:
-        dstate_block_ptr = DSTATE + offset_state + array
-        dstate = tl.load(dstate_block_ptr, mask=mask, other=0).to(tl.float32)
+        dstate_block_ptr = DSTATE + offset_state + tl.arange(0, 1)
+        dstate = tl.load(dstate_block_ptr).to(tl.float32)
     else:
-        dstate = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+        dstate = tl.zeros([1], dtype=tl.float32)
 
-    x_min = tl.load(x_min_block_ptr, mask=mask, other=0).to(tl.float32)
-    dx = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    x_min = tl.load(x_min_block_ptr).to(tl.float32)
+    dx = tl.zeros([1], dtype=tl.float32)
 
     for i in range(N):
         x_block_ptr -= 1
@@ -137,12 +115,12 @@ def _lcse_recurrence_bwd(
         dx_block_ptr -= 1
         do_block_ptr -= 1
 
-        x = tl.load(x_block_ptr, mask=mask, other=-float("inf")).to(tl.float32)
+        x = tl.load(x_block_ptr).to(tl.float32)
         if SCALE != -1:
             flag = (x >= -SCALE) and (x <= SCALE)
             x = tl.clamp(x, min=-SCALE, max=SCALE)
-        o = tl.load(o_block_ptr, mask=mask, other=0).to(tl.float32)
-        do = tl.load(do_block_ptr, mask=mask, other=0).to(tl.float32)
+        o = tl.load(o_block_ptr).to(tl.float32)
+        do = tl.load(do_block_ptr).to(tl.float32)
         if i == 0:
             do += dstate
 
@@ -153,12 +131,12 @@ def _lcse_recurrence_bwd(
         dx_ = dx * tl.exp(x - x_min)
         if SCALE != -1:
             dx_ = tl.where(flag, dx_, 0)
-        tl.store(dx_block_ptr, dx_.to(dx_block_ptr.dtype.element_ty), mask=mask)
+        tl.store(dx_block_ptr, dx_.to(dx_block_ptr.dtype.element_ty))
 
     if USE_INITIAL_STATE:
-        state_block_ptr = STATE + offset_state + array
-        dinitial_state_block_ptr = DINITIAL_STATE + offset_state + array
-        state = tl.load(state_block_ptr, mask=mask, other=-float("inf")).to(tl.float32)
+        state_block_ptr = STATE + offset_state + tl.arange(0, 1)
+        dinitial_state_block_ptr = DINITIAL_STATE + offset_state + tl.arange(0, 1)
+        state = tl.load(state_block_ptr).to(tl.float32)
         if SCALE != -1:
             flag = (state >= -SCALE) and (state <= SCALE)
             state = tl.clamp(state, min=-SCALE, max=SCALE)
@@ -168,7 +146,6 @@ def _lcse_recurrence_bwd(
         tl.store(
             dinitial_state_block_ptr,
             dstate.to(dinitial_state_block_ptr.dtype.element_ty),
-            mask=mask,
         )
 
 
@@ -177,11 +154,9 @@ class LcseRecurrence(torch.autograd.Function):
     @contiguous
     def forward(ctx, x, initial_state=None, scale=-1):
         b, n = x.shape
-        MAX_BLOCK_SIZE = triton.next_power_of_2(b)
 
         def grid(meta):
-            BLOCK_SIZE = min(meta["BLOCK_SIZE"], MAX_BLOCK_SIZE)
-            return (triton.cdiv(b, BLOCK_SIZE),)
+            return (b,)
 
         o = torch.empty_like(x)
         use_initial_state = initial_state is not None
@@ -211,7 +186,6 @@ class LcseRecurrence(torch.autograd.Function):
         x, o, initial_state, x_min = ctx.saved_tensors
         scale = ctx.scale
         b, n = x.shape
-        MAX_BLOCK_SIZE = triton.next_power_of_2(b)
 
         use_initial_state = initial_state is not None
         use_dfinal_state = dfinal_state is not None
@@ -223,8 +197,7 @@ class LcseRecurrence(torch.autograd.Function):
         dx = torch.empty_like(x)
 
         def grid(meta):
-            BLOCK_SIZE = min(meta["BLOCK_SIZE"], MAX_BLOCK_SIZE)
-            return (triton.cdiv(b, BLOCK_SIZE),)
+            return (b,)
 
         _lcse_recurrence_bwd[grid](
             X=x,

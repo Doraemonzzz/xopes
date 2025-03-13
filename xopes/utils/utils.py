@@ -85,6 +85,7 @@ def generate_configs(input_dict):
                 configs.append(
                     triton.Config(config, num_stages=num_stages, num_warps=num_warps)
                 )
+
     # we only need one config for debug
     if XOPES_DEBUG:
         return configs[:1]
