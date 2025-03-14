@@ -4,7 +4,7 @@ import torch
 import triton
 from einops import repeat
 
-from xopes.ops.cumsum import chunk_cumsum_fn
+from xopes.ops.cumsum import chunk_cumsum_fn, cumsum_fn
 from xopes.ops.lightning_attn.scalar_data_dependent_decay.utils import (
     _lasd3_parallel_inter,
     _lasd3_parallel_intra,
@@ -20,6 +20,7 @@ def lasd3_parallel_intra(
     k: torch.Tensor,
     v: torch.Tensor,
     ld: torch.Tensor,
+    ld_cumsum: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     MAX_BLOCK_N: int = 256,
@@ -57,9 +58,10 @@ def lasd3_parallel_intra(
 
     grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_E)
 
-    ld_cumsum = chunk_cumsum_fn(
-        ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
-    ).contiguous()
+    if ld_cumsum is None:
+        ld_cumsum = chunk_cumsum_fn(
+            ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
+        ).contiguous()
 
     _lasd3_parallel_intra[grid](
         Q=q,
@@ -320,12 +322,17 @@ def lasd3_parallel_fwd(
     else:
         BLOCK_N = 256
 
+    ld_cumsum = chunk_cumsum_fn(
+        ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
+    ).contiguous()
+
     # Step1: Compute intra in parallel, for each chunk, parallel over sub-chunk
     o = lasd3_parallel_intra(
         q=q,
         k=k,
         v=v,
         ld=ld,
+        ld_cumsum=ld_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=reverse,
         MAX_BLOCK_N=MAX_BLOCK_N,
@@ -340,6 +347,7 @@ def lasd3_parallel_fwd(
         k=k,
         v=v,
         ld=ld,
+        ld_cumsum=ld_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=reverse,
         MAX_BLOCK_N=MAX_BLOCK_N,
@@ -359,6 +367,7 @@ def lasd3_parallel_fwd(
         states=states,
         initial_state=initial_state,
         ld=ld,
+        ld_cumsum=ld_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=reverse,
         MAX_BLOCK_N=MAX_BLOCK_N,
@@ -374,6 +383,7 @@ def lasd3_parallel_fwd(
         o=o,
         states=states,
         ld=ld,
+        ld_cumsum=ld_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=reverse,
         trans=trans,
@@ -432,12 +442,53 @@ def lasd3_parallel_bwd(
     else:
         BLOCK_N = 256
 
+    """
+    The following code is equivalent to this simple code:
+
+    dq, states = lasd3_parallel_fwd(
+        q=do,  # b n h e
+        k=v,  # b n h e
+        v=k,  # b n h d
+        ld=ld,
+        initial_state=initial_state.transpose(-1, -2).contiguous(),
+        cu_seqlens=cu_seqlens,
+        trans=True,
+    )
+
+    dk, dstates = lasd3_parallel_fwd(
+        q=v,  # b n h e
+        k=do,  # b n h e
+        v=q,  # b n h d
+        ld=ld,
+        initial_state=initial_state,
+        cu_seqlens=cu_seqlens,
+        reverse=True,
+        trans=True,
+    )
+
+    dv, dstates = lasd3_parallel_fwd(
+        q=k,  # b n h d
+        k=q,  # b n h d
+        v=do,  # b n h e
+        ld=ld,
+        initial_state=initial_state,
+        cu_seqlens=cu_seqlens,
+        reverse=True,
+        trans=False,
+    )
+    """
+
+    ld_cumsum = chunk_cumsum_fn(
+        ld, dim=1, reverse=False, chunk_size=BLOCK_N
+    ).contiguous()
+
     # Compute dq
     dq = lasd3_parallel_intra(
         q=do,
         k=v,
         v=k,
         ld=ld,
+        ld_cumsum=ld_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=False,
         MAX_BLOCK_N=MAX_BLOCK_N,
@@ -453,6 +504,7 @@ def lasd3_parallel_bwd(
             k=k,
             v=v,
             ld=ld,
+            ld_cumsum=ld_cumsum,
             cu_seqlens=cu_seqlens,
             reverse=False,
             MAX_BLOCK_N=MAX_BLOCK_N,
@@ -471,6 +523,7 @@ def lasd3_parallel_bwd(
             states=states,
             initial_state=initial_state,
             ld=ld,
+            ld_cumsum=ld_cumsum,
             cu_seqlens=cu_seqlens,
             reverse=False,
             MAX_BLOCK_N=MAX_BLOCK_N,
@@ -486,6 +539,7 @@ def lasd3_parallel_bwd(
         o=dq,
         states=states,
         ld=ld,
+        ld_cumsum=ld_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=False,
         trans=True,
@@ -498,12 +552,16 @@ def lasd3_parallel_bwd(
 
     del states
 
+    ld_reverse_cumsum = chunk_cumsum_fn(
+        ld, dim=1, reverse=True, chunk_size=BLOCK_N
+    ).contiguous()
     # Compute dk and dv
     dk = lasd3_parallel_intra(
         q=v,
         k=do,
         v=q,
         ld=ld,
+        ld_cumsum=ld_reverse_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=True,
         MAX_BLOCK_N=MAX_BLOCK_N,
@@ -518,6 +576,7 @@ def lasd3_parallel_bwd(
         k=q,
         v=do,
         ld=ld,
+        ld_cumsum=ld_reverse_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=True,
         MAX_BLOCK_N=MAX_BLOCK_N,
@@ -532,6 +591,7 @@ def lasd3_parallel_bwd(
         k=q,
         v=do,
         ld=ld,
+        ld_cumsum=ld_reverse_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=True,
         MAX_BLOCK_N=MAX_BLOCK_N,
@@ -550,6 +610,7 @@ def lasd3_parallel_bwd(
         states=dstates,
         initial_state=dfinal_state,
         ld=ld,
+        ld_cumsum=ld_reverse_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=True,
         MAX_BLOCK_N=MAX_BLOCK_N,
@@ -565,6 +626,7 @@ def lasd3_parallel_bwd(
         o=dk,
         states=dstates,
         ld=ld,
+        ld_cumsum=ld_reverse_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=True,
         trans=True,
@@ -580,6 +642,7 @@ def lasd3_parallel_bwd(
         o=dv,
         states=dstates,
         ld=ld,
+        ld_cumsum=ld_reverse_cumsum,
         cu_seqlens=cu_seqlens,
         reverse=True,
         trans=False,
@@ -598,8 +661,8 @@ def lasd3_parallel_bwd(
     )
 
     # Compute gradient for log decay (data-dependent decay)
-    dld = torch.zeros_like(ld)
-    # This would be implemented in the actual utils functions
+    dld = (q * dq - k * dk).sum(dim=-1)
+    dld = cumsum_fn(dld, dim=1, reverse=True)
 
     return dq, dk, dv, dld, dstates[:, :, -1, :, :] if need_dfinal_state else None
 

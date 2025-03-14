@@ -739,6 +739,7 @@ def lasd_parallel_triton(
         ld,
         initial_state,
         cu_seqlens,
+        kwargs.get("save_states", True),
     )
 
 
