@@ -218,7 +218,8 @@ def lasd3_parallel_inter(
     q: torch.Tensor,
     o: torch.Tensor,
     states: torch.Tensor,
-    ld: Optional[torch.Tensor] = None,
+    ld: torch.Tensor,
+    ld_cumsum: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     trans: bool = False,
@@ -238,8 +239,6 @@ def lasd3_parallel_inter(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 
-    use_ld = ld is not None
-
     def grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E):
         def grid(meta):
             meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
@@ -255,11 +254,16 @@ def lasd3_parallel_inter(
 
     grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E)
 
+    if ld_cumsum is None:
+        ld_cumsum = chunk_cumsum_fn(
+            ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
+        ).contiguous()
+
     _lasd3_parallel_inter[grid](
         Q=q,
         O=o,
         STATES=states,
-        LOG_DECAY=ld,
+        LOG_DECAY=ld_cumsum,
         CU_SEQLENS=cu_seqlens,
         B=b,
         N=n,
@@ -267,7 +271,6 @@ def lasd3_parallel_inter(
         D=d,
         E=e,
         USE_CU_SEQLENS=use_cu_seqlens,
-        USE_LOG_DECAY=use_ld,
         REVERSE=reverse,
         TRANS=trans,
         BLOCK_N=BLOCK_N,

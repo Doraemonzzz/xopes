@@ -195,7 +195,7 @@ def lasd3_inter_torch(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: Optional[torch.Tensor] = None,
+    ld: torch.Tensor,
     initial_state: Optional[torch.Tensor] = None,
     BLOCK_N: int = 256,
 ):
@@ -210,18 +210,10 @@ def lasd3_inter_torch(
         qi = q[:, start:end, :, :]
         ki = k[:, start:end, :, :]
         vi = v[:, start:end, :, :]
-        o_intra_i = lasd3_intra_torch(qi, ki, vi, ld)
+        ld_i = ld[:, start:end]
+        o_intra_i = lasd3_intra_torch(qi, ki, vi, ld_i)
         o_intra.append(o_intra_i)
     o_intra = torch.cat(o_intra, dim=1)
-
-    if ld is None:
-        decay = (
-            torch.ones((), dtype=torch.float32, device=k.device)
-            .unsqueeze(-1)
-            .unsqueeze(-1)
-        )
-    else:
-        decay = torch.exp(ld.float()).unsqueeze(-1).unsqueeze(-1)
 
     o = []
     # global state
@@ -231,6 +223,7 @@ def lasd3_inter_torch(
         state = initial_state.float()
 
     for i in range(n):
+        decay = torch.exp(ld[:, i]).unsqueeze(-1).unsqueeze(-1)
         state_ = torch.einsum("b h d, b h e -> b h d e", k[:, i, :, :], v[:, i, :, :])
         state = decay * state + state_
         o_ = torch.einsum("b h d, b h d e -> b h e", q[:, i, :, :], state).unsqueeze(1)
