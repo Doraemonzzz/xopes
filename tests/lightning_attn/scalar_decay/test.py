@@ -12,13 +12,17 @@ from xopes.utils import get_threshold
 
 def get_params():
     shapes = [
-        # (2, 270, 8, 64, 32),
-        # (2, 270, 8, 33, 16),
-        # (2, 256, 8, 64, 32),
-        # (2, 1125, 8, 43, 33),
-        # (2, 1024, 8, 32, 16),
-        # (2, 257, 8, 64, 32),
+        # standard shape
+        (2, 256, 12, 128, 128),
+        (2, 1024, 8, 32, 16),
+        # BLOCK_N +- 1
+        (2, 257, 8, 64, 32),
         (2, 255, 8, 64, 32),
+        (2, 65, 7, 33, 63),
+        # BLOCK_N +- C
+        (2, 270, 8, 64, 32),
+        (2, 270, 8, 33, 16),
+        (2, 1125, 8, 43, 33),
     ]
     return shapes
 
@@ -169,7 +173,7 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, no_dstate, dtype):
         "o diff norm (torch parallel Vs triton parallel): ",
         torch.norm(o_torch - o_parallel_triton).item(),
     )
-    # assert torch.allclose(o_torch, o_parallel_triton, atol=atol, rtol=rtol)
+    assert torch.allclose(o_torch, o_parallel_triton, atol=atol, rtol=rtol)
 
     print(
         "state diff max (torch recurrence Vs triton parallel): ",
@@ -250,6 +254,8 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, no_dstate, dtype):
         "dk diff norm (torch parallel Vs triton parallel): ",
         torch.norm(dk_torch - dk_parallel_triton).item(),
     )
+
+    print("Start print dk diff")
     for i in range(m):
         start = i * c
         end = min(start + c, n)
@@ -266,6 +272,7 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, no_dstate, dtype):
         "dv diff norm (torch parallel Vs triton parallel): ",
         torch.norm(dv_torch - dv_parallel_triton).item(),
     )
+    print("Start print dv diff")
     for i in range(m):
         start = i * c
         end = min(start + c, n)

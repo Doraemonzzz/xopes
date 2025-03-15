@@ -12,11 +12,17 @@ from xopes.utils import get_threshold
 
 def get_params():
     shapes = [
-        (2, 128, 8, 64, 128),
-        (4, 256, 12, 128, 256),
-        (1, 512, 16, 256, 512),
-        (2, 255, 7, 33, 63),
+        # standard shape
+        (2, 256, 12, 128, 128),
+        (2, 1024, 8, 32, 16),
+        # BLOCK_N +- 1
+        (2, 257, 8, 64, 32),
+        (2, 255, 8, 64, 32),
         (2, 65, 7, 33, 63),
+        # BLOCK_N +- C
+        (2, 270, 8, 64, 32),
+        (2, 270, 8, 33, 16),
+        (2, 1125, 8, 43, 33),
     ]
 
     return shapes
@@ -45,10 +51,10 @@ def test_lasd_intra(shape, use_ld, reverse, dtype):
     MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
-    BLOCK_N = MAX_BLOCK_N
+    BLOCK_N = 64
 
     # Forward pass
-    o_torch = lasd_intra_torch(q=q, k=k, v=v, ld=ld, reverse=reverse)
+    o_torch = lasd_intra_torch(q=q, k=k, v=v, ld=ld, reverse=reverse, BLOCK_N=BLOCK_N)
 
     o_triton = lasd_parallel_intra(
         q=q,
@@ -72,4 +78,5 @@ def test_lasd_intra(shape, use_ld, reverse, dtype):
     )
     print("o diff max: ", torch.abs(o_torch - o_triton).max().item())
     print("o diff norm: ", torch.norm(o_torch - o_triton).item())
+
     assert torch.allclose(o_torch, o_triton, atol=atol, rtol=rtol)

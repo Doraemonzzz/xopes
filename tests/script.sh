@@ -69,13 +69,13 @@ folder=lightning_attn/vector_decay
 # ##### lasd 250219
 folder=lightning_attn/scalar_decay
 
-##### lasd_part 250224
+# ##### lasd_part 250224
 # folder=lightning_attn/scalar_decay/intra
 # folder=lightning_attn/scalar_decay/state
 # folder=lightning_attn/scalar_decay/inter
 
 # ##### lasd3 250303
-folder=lightning_attn/scalar_data_dependent_decay
+# folder=lightning_attn/scalar_data_dependent_decay
 # folder=lightning_attn/scalar_data_dependent_decay/intra
 # folder=lightning_attn/scalar_data_dependent_decay/state
 # folder=lightning_attn/scalar_data_dependent_decay/inter

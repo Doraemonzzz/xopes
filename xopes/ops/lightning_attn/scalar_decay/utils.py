@@ -393,6 +393,8 @@ def _lasd_parallel_state_reduce(
         L = N % BLOCK_N
         if L == 0:
             L = BLOCK_N
+        if REVERSE: # !!! important
+            L -= 1
 
         # !!! important
         last_decay = tl.exp(log_decay * L)
@@ -410,7 +412,7 @@ def _lasd_parallel_state_reduce(
             + (offset_block_e + array_e[None, :])
         )
         # !!! important
-        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32) / c
+        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32)
     else:
         state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
@@ -552,9 +554,11 @@ def _lasd_parallel_inter(
                     - (offset_block_c + array_c[:, None])
                     - (BLOCK_N - N % BLOCK_N) % BLOCK_N
                 )
-                array = tl.where(array >= 0, array, 0)
+                # for the last block, we need to subtract 1, since in backward, the last time step's gradient does not use decay.
+                array = tl.where(array >= 0, array, 0) - 1
             else:
                 array = BLOCK_N - (offset_block_c + array_c[:, None])
+
             q_decay = tl.exp(log_decay * array)
         else:
             q_decay = tl.exp(log_decay * (offset_block_c + array_c[:, None] + 1))

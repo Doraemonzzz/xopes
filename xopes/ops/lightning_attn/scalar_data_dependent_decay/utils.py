@@ -301,7 +301,6 @@ def _lasd3_parallel_state_parallel(
             tl.exp(log_decay_sum)
             k_decay = tl.exp(log_k_decay)
             k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
-            # state = block_decay * state + tl.dot(k_trans, v)
             # for local state, since the local decay has been applied, we don't need to apply block_decay
             state = state + tl.dot(k_trans, v)
 
@@ -439,7 +438,7 @@ def _lasd3_parallel_state_reduce(
             + (offset_block_e + array_e[None, :])
         )
         # !!! important
-        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32)  # / c1
+        state = tl.load(state_block_ptr, mask=mask, other=0.0).to(tl.float32)
     else:
         state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
@@ -576,11 +575,6 @@ def _lasd3_parallel_inter(
 
     mask_e = (offset_block_e + array_e) < E
     mask_c = (offset_block_n + offset_block_c + array_c) < N
-
-    if REVERSE:
-        tl.cdiv(BLOCK_N, BLOCK_C)
-    else:
-        pass
 
     ldq_block_ptr = (
         LOG_DECAY + offset_ld + offset_block_ld + (offset_block_c + array_c) * H

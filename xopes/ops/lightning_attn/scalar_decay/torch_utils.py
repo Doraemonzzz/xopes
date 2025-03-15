@@ -2,21 +2,84 @@ from typing import Optional
 
 import torch
 
-
+from xopes.utils import contiguous
 ########## pytorch implementation reference ##########
+# def lasd_intra_torch(
+#     q: torch.Tensor,
+#     k: torch.Tensor,
+#     v: torch.Tensor,
+#     ld: Optional[torch.Tensor] = None,
+#     cu_seqlens: Optional[torch.LongTensor] = None,
+#     reverse: bool = False,
+#     BLOCK_N: int = 256,
+# ):
+#     def _lasd_intra(
+#         q: torch.Tensor,
+#         k: torch.Tensor,
+#         v: torch.Tensor,
+#         ld: Optional[torch.Tensor] = None,
+#     ):
+#         b, n, h, d = k.shape
+#         e = v.shape[-1]
+#         dtype = q.dtype
+
+#         q = q.float()
+#         k = k.float()
+#         v = v.float()
+
+#         if ld is None:
+#             decay = (
+#                 torch.ones((), dtype=torch.float32, device=q.device)
+#                 .unsqueeze(-1)
+#                 .unsqueeze(-1)
+#             )
+#         else:
+#             decay = torch.exp(ld.float()).unsqueeze(-1).unsqueeze(-1)
+
+#         state = torch.zeros(b, h, d, e, dtype=torch.float32, device=q.device)
+#         o = []
+#         for i in range(n):
+#             state_ = torch.einsum(
+#                 "b h d, b h e -> b h d e", k[:, i, :, :], v[:, i, :, :]
+#             )
+#             state = decay * state + state_
+#             o_ = torch.einsum(
+#                 "b h d, b h d e -> b h e", q[:, i, :, :], state
+#             ).unsqueeze(1)
+#             o.append(o_)
+#         o = torch.cat(o, dim=1)
+
+#         return o.to(dtype)
+
+#     if reverse:
+#         q = torch.flip(q, dims=[1])
+#         k = torch.flip(k, dims=[1])
+#         v = torch.flip(v, dims=[1])
+
+#     o = _lasd_intra(q, k, v, ld)
+
+#     if reverse:
+#         o = torch.flip(o, dims=[1])
+
+#     return o
+
+@contiguous
 def lasd_intra_torch(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: Optional[torch.Tensor] = None,
+    ld: torch.Tensor,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
+    BLOCK_N: int = 256,
 ):
     def _lasd_intra(
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        ld: Optional[torch.Tensor] = None,
+        ld: torch.Tensor,
+        reverse: bool = False,
+        BLOCK_N: int = 256,
     ):
         b, n, h, d = k.shape
         e = v.shape[-1]
@@ -27,42 +90,79 @@ def lasd_intra_torch(
         v = v.float()
 
         if ld is None:
-            decay = (
+            decay_ = (
                 torch.ones((), dtype=torch.float32, device=q.device)
                 .unsqueeze(-1)
                 .unsqueeze(-1)
             )
         else:
-            decay = torch.exp(ld.float()).unsqueeze(-1).unsqueeze(-1)
+            decay_ = torch.exp(ld.float()).unsqueeze(-1).unsqueeze(-1)
 
-        state = torch.zeros(b, h, d, e, dtype=torch.float32, device=q.device)
         o = []
-        for i in range(n):
-            state_ = torch.einsum(
-                "b h d, b h e -> b h d e", k[:, i, :, :], v[:, i, :, :]
-            )
-            state = decay * state + state_
-            o_ = torch.einsum(
-                "b h d, b h d e -> b h e", q[:, i, :, :], state
-            ).unsqueeze(1)
-            o.append(o_)
+        l = (n + BLOCK_N - 1) // BLOCK_N
+        for i in range(l):
+            start = i * BLOCK_N
+            end = min(start + BLOCK_N, n)
+            m = end - start
+            q_ = q[
+                :,
+                start:end,
+            ]
+            k_ = k[
+                :,
+                start:end,
+            ]
+            v_ = v[
+                :,
+                start:end,
+            ]
+            state = torch.zeros(b, h, d, e, dtype=torch.float32, device=q.device)
+            o_array = []
+            if reverse:
+                array = range(m - 1, -1, -1)
+            else:
+                array = range(m)
+
+            for j in array:
+                if reverse and j == m - 1:
+                    decay = 1 # does not affect the result
+                else:
+                    decay = decay_
+                state_ = torch.einsum(
+                    "b h d, b h e -> b h d e",
+                    k_[
+                        :,
+                        j,
+                    ],
+                    v_[
+                        :,
+                        j,
+                    ],
+                )
+                state = decay * state + state_
+                o_ = torch.einsum(
+                    "b h d, b h d e -> b h e",
+                    q_[
+                        :,
+                        j,
+                    ],
+                    state,
+                ).unsqueeze(1)
+                o_array.append(o_)
+            o_array = torch.cat(o_array, dim=1)
+            if reverse:
+                o_array = torch.flip(o_array, dims=[1])
+            o.append(o_array)
         o = torch.cat(o, dim=1)
 
         return o.to(dtype)
 
-    if reverse:
-        q = torch.flip(q, dims=[1])
-        k = torch.flip(k, dims=[1])
-        v = torch.flip(v, dims=[1])
-
-    o = _lasd_intra(q, k, v, ld)
-
-    if reverse:
-        o = torch.flip(o, dims=[1])
+    o = _lasd_intra(q, k, v, ld, reverse, BLOCK_N)
 
     return o
 
 
+@contiguous
 def compute_states(
     k: torch.Tensor,
     v: torch.Tensor,
@@ -163,6 +263,7 @@ def compute_states(
     return local_states, global_states
 
 
+@contiguous
 def lasd_inter_torch(
     q: torch.Tensor,
     k: torch.Tensor,
