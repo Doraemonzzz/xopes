@@ -32,6 +32,11 @@ def get_params():
 @pytest.mark.parametrize("use_log_decay", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True, False])
+
+# @pytest.mark.parametrize("use_initial_state", [True])
+# @pytest.mark.parametrize("use_log_decay", [True])
+# @pytest.mark.parametrize("use_varlen", [False])
+# @pytest.mark.parametrize("no_dstate", [False])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test(shape, use_initial_state, use_log_decay, use_varlen, no_dstate, dtype):
     torch.manual_seed(2024)

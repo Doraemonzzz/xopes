@@ -75,7 +75,7 @@ configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         x_vals=[2**i for i in range(8, 16)],
-        # x_vals=[2**i for i in range(8, 9)],
+        # x_vals=[2**i for i in range(8, 12)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -157,7 +157,7 @@ def benchmark(
     q = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     k = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     v = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
-    ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device)).requires_grad_()
+    ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device))  # .requires_grad_()
     ld3 = F.logsigmoid(
         torch.randn((b, n, h), dtype=dtype, device=device)
     ).requires_grad_()
@@ -172,7 +172,6 @@ def benchmark(
     except Exception as e:
         print(f"Error setting up {provider}: {e}")
         fn = None
-    # fn = lambda: module(q, k, v, ld=ld, ld3=ld3)
 
     if mode == "bwd":
         try:

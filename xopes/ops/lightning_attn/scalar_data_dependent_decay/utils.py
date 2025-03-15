@@ -607,3 +607,209 @@ def _lasd3_parallel_inter(
         o.to(o_block_ptr.dtype.element_ty),
         mask=mask_c[:, None] & mask_e[None, :],
     )
+
+
+@triton.autotune(
+    generate_configs(
+        {
+            "num_warps": [4, 8, 16, 32],
+            "BLOCK_C": [16, 32, 64, 128],
+            "BLOCK_D": [128],
+            "BLOCK_E": [128],
+        }
+    ),
+    key=[
+        "B",
+        "N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+    ],
+)
+@triton.jit
+def _lasd3_parallel_intra_inter(
+    Q,  # B N H D
+    K,  # B N H D
+    V,  # B N H E
+    O,  # B N H E
+    STATES,  # B H L D E if not trans_states, B H L E D if trans_states
+    LOG_DECAY,  # B N H
+    LOG_DECAY_REVERSE,  # B N H
+    CU_SEQLENS,  # M
+    B: tl.constexpr,
+    N: tl.constexpr,
+    H: tl.constexpr,
+    D: tl.constexpr,
+    E: tl.constexpr,
+    USE_CU_SEQLENS: tl.constexpr,
+    REVERSE: tl.constexpr,
+    TRANS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
+):
+    NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
+    NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
+
+    off_bhn = tl.program_id(0)
+    off_bh = off_bhn // NUM_BLOCK_N
+    off_b = off_bh // H
+    off_h = off_bh % H
+    off_block_n = off_bhn % NUM_BLOCK_N
+    off_block_c = tl.program_id(1)
+    off_block_e = tl.program_id(2)
+
+    # compute offset
+    offset_qk = off_b * N * H * D + off_h * D
+    offset_vo = off_b * N * H * E + off_h * E
+    offset_ld = off_b * N * H + off_h
+    offset_block_n = off_block_n * BLOCK_N
+    offset_block_qk = offset_block_n * H * D
+    offset_block_vo = offset_block_n * H * E
+    offset_block_ld = offset_block_n * H
+    offset_block_c = off_block_c * BLOCK_C
+    offset_block_e = off_block_e * BLOCK_E
+
+    offset_state = off_bh * (NUM_BLOCK_N + 1) * D * E
+    offset_block_state = off_block_n * D * E
+
+    # compute block ptr and mask
+    array_e = tl.arange(0, BLOCK_E)
+    array_d = tl.arange(0, BLOCK_D)
+    array_c = tl.arange(0, BLOCK_C)
+    array_q = offset_block_c + array_c
+
+    q_block_ptr = (
+        Q
+        + offset_qk
+        + offset_block_qk
+        + (offset_block_c + array_c[:, None]) * H * D
+        + array_d[None, :]
+    )
+    o_block_ptr = (
+        O
+        + offset_vo
+        + offset_block_vo
+        + (offset_block_c + array_c)[:, None] * H * E
+        + (offset_block_e + array_e)[None, :]
+    )
+    if TRANS:
+        # if trans_states, the states are stored in the shape of B H L E D, the shape we need to load is D E
+        state_block_ptr = (
+            STATES
+            + offset_state
+            + offset_block_state
+            + array_d[:, None]
+            + (offset_block_e + array_e)[None, :] * D
+        )
+    else:
+        state_block_ptr = (
+            STATES
+            + offset_state
+            + offset_block_state
+            + array_d[:, None] * E
+            + (offset_block_e + array_e)[None, :]
+        )
+
+    mask_e = (offset_block_e + array_e) < E
+    mask_c = (offset_block_n + offset_block_c + array_c) < N
+
+    o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
+
+    if REVERSE:
+        stride = -1
+        NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
+        NUM_LOOP = NUM_BLOCK_C - off_block_c
+    else:
+        stride = 1
+        NUM_LOOP = off_block_c + 1
+
+    ldq_block_ptr = (
+        LOG_DECAY + offset_ld + offset_block_ld + (offset_block_c + array_c) * H
+    )
+    ldq = tl.load(ldq_block_ptr, mask=mask_c, other=0.0).to(tl.float32)
+
+    if REVERSE:
+        ldq_inter_block_ptr = (
+            LOG_DECAY_REVERSE
+            + offset_ld
+            + offset_block_ld
+            + (offset_block_c + array_c) * H
+        )
+        ldq_inter = tl.load(ldq_inter_block_ptr, mask=mask_c, other=0.0).to(tl.float32)
+    else:
+        ldq_inter = ldq
+
+    for i in range(NUM_BLOCK_D):
+        mask_d = (array_d + i * BLOCK_D) < D
+        q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
+
+        ##### intra start #####
+        if REVERSE:
+            array_kv = BLOCK_N - BLOCK_C + array_c
+        else:
+            array_kv = array_c
+
+        k_trans_block_ptr = (
+            K
+            + offset_qk
+            + offset_block_qk
+            + array_kv[None, :] * H * D
+            + (i * BLOCK_D + array_d)[:, None]
+        )
+        v_block_ptr = (
+            V
+            + offset_vo
+            + offset_block_vo
+            + array_kv[:, None] * H * E
+            + (offset_block_e + array_e)[None, :]
+        )
+        ldk_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array_kv * H
+
+        for j in range(NUM_LOOP):
+            mask_kv = (offset_block_n + array_kv) < N
+
+            k_trans = tl.load(
+                k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
+            )
+            v = tl.load(v_block_ptr, mask=mask_kv[:, None] & mask_e[None, :], other=0.0)
+            ldk = tl.load(ldk_block_ptr, mask=mask_kv, other=0).to(tl.float32)
+
+            score = tl.dot(q, k_trans)
+            diff = (array_q[:, None] - array_kv[None, :]) * stride  # !!! important
+            log_decay = (ldq[:, None] - ldk[None, :]) * stride
+            # decay = tl.exp(tl.where(diff >= 0, log_decay, float("-inf")))
+            decay = tl.exp(tl.where(log_decay <= 0, log_decay, float("-inf")))
+            score *= decay
+            o += tl.dot(score.to(v.dtype), v)
+
+            k_trans_block_ptr += BLOCK_C * H * D * stride
+            v_block_ptr += BLOCK_C * H * E * stride
+            ldk_block_ptr += BLOCK_C * H * stride
+            array_kv += BLOCK_C * stride
+        ##### intra end #####
+
+        ##### inter start #####
+        state = tl.load(
+            state_block_ptr, mask=mask_d[:, None] & mask_e[None, :], other=0.0
+        ).to(q.dtype)
+        q_decay = tl.exp(ldq_inter[:, None])
+
+        o_ = tl.dot(q, state)
+        o_ *= q_decay
+        o += o_
+        ##### inter end #####
+
+        q_block_ptr += BLOCK_D
+        if TRANS:
+            state_block_ptr += BLOCK_D
+        else:
+            state_block_ptr += BLOCK_D * E
+
+    tl.store(
+        o_block_ptr,
+        o.to(o_block_ptr.dtype.element_ty),
+        mask=mask_c[:, None] & mask_e[None, :],
+    )
