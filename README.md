@@ -8,6 +8,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - gate_linear
 
 # Plan
+- lightning attn scalar decay data dependent
+  - [x] 250315
 - logcumsumexp
   - [x] 250313
 - lightning attn positional encoding
@@ -20,7 +22,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - lightning attn scalar decay
   - [x] 250227
   - [x] add dld 250309
-  - [ ] varlen and dld
+  - [x] fix bug 250315
+  - [ ] varlen
   - [ ] note
 - gate_linear
   - [x] 250202

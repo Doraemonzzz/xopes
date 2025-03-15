@@ -3,6 +3,7 @@ from typing import Optional
 import torch
 
 from xopes.utils import contiguous
+
 ########## pytorch implementation reference ##########
 # def lasd_intra_torch(
 #     q: torch.Tensor,
@@ -62,6 +63,7 @@ from xopes.utils import contiguous
 #         o = torch.flip(o, dims=[1])
 
 #     return o
+
 
 @contiguous
 def lasd_intra_torch(
@@ -125,7 +127,7 @@ def lasd_intra_torch(
 
             for j in array:
                 if reverse and j == m - 1:
-                    decay = 1 # does not affect the result
+                    decay = 1  # does not affect the result
                 else:
                     decay = decay_
                 state_ = torch.einsum(

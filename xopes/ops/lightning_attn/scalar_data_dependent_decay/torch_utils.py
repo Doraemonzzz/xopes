@@ -62,7 +62,7 @@ def lasd3_intra_torch(
             for j in array:
                 if reverse:
                     if j == m - 1:
-                        decay = 1 # does not affect the result
+                        decay = 1  # does not affect the result
                     else:
                         decay = torch.exp(ld_[:, j + 1]).unsqueeze(-1).unsqueeze(-1)
                 else:

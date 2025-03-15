@@ -393,7 +393,7 @@ def _lasd_parallel_state_reduce(
         L = N % BLOCK_N
         if L == 0:
             L = BLOCK_N
-        if REVERSE: # !!! important
+        if REVERSE:  # !!! important
             L -= 1
 
         # !!! important
