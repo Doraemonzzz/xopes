@@ -15,11 +15,17 @@ from xopes.utils import get_threshold
 
 def get_params():
     shapes = [
-        (4, 256, 12, 128, 256),
-        (1, 512, 16, 256, 512),
-        (2, 255, 7, 33, 63),
+        # standard shape
+        (2, 256, 12, 128, 128),
+        (2, 1024, 8, 32, 16),
+        # BLOCK_N +- 1
+        (2, 257, 8, 64, 32),
+        (2, 255, 8, 64, 32),
         (2, 65, 7, 33, 63),
-        (2, 193, 7, 33, 63),
+        # BLOCK_N +- C
+        (2, 270, 8, 64, 32),
+        (2, 270, 8, 33, 16),
+        (2, 1125, 8, 43, 33),
     ]
     return shapes
 
@@ -40,7 +46,6 @@ def test_lasd3_compute_states(shape, use_initial_state, reverse, dtype):
 
     # Always use log decay
     ld = F.logsigmoid(torch.randn(b, n, h, device=device))
-    # ld = torch.zeros(b, n, h, device=device)
 
     initial_state = None
     if use_initial_state:

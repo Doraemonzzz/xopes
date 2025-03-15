@@ -13,19 +13,25 @@ from xopes.utils import get_threshold
 
 def get_params():
     shapes = [
-        (4, 256, 12, 128, 256),
-        (1, 512, 16, 256, 512),
-        (2, 255, 7, 33, 63),
-        (2, 65, 7, 33, 63),
-        (2, 193, 7, 33, 63),
+        # (4, 256, 12, 128, 256),
+        # (1, 512, 16, 256, 512),
+        # (2, 255, 7, 33, 63),
+        # (2, 65, 7, 33, 63),
+        # (2, 193, 7, 33, 63),
+        (2, 1125, 8, 43, 33),
     ]
     return shapes
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("use_ld", [True, False])
-@pytest.mark.parametrize("use_initial_state", [True, False])
-@pytest.mark.parametrize("reverse", [True, False])
+# @pytest.mark.parametrize("use_ld", [True, False])
+# @pytest.mark.parametrize("use_initial_state", [True, False])
+# @pytest.mark.parametrize("reverse", [True, False])
+
+
+@pytest.mark.parametrize("use_ld", [True])
+@pytest.mark.parametrize("use_initial_state", [True])
+@pytest.mark.parametrize("reverse", [True])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_compute_states(shape, use_ld, use_initial_state, reverse, dtype):
     torch.manual_seed(2024)

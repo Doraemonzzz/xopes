@@ -58,8 +58,15 @@ def lasd3_intra_torch(
                 array = range(m - 1, -1, -1)
             else:
                 array = range(m)
+
             for j in array:
-                decay = torch.exp(ld_[:, j]).unsqueeze(-1).unsqueeze(-1)
+                if reverse:
+                    if j == m - 1:
+                        decay = 1
+                    else:
+                        decay = torch.exp(ld_[:, j + 1]).unsqueeze(-1).unsqueeze(-1)
+                else:
+                    decay = torch.exp(ld_[:, j]).unsqueeze(-1).unsqueeze(-1)
                 state_ = torch.einsum(
                     "b h d, b h e -> b h d e",
                     k_[
@@ -127,7 +134,13 @@ def compute_states(
             state_i = torch.zeros(b, h, d, e, dtype=torch.float32, device=k.device)
             array = range(m - 1, -1, -1) if reverse else range(m)
             for j in array:
-                decay = torch.exp(ld_i[:, j]).unsqueeze(-1).unsqueeze(-1)
+                if reverse:
+                    if j == m - 1:
+                        decay = 1
+                    else:
+                        decay = torch.exp(ld_i[:, j + 1]).unsqueeze(-1).unsqueeze(-1)
+                else:
+                    decay = torch.exp(ld_i[:, j]).unsqueeze(-1).unsqueeze(-1)
                 state_ = torch.einsum(
                     "b h d, b h e -> b h d e", k_i[:, j, :, :], v_i[:, j, :, :]
                 )
@@ -154,7 +167,14 @@ def compute_states(
             c = 0
 
         for i in range(n):
-            decay = torch.exp(ld[:, i]).unsqueeze(-1).unsqueeze(-1)
+            if reverse:
+                if i == 0:
+                    decay = 1
+                else:
+                    decay = torch.exp(ld[:, i - 1]).unsqueeze(-1).unsqueeze(-1)
+            else:
+                decay = torch.exp(ld[:, i]).unsqueeze(-1).unsqueeze(-1)
+
             state_ = torch.einsum(
                 "b h d, b h e -> b h d e", k[:, i, :, :], v[:, i, :, :]
             )
@@ -165,6 +185,7 @@ def compute_states(
 
             # !!! important
             if reverse and i == n - 1:
+                decay = torch.exp(ld[:, i]).unsqueeze(-1).unsqueeze(-1)
                 state = decay * state
 
             if (i + 1 - c) % BLOCK_N == 0 or (i == n - 1):

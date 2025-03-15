@@ -154,7 +154,7 @@ $$
 $$
 \begin{aligned}
 
-\mathbf {d \bar K}_i &= \mathrm{diag}(\bar \Lambda_i)[\mathbf{ V}_i \mathbf {dS}_i^\top]
+\mathbf {d K}_i &= \mathrm{diag}(\bar \Lambda_i)[\mathbf{ V}_i \mathbf {dS}_i^\top]
 + \mathrm{diag}(\bar \Lambda_i) [ [\mathbf{V}_i \mathbf{d O}_i^\top] \odot \mathbf M^\top] \mathbf {\tilde Q}_i,\\
 
 &= [\mathrm{diag}(\bar \Lambda_i)\mathbf{ V}_i] \mathbf {dS}_i^\top

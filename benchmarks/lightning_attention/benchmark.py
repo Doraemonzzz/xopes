@@ -5,7 +5,13 @@ import torch
 import torch.nn.functional as F
 import triton
 
-from xopes.ops.lightning_attn.baseline import flash_attn_wrapper, lightning_attn_wrapper
+from xopes.ops.lightning_attn.baseline import (
+    chunk_gla_wrapper,
+    chunk_simple_gla_wrapper,
+    flash_attn_wrapper,
+    lightning_attn_wrapper,
+)
+from xopes.ops.lightning_attn.scalar_data_dependent_decay import lasd3_parallel_triton
 from xopes.ops.lightning_attn.scalar_decay import (
     lasd_parallel_triton,
     lasd_recurrence_triton,
@@ -21,57 +27,79 @@ dtype_map = {
 }
 
 
-def lasd_recurrence(q, k, v, ld):
-    return lasd_recurrence_triton(q, k, v, ld=ld)[0]
+def chunk_gla_k(q, k, v, **kwargs):
+    return chunk_gla_wrapper(q, k, v, ldk=kwargs["ldk"])[0]
 
 
-def lasd_parallel(q, k, v, ld):
-    return lasd_parallel_triton(q, k, v, ld=ld)[0]
+def chunk_simple_gla_k(q, k, v, **kwargs):
+    return chunk_simple_gla_wrapper(q, k, v, ld3=kwargs["ld3"])[0]
 
 
-def land_parallel(q, k, v, ld):
+def lasd_recurrence(q, k, v, **kwargs):
+    return lasd_recurrence_triton(q, k, v, ld=kwargs["ld"])[0]
+
+
+def lasd_parallel(q, k, v, **kwargs):
+    return lasd_parallel_triton(q, k, v, ld=kwargs["ld"])[0]
+
+
+def land_parallel(q, k, v, **kwargs):
     return lasd_parallel_triton(q, k, v)[0]
 
 
-def lightning_parallel(q, k, v, ld):
-    return lightning_attn_wrapper(q, k, v, ld=ld, variant="parallel")
+def lasd3_parallel(q, k, v, **kwargs):
+    return lasd3_parallel_triton(q, k, v, ld=kwargs["ld3"])[0]
 
 
-def lightning_chunk_loop(q, k, v, ld):
-    return lightning_attn_wrapper(q, k, v, ld=ld, variant="chunk_loop")
+def lightning_parallel(q, k, v, **kwargs):
+    return lightning_attn_wrapper(q, k, v, ld=kwargs["ld"], variant="parallel")
+
+
+def lightning_chunk_loop(q, k, v, **kwargs):
+    return lightning_attn_wrapper(q, k, v, ld=kwargs["ld"], variant="chunk_loop")
 
 
 module_map = {
     "lasd_r": lasd_recurrence,
     "lasd_p": lasd_parallel,
     "land_p": land_parallel,
+    "lasd3_p": lasd3_parallel,
     "flash": flash_attn_wrapper,
     "lightning_p": lightning_parallel,
     "lightning_c": lightning_chunk_loop,
+    "gla_k": chunk_gla_k,
+    "gla_s_k": chunk_simple_gla_k,
 }
 
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         x_vals=[2**i for i in range(8, 16)],
+        # x_vals=[2**i for i in range(8, 9)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            "lasd_r",
-            "lasd_p",
-            "land_p",
-            "flash",
-            "lightning_p",
-            "lightning_c",
+            # "lasd_r",
+            # "lasd_p",
+            # "land_p",
+            "lasd3_p",
+            # "flash",
+            # "lightning_p",
+            # "lightning_c",
+            # "gla_k",
+            # "gla_s_k",
         ],
         line_names=[
-            "LASD_R",
-            "LASD_P",
-            "LAND_P",
-            "Flash",
-            "Lightning_P",
-            "Lightning_C",
+            # "LASDR",
+            # "LASDP",
+            # "LANDP",
+            "LASD3P",
+            # "Flash",
+            # "LP",
+            # "LC",
+            # "GLA_K",
+            # "GLA_S_K",
         ],
         styles=[
             ("red", "-"),
@@ -80,6 +108,8 @@ configs = [
             ("orange", "-"),
             ("purple", "-"),
             ("pink", "-"),
+            ("yellow", "-"),
+            ("cyan", "-"),
         ],
         plot_name=f"lasd-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
@@ -128,14 +158,21 @@ def benchmark(
     k = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     v = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device)).requires_grad_()
+    ld3 = F.logsigmoid(
+        torch.randn((b, n, h), dtype=dtype, device=device)
+    ).requires_grad_()
+    ldk = F.logsigmoid(
+        torch.randn((b, n, h, d), dtype=dtype, device=device)
+    ).requires_grad_()
 
     module = module_map[provider]
 
     try:
-        fn = lambda: module(q, k, v, ld=ld)
+        fn = lambda: module(q, k, v, ld=ld, ld3=ld3, ldk=ldk)
     except Exception as e:
         print(f"Error setting up {provider}: {e}")
         fn = None
+    # fn = lambda: module(q, k, v, ld=ld, ld3=ld3)
 
     if mode == "bwd":
         try:
@@ -170,6 +207,6 @@ def benchmark(
         return mb
 
 
-save_path = "stat/lasd"
+save_path = "stat/la"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)

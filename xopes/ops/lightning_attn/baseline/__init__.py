@@ -11,6 +11,11 @@ except:
     chunk_gla = lambda x: None
 
 try:
+    from fla.ops.simple_gla import chunk_simple_gla
+except:
+    chunk_simple_gla = lambda x: None
+
+try:
     from lightning_attn.ops import lightning_attn_func
 except:
     lightning_attn_func = lambda x: None
@@ -34,6 +39,19 @@ def chunk_gla_wrapper(q, k, v, **kwargs):
         v,
         g=kwargs["ldk"],
         head_first=False,
+        output_final_state=True,
+    )
+    return o
+
+
+def chunk_simple_gla_wrapper(q, k, v, **kwargs):
+    o = chunk_simple_gla(
+        q,
+        k,
+        v,
+        g=kwargs["ld3"],
+        head_first=False,
+        output_final_state=True,
     )
     return o
 

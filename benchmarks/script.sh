@@ -64,6 +64,9 @@ folder=lightning_attention/positional_encoding
 ##### logcumsumexp 250312
 folder=logcumsumexp
 
+##### lightning_attention 250314
+folder=lightning_attention
+
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0
