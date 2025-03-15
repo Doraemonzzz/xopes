@@ -69,7 +69,7 @@ folder=lightning_attention
 
 mkdir -p $folder/log
 
-export CUDA_VISIBLE_DEVICES=0
-# export CUDA_VISIBLE_DEVICES=1
+# export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
