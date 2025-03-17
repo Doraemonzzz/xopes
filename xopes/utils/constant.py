@@ -98,4 +98,15 @@ def get_gpu_sm_count(device_id=None):
         return {"error": f"Error getting GPU information: {str(e)}"}
 
 
-SM_COUNT = get_gpu_sm_count()["sm_count"]
+_SM_COUNT_CACHE = None
+
+
+def get_sm_count():
+    global _SM_COUNT_CACHE
+    if _SM_COUNT_CACHE is None:
+        gpu_info = get_gpu_sm_count()
+        _SM_COUNT_CACHE = gpu_info.get("sm_count", -1)
+    return _SM_COUNT_CACHE
+
+
+SM_COUNT = get_sm_count()

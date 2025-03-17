@@ -32,13 +32,17 @@ def get_params():
 @pytest.mark.parametrize("use_log_decay", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True, False])
-
-# @pytest.mark.parametrize("use_initial_state", [True])
-# @pytest.mark.parametrize("use_log_decay", [True])
-# @pytest.mark.parametrize("use_varlen", [False])
-# @pytest.mark.parametrize("no_dstate", [False])
+@pytest.mark.parametrize("use_chunk_loop", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test(shape, use_initial_state, use_log_decay, use_varlen, no_dstate, dtype):
+def test(
+    shape,
+    use_initial_state,
+    use_log_decay,
+    use_varlen,
+    no_dstate,
+    use_chunk_loop,
+    dtype,
+):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     b, n, h, d, e = shape
@@ -101,7 +105,7 @@ def test(shape, use_initial_state, use_log_decay, use_varlen, no_dstate, dtype):
 
     # triton parallel
     o_parallel_triton, s_parallel_triton = lasd_parallel_triton(
-        q=q, k=k, v=v, ld=ld, initial_state=initial_state
+        q=q, k=k, v=v, ld=ld, initial_state=initial_state, use_chunk_loop=use_chunk_loop
     )
     if no_dstate:
         output_parallel_triton = o_parallel_triton.sum()

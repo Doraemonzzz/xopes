@@ -5,6 +5,7 @@ import triton
 
 from xopes.ops.lightning_attn.scalar_decay.lasd_parallel_triton import (
     lasd_parallel_state_parallel,
+    lasd_parallel_state_parallel_reduce,
     lasd_parallel_state_reduce,
 )
 from xopes.ops.lightning_attn.scalar_decay.torch_utils import compute_states
@@ -116,6 +117,25 @@ def test_compute_states(shape, use_ld, use_initial_state, reverse, dtype):
         BLOCK_N=BLOCK_N,
     )
 
+    global_states_fuse = lasd_parallel_state_parallel_reduce(
+        k=k,
+        v=v,
+        b=b,
+        n=n,
+        h=h,
+        d=d,
+        e=e,
+        initial_state=initial_state,
+        ld=ld,
+        cu_seqlens=None,
+        reverse=reverse,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
     l = global_states_ref.shape[2]
     for i in range(l):
         print(
@@ -130,3 +150,20 @@ def test_compute_states(shape, use_ld, use_initial_state, reverse, dtype):
 
     # Assert results match within tolerance
     assert torch.allclose(global_states_ref, global_states, atol=atol, rtol=rtol)
+
+    l = global_states_ref.shape[2]
+    for i in range(l):
+        print(
+            i,
+            "states diff norm: ",
+            torch.norm(global_states_ref[:, :, i] - global_states_fuse[:, :, i]).item(),
+        )
+    print(
+        "global_states diff max: ",
+        torch.abs(global_states_ref - global_states_fuse).max().item(),
+    )
+    print(
+        "global_states diff norm: ",
+        torch.norm(global_states_ref - global_states_fuse).item(),
+    )
+    assert torch.allclose(global_states_ref, global_states_fuse, atol=atol, rtol=rtol)

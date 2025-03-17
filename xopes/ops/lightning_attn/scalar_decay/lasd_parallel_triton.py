@@ -10,75 +10,11 @@ from xopes.ops.lightning_attn.scalar_decay.utils import (
     _lasd_parallel_intra,
     _lasd_parallel_intra_inter,
     _lasd_parallel_state_parallel,
+    _lasd_parallel_state_parallel_reduce,
     _lasd_parallel_state_reduce,
 )
 from xopes.utils import contiguous
-
-
-@contiguous
-def lasd_parallel_intra(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    ld: Optional[torch.Tensor] = None,
-    cu_seqlens: Optional[torch.LongTensor] = None,
-    reverse: bool = False,
-    MAX_BLOCK_N: int = 256,
-    MAX_BLOCK_C: int = 256,
-    MAX_BLOCK_E: int = 128,
-    MAX_BLOCK_D: int = 128,
-    BLOCK_N: int = 256,
-):
-    b, n, h, d = q.shape
-    e = v.shape[-1]
-
-    use_cu_seqlens = cu_seqlens is not None
-    if use_cu_seqlens:
-        b = cu_seqlens.shape[0] - 1
-
-    use_ld = ld is not None
-
-    if use_cu_seqlens:
-        o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
-    else:
-        o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
-
-    NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
-    use_pad = n % BLOCK_N != 0
-
-    def grid_partial(MAX_BLOCK_C, MAX_BLOCK_E):
-        def grid(meta):
-            meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
-            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
-            return (
-                b * h * NUM_BLOCK_N,
-                triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
-                triton.cdiv(e, meta["BLOCK_E"]),
-            )
-
-        return grid
-
-    grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_E)
-
-    _lasd_parallel_intra[grid](
-        Q=q,
-        K=k,
-        V=v,
-        O=o,
-        LOG_DECAY=ld,
-        CU_SEQLENS=cu_seqlens,
-        B=b,
-        N=n,
-        H=h,
-        D=d,
-        E=e,
-        USE_CU_SEQLENS=use_cu_seqlens,
-        USE_LOG_DECAY=use_ld,
-        REVERSE=reverse,
-        BLOCK_N=BLOCK_N,
-    )
-
-    return o
+from xopes.utils.constant import SM_COUNT
 
 
 @contiguous
@@ -204,6 +140,134 @@ def lasd_parallel_state_reduce(
 
 
 @contiguous
+def lasd_parallel_state_parallel_reduce(
+    k: torch.Tensor,
+    v: torch.Tensor,
+    b: int,
+    n: int,
+    h: int,
+    d: int,
+    e: int,
+    initial_state: Optional[torch.Tensor] = None,
+    ld: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    reverse: bool = False,
+    MAX_BLOCK_N: int = 256,
+    MAX_BLOCK_C: int = 256,
+    MAX_BLOCK_E: int = 128,
+    MAX_BLOCK_D: int = 128,
+    BLOCK_N: int = 256,
+):
+    b, n, h, d = k.shape
+    e = v.shape[-1]
+
+    use_cu_seqlens = cu_seqlens is not None
+    if use_cu_seqlens:
+        b = cu_seqlens.shape[0] - 1
+
+    NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
+    use_pad = n % BLOCK_N != 0
+    use_initial_state = initial_state is not None
+    use_ld = ld is not None
+
+    states = torch.empty(
+        (b, h, NUM_BLOCK_N + 1, d, e), dtype=torch.float32, device=k.device
+    )
+
+    def grid_partial(MAX_BLOCK_D, MAX_BLOCK_E):
+        def grid(meta):
+            meta["BLOCK_D"] = min(meta["BLOCK_D"], MAX_BLOCK_D)
+            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
+            return (
+                b * h,
+                triton.cdiv(d, meta["BLOCK_D"]),
+                triton.cdiv(e, meta["BLOCK_E"]),
+            )
+
+        return grid
+
+    grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
+
+    _lasd_parallel_state_parallel_reduce[grid](
+        K=k,
+        V=v,
+        STATE=initial_state,
+        STATES=states,
+        LOG_DECAY=ld,
+        CU_SEQLENS=cu_seqlens,
+        B=b,
+        N=n,
+        H=h,
+        D=d,
+        E=e,
+        USE_CU_SEQLENS=use_cu_seqlens,
+        USE_LOG_DECAY=use_ld,
+        USE_INITIAL_STATE=use_initial_state,
+        USE_PAD=use_pad,
+        REVERSE=reverse,
+        BLOCK_N=BLOCK_N,
+    )
+
+    return states
+
+
+@contiguous
+def lasd_parallel_state_parallel_reduce_sep(
+    k: torch.Tensor,
+    v: torch.Tensor,
+    b: int,
+    n: int,
+    h: int,
+    d: int,
+    e: int,
+    initial_state: Optional[torch.Tensor] = None,
+    ld: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    reverse: bool = False,
+    MAX_BLOCK_N: int = 256,
+    MAX_BLOCK_C: int = 256,
+    MAX_BLOCK_E: int = 128,
+    MAX_BLOCK_D: int = 128,
+    BLOCK_N: int = 256,
+):
+    # Step0.5: Compute local states in parallel
+    states = lasd_parallel_state_parallel(
+        k=k,
+        v=v,
+        ld=ld,
+        cu_seqlens=cu_seqlens,
+        reverse=reverse,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
+    # Step1: Update local states to get global states
+    states = lasd_parallel_state_reduce(
+        b=b,
+        n=n,
+        h=h,
+        d=d,
+        e=e,
+        states=states,
+        initial_state=initial_state,
+        ld=ld,
+        cu_seqlens=cu_seqlens,
+        reverse=reverse,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
+    return states
+
+
+##### intra and inter #####
+@contiguous
 def lasd_parallel_inter(
     q: torch.Tensor,
     o: torch.Tensor,
@@ -260,6 +324,72 @@ def lasd_parallel_inter(
         USE_LOG_DECAY=use_ld,
         REVERSE=reverse,
         TRANS=trans,
+        BLOCK_N=BLOCK_N,
+    )
+
+    return o
+
+
+@contiguous
+def lasd_parallel_intra(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    reverse: bool = False,
+    MAX_BLOCK_N: int = 256,
+    MAX_BLOCK_C: int = 256,
+    MAX_BLOCK_E: int = 128,
+    MAX_BLOCK_D: int = 128,
+    BLOCK_N: int = 256,
+):
+    b, n, h, d = q.shape
+    e = v.shape[-1]
+
+    use_cu_seqlens = cu_seqlens is not None
+    if use_cu_seqlens:
+        b = cu_seqlens.shape[0] - 1
+
+    use_ld = ld is not None
+
+    if use_cu_seqlens:
+        o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
+    else:
+        o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
+
+    NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
+    use_pad = n % BLOCK_N != 0
+
+    def grid_partial(MAX_BLOCK_C, MAX_BLOCK_E):
+        def grid(meta):
+            meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
+            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
+            return (
+                b * h * NUM_BLOCK_N,
+                triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
+                triton.cdiv(e, meta["BLOCK_E"]),
+            )
+
+        return grid
+
+    grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_E)
+
+    _lasd_parallel_intra[grid](
+        Q=q,
+        K=k,
+        V=v,
+        O=o,
+        LOG_DECAY=ld,
+        CU_SEQLENS=cu_seqlens,
+        B=b,
+        N=n,
+        H=h,
+        D=d,
+        E=e,
+        USE_CU_SEQLENS=use_cu_seqlens,
+        USE_LOG_DECAY=use_ld,
+        REVERSE=reverse,
         BLOCK_N=BLOCK_N,
     )
 
@@ -348,6 +478,7 @@ def lasd_parallel_fwd(
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     trans: bool = False,
+    use_chunk_loop: bool = False,
 ):
     """
     Forward pass for Lightning Attention with Scalar Decay in parallel mode.
@@ -373,34 +504,27 @@ def lasd_parallel_fwd(
     MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
+    NUM_PARALLEL_BLOCKS = b * h
 
     if n <= 512:
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
 
-    # Step1: Compute local states in parallel
-    states = lasd_parallel_state_parallel(
+    # step1: compute states in parallel or chunk loop
+    if NUM_PARALLEL_BLOCKS >= SM_COUNT or use_chunk_loop:
+        fn = lasd_parallel_state_parallel_reduce
+    else:
+        fn = lasd_parallel_state_parallel_reduce_sep
+
+    states = fn(
         k=k,
         v=v,
-        ld=ld,
-        cu_seqlens=cu_seqlens,
-        reverse=reverse,
-        MAX_BLOCK_N=MAX_BLOCK_N,
-        MAX_BLOCK_C=MAX_BLOCK_C,
-        MAX_BLOCK_E=MAX_BLOCK_E,
-        MAX_BLOCK_D=MAX_BLOCK_D,
-        BLOCK_N=BLOCK_N,
-    )
-
-    # Step2: Update local states to get global states
-    states = lasd_parallel_state_reduce(
         b=b,
         n=n,
         h=h,
         d=d,
         e=e,
-        states=states,
         initial_state=initial_state,
         ld=ld,
         cu_seqlens=cu_seqlens,
@@ -412,7 +536,7 @@ def lasd_parallel_fwd(
         BLOCK_N=BLOCK_N,
     )
 
-    # Step3: Compute intra and inter in parallel, for each chunk, parallel over sub-chunk
+    # Step2: Compute intra and inter in parallel, for each chunk, parallel over sub-chunk
     o = lasd_parallel_intra_inter(
         q=q,
         k=k,
@@ -443,6 +567,7 @@ def lasd_parallel_bwd(
     dfinal_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     states: Optional[torch.Tensor] = None,
+    use_chunk_loop: bool = False,
 ):
     """
     Backward pass for Lightning Attention with Scalar Decay in parallel mode.
@@ -472,6 +597,7 @@ def lasd_parallel_bwd(
     MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
+    NUM_PARALLEL_BLOCKS = b * h
 
     if n <= 512:
         BLOCK_N = min(MAX_BLOCK_N, 128)
@@ -513,27 +639,20 @@ def lasd_parallel_bwd(
         trans=False,
     )
     """
+    if NUM_PARALLEL_BLOCKS >= SM_COUNT or use_chunk_loop:
+        fn = lasd_parallel_state_parallel_reduce
+    else:
+        fn = lasd_parallel_state_parallel_reduce_sep
+
     if states is None:
-        states = lasd_parallel_state_parallel(
+        states = fn(
             k=k,
             v=v,
-            ld=ld,
-            cu_seqlens=cu_seqlens,
-            reverse=False,
-            MAX_BLOCK_N=MAX_BLOCK_N,
-            MAX_BLOCK_C=MAX_BLOCK_C,
-            MAX_BLOCK_E=MAX_BLOCK_E,
-            MAX_BLOCK_D=MAX_BLOCK_D,
-            BLOCK_N=BLOCK_N,
-        )
-
-        states = lasd_parallel_state_reduce(
             b=b,
             n=n,
             h=h,
             d=d,
             e=e,
-            states=states,
             initial_state=initial_state,
             ld=ld,
             cu_seqlens=cu_seqlens,
@@ -564,27 +683,14 @@ def lasd_parallel_bwd(
     final_state = states[:, :, -1, :, :]
     del states
 
-    # for dk and dv, use the same states
-    dstates = lasd_parallel_state_parallel(
+    dstates = fn(
         k=q,  # b n h d
         v=do,  # b n h e
-        ld=ld,
-        cu_seqlens=cu_seqlens,
-        reverse=True,
-        MAX_BLOCK_N=MAX_BLOCK_N,
-        MAX_BLOCK_C=MAX_BLOCK_C,
-        MAX_BLOCK_E=MAX_BLOCK_E,
-        MAX_BLOCK_D=MAX_BLOCK_D,
-        BLOCK_N=BLOCK_N,
-    )
-
-    dstates = lasd_parallel_state_reduce(
         b=b,
         n=n,
         h=h,
         d=d,
         e=e,
-        states=dstates,
         initial_state=dfinal_state,
         ld=ld,
         cu_seqlens=cu_seqlens,
@@ -655,6 +761,7 @@ class LasdParallelFunction(torch.autograd.Function):
         initial_state=None,
         cu_seqlens=None,
         save_states=True,
+        use_chunk_loop=False,
     ):
         # Forward computation
         output, states = lasd_parallel_fwd(
@@ -664,6 +771,7 @@ class LasdParallelFunction(torch.autograd.Function):
             ld=ld,
             initial_state=initial_state,
             cu_seqlens=cu_seqlens,
+            use_chunk_loop=use_chunk_loop,
         )
 
         # Save tensors needed for backward
@@ -671,6 +779,7 @@ class LasdParallelFunction(torch.autograd.Function):
         if not save_states:
             states = None
         ctx.save_for_backward(q, k, v, ld, initial_state, cu_seqlens, states)
+        ctx.use_chunk_loop = use_chunk_loop
         del states
 
         return output, final_state
@@ -679,7 +788,7 @@ class LasdParallelFunction(torch.autograd.Function):
     @contiguous
     def backward(ctx, do, dfinal_state):
         q, k, v, ld, initial_state, cu_seqlens, states = ctx.saved_tensors
-
+        use_chunk_loop = ctx.use_chunk_loop
         dq, dk, dv, dinitial_state, final_state = lasd_parallel_bwd(
             q=q,
             k=k,
@@ -690,6 +799,7 @@ class LasdParallelFunction(torch.autograd.Function):
             dfinal_state=dfinal_state,
             cu_seqlens=cu_seqlens,
             states=states,
+            use_chunk_loop=use_chunk_loop,
         )
 
         if ld is not None and ld.requires_grad:
@@ -707,15 +817,7 @@ class LasdParallelFunction(torch.autograd.Function):
         else:
             dld = None
 
-        return (
-            dq,
-            dk,
-            dv,
-            dld,
-            dinitial_state,
-            None,
-            None,
-        )
+        return (dq, dk, dv, dld, dinitial_state, None, None, None)
 
 
 def lasd_parallel_triton(
@@ -725,6 +827,8 @@ def lasd_parallel_triton(
     ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
+    save_states: bool = True,
+    use_chunk_loop: bool = False,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -737,7 +841,8 @@ def lasd_parallel_triton(
         ld: Logarithmic decay tensor of shape (H,)
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
-        eps: Epsilon for numerical stability
+        save_states: Whether to save the states
+        use_chunk_loop: Whether to use chunk loop
 
     Returns:
         output: Tensor of shape (B, N, H, E)
@@ -760,7 +865,8 @@ def lasd_parallel_triton(
         ld,
         initial_state,
         cu_seqlens,
-        kwargs.get("save_states", True),
+        save_states,
+        use_chunk_loop,
     )
 
 
