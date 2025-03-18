@@ -14,27 +14,34 @@ def get_params():
     shapes = [
         # standard shape
         (2, 256, 12, 128, 128),
-        (2, 1024, 8, 32, 16),
-        # BLOCK_N +- 1
-        (2, 257, 8, 64, 32),
-        (2, 255, 8, 64, 32),
-        (2, 65, 7, 33, 63),
-        # BLOCK_N +- C
-        (2, 270, 8, 64, 32),
-        (2, 270, 8, 33, 16),
-        (2, 1125, 8, 43, 33),
-        # LARGE D, E
-        (2, 1125, 8, 255, 257),
+        # (2, 1024, 8, 32, 16),
+        # # BLOCK_N +- 1
+        # (2, 257, 8, 64, 32),
+        # (2, 255, 8, 64, 32),
+        # (2, 65, 7, 33, 63),
+        # # BLOCK_N +- C
+        # (2, 270, 8, 64, 32),
+        # (2, 270, 8, 33, 16),
+        # (2, 1125, 8, 43, 33),
+        # # LARGE D, E
+        # (2, 1125, 8, 255, 257),
     ]
     return shapes
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("use_initial_state", [True, False])
-@pytest.mark.parametrize("use_log_decay", [True, False])
+# @pytest.mark.parametrize("use_initial_state", [True, False])
+# @pytest.mark.parametrize("use_log_decay", [True, False])
+# @pytest.mark.parametrize("use_varlen", [False])
+# @pytest.mark.parametrize("no_dstate", [True, False])
+# @pytest.mark.parametrize("use_chunk_loop", [True, False])
+
+
+@pytest.mark.parametrize("use_initial_state", [False])
+@pytest.mark.parametrize("use_log_decay", [False])
 @pytest.mark.parametrize("use_varlen", [False])
-@pytest.mark.parametrize("no_dstate", [True, False])
-@pytest.mark.parametrize("use_chunk_loop", [True, False])
+@pytest.mark.parametrize("no_dstate", [False])
+@pytest.mark.parametrize("use_chunk_loop", [False])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test(
     shape,

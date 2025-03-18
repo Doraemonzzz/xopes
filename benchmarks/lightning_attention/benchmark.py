@@ -41,7 +41,7 @@ def lasd_recurrence(q, k, v, **kwargs):
 
 
 def lasd_parallel(q, k, v, **kwargs):
-    return lasd_parallel_triton(q, k, v, ld=kwargs["ld"])[0]
+    return torch.compile(lasd_parallel_triton)(q, k, v, ld=kwargs["ld"])[0]
 
 
 def land_parallel(q, k, v, **kwargs):
@@ -75,9 +75,9 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        x_vals=[2**i for i in range(8, 16)],
+        # x_vals=[2**i for i in range(8, 16)],
         # x_vals=[2**i for i in range(8, 11)],
-        # x_vals=[2**i for i in range(11, 12)],
+        x_vals=[2**i for i in range(11, 12)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -136,10 +136,8 @@ configs = [
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    # for b, h, d in [[4, 32, 128]]
-    for b, h, d in [[4, 32, 128], [1, 16, 128]]
-    # for b, h, d in [[4, 1, 128]]
-    # for b, h, d in [[4, 32, 128], [4, 32, 64], [1, 32, 128], [4, 1, 128]]
+    for b, h, d in [[4, 32, 128]]
+    # for b, h, d in [[4, 32, 128], [1, 16, 128]]
 ]
 
 

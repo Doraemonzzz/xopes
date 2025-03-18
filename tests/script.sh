@@ -89,6 +89,9 @@ folder=lightning_attn/scalar_decay
 # ##### lcse 250312
 # folder=logcumsumexp
 
+# ##### dld 250317
+folder=lightning_attn/log_decay/dld
+
 mkdir -p $folder/log
 
 

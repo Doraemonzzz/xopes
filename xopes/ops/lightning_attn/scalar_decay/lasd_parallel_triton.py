@@ -4,7 +4,6 @@ import torch
 import triton
 from einops import repeat
 
-from xopes.ops.cumsum import cumsum_fn
 from xopes.ops.lightning_attn.scalar_decay.utils import (
     _lasd_parallel_inter,
     _lasd_parallel_intra,
@@ -362,6 +361,8 @@ def lasd_parallel_intra_inter(
     v: torch.Tensor,
     states: torch.Tensor,
     ld: Optional[torch.Tensor] = None,
+    x: Optional[torch.Tensor] = None,  # use for dld compute
+    final_state: Optional[torch.Tensor] = None,  # use for dld compute
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     trans: bool = False,
@@ -382,11 +383,28 @@ def lasd_parallel_intra_inter(
     use_pad = n % BLOCK_N != 0
 
     use_ld = ld is not None
+    compute_dld = x is not None and ld is not None and ld.requires_grad
+
+    if d >= 256:
+        BLOCK_C = 64
+        BLOCK_D = 64
+        BLOCK_E = 64
+    else:
+        BLOCK_C = 128
+        BLOCK_D = 128
+        BLOCK_E = 128
 
     if use_cu_seqlens:
         o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
     else:
         o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
+
+    if compute_dld:
+        NUM_BLOCK_E = triton.cdiv(e, BLOCK_E)
+        dld = torch.empty((b, n, h, NUM_BLOCK_E), dtype=q.dtype, device=q.device)
+    else:
+        NUM_BLOCK_E = 0
+        dld = None
 
     def grid(meta):
         return (
@@ -402,6 +420,8 @@ def lasd_parallel_intra_inter(
         O=o,
         STATES=states,
         LOG_DECAY=ld,
+        X=x,
+        DLOG_DECAY=dld,
         CU_SEQLENS=cu_seqlens,
         B=b,
         N=n,
@@ -410,12 +430,26 @@ def lasd_parallel_intra_inter(
         E=e,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_LOG_DECAY=use_ld,
+        COMPUTE_DLD=compute_dld,
         REVERSE=reverse,
         TRANS=trans,
         BLOCK_N=BLOCK_N,
+        BLOCK_C=BLOCK_C,
+        BLOCK_D=BLOCK_D,
+        BLOCK_E=BLOCK_E,
+        NUM_BLOCK_E=NUM_BLOCK_E,
     )
 
-    return o
+    if compute_dld:
+        # B N H NUM_BLOCK_E -> B N H
+        if dld.shape[-1] == 1:
+            dld = dld.squeeze(-1)
+        else:
+            dld = dld.sum(-1)
+
+        # todo, revcumsum
+
+    return o, dld
 
 
 ########## Fwd start ##########
@@ -489,7 +523,7 @@ def lasd_parallel_fwd(
     )
 
     # Step2: Compute intra and inter in parallel, for each chunk, parallel over sub-chunk
-    o = lasd_parallel_intra_inter(
+    o, _ = lasd_parallel_intra_inter(
         q=q,
         k=k,
         v=v,
@@ -618,12 +652,13 @@ def lasd_parallel_bwd(
             BLOCK_N=BLOCK_N,
         )
 
-    dq = lasd_parallel_intra_inter(
+    dq, dld_q = lasd_parallel_intra_inter(
         q=do,  # b n h e
         k=v,  # b n h e
         v=k,  # b n h d
         states=states,  # b h (m + 1) d e
         ld=ld,
+        x=q,
         cu_seqlens=cu_seqlens,
         reverse=False,
         trans=True,
@@ -656,12 +691,13 @@ def lasd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
-    dk = lasd_parallel_intra_inter(
+    dk, dld_k = lasd_parallel_intra_inter(
         q=v,  # b n h e
         k=do,  # b n h e
         v=q,  # b n h d
         states=dstates,  # b h (m + 1) d e
         ld=ld,
+        x=k,
         cu_seqlens=cu_seqlens,
         reverse=True,
         trans=True,
@@ -672,7 +708,7 @@ def lasd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
-    dv = lasd_parallel_intra_inter(
+    dv, _ = lasd_parallel_intra_inter(
         q=k,  # b n h d
         k=q,  # b n h d
         v=do,  # b n h e
@@ -694,12 +730,35 @@ def lasd_parallel_bwd(
         and initial_state.requires_grad
     )
 
+    if ld is not None and ld.requires_grad:
+        dld = compute_dld(
+            dld_q=dld_q,  # B N H
+            dld_k=dld_k,  # B N H
+            dfinal_state=dfinal_state,  # B H D E
+            final_state=final_state,  # B H D E
+            cu_seqlens=cu_seqlens,
+        )
+
+        # # b n h d -> n h
+        # dld = (q * dq - k * dk).sum(-1).sum(0)
+        # dld = cumsum_fn(dld, dim=0, reverse=True).sum(0)
+
+        # if dfinal_state is not None:
+        #     n = q.shape[1]
+        #     # !!! important, the following line is equivalent to the following line
+        #     # dld = cumsum_fn(dld, dim=0, reverse=True)
+        #     # dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0))
+        #     # dld = dld.sum(0)
+        #     dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0) * n)
+    else:
+        dld = None
+
     return (
         dq,
         dk,
         dv,
+        dld,
         dstates[:, :, -1, :, :] if need_dfinal_state else None,
-        final_state,
     )
 
 
@@ -743,7 +802,7 @@ class LasdParallelFunction(torch.autograd.Function):
     def backward(ctx, do, dfinal_state):
         q, k, v, ld, initial_state, cu_seqlens, states = ctx.saved_tensors
         use_chunk_loop = ctx.use_chunk_loop
-        dq, dk, dv, dinitial_state, final_state = lasd_parallel_bwd(
+        dq, dk, dv, dld, dinitial_state = lasd_parallel_bwd(
             q=q,
             k=k,
             v=v,
@@ -756,20 +815,20 @@ class LasdParallelFunction(torch.autograd.Function):
             use_chunk_loop=use_chunk_loop,
         )
 
-        if ld is not None and ld.requires_grad:
-            # b n h d -> n h
-            dld = (q * dq - k * dk).sum(-1).sum(0)
-            dld = cumsum_fn(dld, dim=0, reverse=True).sum(0)
+        # if ld is not None and ld.requires_grad:
+        #     # b n h d -> n h
+        #     dld = (q * dq - k * dk).sum(-1).sum(0)
+        #     dld = cumsum_fn(dld, dim=0, reverse=True).sum(0)
 
-            if dfinal_state is not None:
-                n = q.shape[1]
-                # !!! important, the following line is equivalent to the following line
-                # dld = cumsum_fn(dld, dim=0, reverse=True)
-                # dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0))
-                # dld = dld.sum(0)
-                dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0) * n)
-        else:
-            dld = None
+        #     if dfinal_state is not None:
+        #         n = q.shape[1]
+        #         # !!! important, the following line is equivalent to the following line
+        #         # dld = cumsum_fn(dld, dim=0, reverse=True)
+        #         # dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0))
+        #         # dld = dld.sum(0)
+        #         dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0) * n)
+        # else:
+        #     dld = None
 
         return (dq, dk, dv, dld, dinitial_state, None, None, None)
 
