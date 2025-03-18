@@ -31,6 +31,7 @@ def get_params():
     [
         torch.float32,
         torch.float16,
+        torch.bfloat16,
     ],
 )
 def test(shape, dim, reverse, use_cu_seqlens, chunk_size, dtype):
@@ -62,10 +63,10 @@ def test(shape, dim, reverse, use_cu_seqlens, chunk_size, dtype):
         x, dim=dim, reverse=reverse, chunk_size=chunk_size
     )
     o_cumsum_reduce = chunk_cumsum_reduce_torch(
-        o_chunk_cumsum_torch, dim=dim, reverse=reverse, chunk_size=chunk_size
+        o_chunk_cumsum_torch.clone(), dim=dim, reverse=reverse, chunk_size=chunk_size
     )
     o_cumsum_reduce_triton = chunk_cumsum_reduce_triton(
-        o_chunk_cumsum_torch, dim=dim, reverse=reverse, chunk_size=chunk_size
+        o_chunk_cumsum_torch.clone(), dim=dim, reverse=reverse, chunk_size=chunk_size
     )
 
     atol, rtol = get_threshold(dtype)
@@ -79,7 +80,7 @@ def test(shape, dim, reverse, use_cu_seqlens, chunk_size, dtype):
         "o diff norm: (Vs torch cumsum reduce)",
         torch.norm(o_cumsum_torch - o_cumsum_reduce).item(),
     )
-    assert torch.allclose(o_cumsum_torch, o_cumsum_reduce, atol=atol, rtol=rtol)
+    assert torch.allclose(o_cumsum_reduce, o_cumsum_reduce_triton, atol=atol, rtol=rtol)
 
     print(
         "o diff max: (Vs torch cumsum reduce triton)",
@@ -89,4 +90,4 @@ def test(shape, dim, reverse, use_cu_seqlens, chunk_size, dtype):
         "o diff norm: (Vs torch cumsum reduce triton)",
         torch.norm(o_cumsum_torch - o_cumsum_reduce_triton).item(),
     )
-    assert torch.allclose(o_cumsum_torch, o_cumsum_reduce_triton, atol=atol, rtol=rtol)
+    assert torch.allclose(o_cumsum_reduce, o_cumsum_reduce_triton, atol=atol, rtol=rtol)
