@@ -17,7 +17,7 @@ def lasd_fn(
     cu_seqlens: Optional[torch.LongTensor] = None,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    if q.requires_grad:
+    if v.requires_grad:
         fn = lasd_parallel_triton
     else:
         fn = lasd_recurrence_triton

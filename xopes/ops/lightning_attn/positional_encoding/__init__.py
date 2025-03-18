@@ -16,7 +16,7 @@ def lape_fn(
     cu_seqlens: Optional[torch.LongTensor] = None,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    if q.requires_grad:
+    if v.requires_grad:
         fn = lape_parallel_triton
     else:
         fn = lape_recurrence_triton

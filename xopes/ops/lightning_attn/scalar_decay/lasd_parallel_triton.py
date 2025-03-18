@@ -41,23 +41,14 @@ def lasd_parallel_state_parallel(
     use_pad = n % BLOCK_N != 0
     use_ld = ld is not None
 
-    states = torch.empty(
-        (b, h, NUM_BLOCK_N + 1, d, e), dtype=torch.float32, device=k.device
-    )
+    states = torch.empty((b, h, NUM_BLOCK_N + 1, d, e), dtype=k.dtype, device=k.device)
 
-    def grid_partial(MAX_BLOCK_D, MAX_BLOCK_E):
-        def grid(meta):
-            meta["BLOCK_D"] = min(meta["BLOCK_D"], MAX_BLOCK_D)
-            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
-            return (
-                b * h * NUM_BLOCK_N,
-                triton.cdiv(d, meta["BLOCK_D"]),
-                triton.cdiv(e, meta["BLOCK_E"]),
-            )
-
-        return grid
-
-    grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
+    def grid(meta):
+        return (
+            b * h * NUM_BLOCK_N,
+            triton.cdiv(d, meta["BLOCK_D"]),
+            triton.cdiv(e, meta["BLOCK_E"]),
+        )
 
     _lasd_parallel_state_parallel[grid](
         K=k,
@@ -105,19 +96,12 @@ def lasd_parallel_state_reduce(
     use_initial_state = initial_state is not None
     use_ld = ld is not None
 
-    def grid_partial(MAX_BLOCK_D, MAX_BLOCK_E):
-        def grid(meta):
-            meta["BLOCK_D"] = min(meta["BLOCK_D"], MAX_BLOCK_D)
-            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
-            return (
-                b * h,
-                triton.cdiv(d, meta["BLOCK_D"]),
-                triton.cdiv(e, meta["BLOCK_E"]),
-            )
-
-        return grid
-
-    grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
+    def grid(meta):
+        return (
+            b * h,
+            triton.cdiv(d, meta["BLOCK_D"]),
+            triton.cdiv(e, meta["BLOCK_E"]),
+        )
 
     _lasd_parallel_state_reduce[grid](
         STATE=initial_state,
@@ -170,23 +154,14 @@ def lasd_parallel_state_parallel_reduce(
     use_initial_state = initial_state is not None
     use_ld = ld is not None
 
-    states = torch.empty(
-        (b, h, NUM_BLOCK_N + 1, d, e), dtype=torch.float32, device=k.device
-    )
+    states = torch.empty((b, h, NUM_BLOCK_N + 1, d, e), dtype=k.dtype, device=k.device)
 
-    def grid_partial(MAX_BLOCK_D, MAX_BLOCK_E):
-        def grid(meta):
-            meta["BLOCK_D"] = min(meta["BLOCK_D"], MAX_BLOCK_D)
-            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
-            return (
-                b * h,
-                triton.cdiv(d, meta["BLOCK_D"]),
-                triton.cdiv(e, meta["BLOCK_E"]),
-            )
-
-        return grid
-
-    grid = grid_partial(MAX_BLOCK_D, MAX_BLOCK_E)
+    def grid(meta):
+        return (
+            b * h,
+            triton.cdiv(d, meta["BLOCK_D"]),
+            triton.cdiv(e, meta["BLOCK_E"]),
+        )
 
     _lasd_parallel_state_parallel_reduce[grid](
         K=k,
@@ -291,23 +266,14 @@ def lasd_parallel_inter(
 
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
-
     use_ld = ld is not None
 
-    def grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E):
-        def grid(meta):
-            meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
-            meta["BLOCK_D"] = min(meta["BLOCK_D"], MAX_BLOCK_D)
-            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
-            return (
-                b * h * NUM_BLOCK_N,
-                triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
-                triton.cdiv(e, meta["BLOCK_E"]),
-            )
-
-        return grid
-
-    grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E)
+    def grid(meta):
+        return (
+            b * h * NUM_BLOCK_N,
+            triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
+            triton.cdiv(e, meta["BLOCK_E"]),
+        )
 
     _lasd_parallel_inter[grid](
         Q=q,
@@ -361,19 +327,12 @@ def lasd_parallel_intra(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 
-    def grid_partial(MAX_BLOCK_C, MAX_BLOCK_E):
-        def grid(meta):
-            meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
-            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
-            return (
-                b * h * NUM_BLOCK_N,
-                triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
-                triton.cdiv(e, meta["BLOCK_E"]),
-            )
-
-        return grid
-
-    grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_E)
+    def grid(meta):
+        return (
+            b * h * NUM_BLOCK_N,
+            triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
+            triton.cdiv(e, meta["BLOCK_E"]),
+        )
 
     _lasd_parallel_intra[grid](
         Q=q,
@@ -429,20 +388,12 @@ def lasd_parallel_intra_inter(
     else:
         o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
 
-    def grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E):
-        def grid(meta):
-            meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
-            meta["BLOCK_D"] = min(meta["BLOCK_D"], MAX_BLOCK_D)
-            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
-            return (
-                b * h * NUM_BLOCK_N,
-                triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
-                triton.cdiv(e, meta["BLOCK_E"]),
-            )
-
-        return grid
-
-    grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E)
+    def grid(meta):
+        return (
+            b * h * NUM_BLOCK_N,
+            triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
+            triton.cdiv(e, meta["BLOCK_E"]),
+        )
 
     _lasd_parallel_intra_inter[grid](
         Q=q,
@@ -501,18 +452,19 @@ def lasd_parallel_fwd(
     e = v.shape[-1]
 
     MAX_BLOCK_N = triton.next_power_of_2(n)
-    MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
     NUM_PARALLEL_BLOCKS = b * h
+    USE_CHUNK_LOOP = NUM_PARALLEL_BLOCKS >= SM_COUNT or use_chunk_loop
 
-    if n <= 512:
+    if n <= 512 or USE_CHUNK_LOOP:
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
+    MAX_BLOCK_C = BLOCK_N
 
     # step1: compute states in parallel or chunk loop
-    if NUM_PARALLEL_BLOCKS >= SM_COUNT or use_chunk_loop:
+    if USE_CHUNK_LOOP:
         fn = lasd_parallel_state_parallel_reduce
     else:
         fn = lasd_parallel_state_parallel_reduce_sep
@@ -594,15 +546,16 @@ def lasd_parallel_bwd(
     e = v.shape[-1]
 
     MAX_BLOCK_N = triton.next_power_of_2(n)
-    MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
     NUM_PARALLEL_BLOCKS = b * h
+    USE_CHUNK_LOOP = NUM_PARALLEL_BLOCKS >= SM_COUNT or use_chunk_loop
 
-    if n <= 512:
+    if n <= 512 or USE_CHUNK_LOOP:
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
+    MAX_BLOCK_C = BLOCK_N
 
     """
     The following code is equivalent to this simple code:
@@ -639,7 +592,8 @@ def lasd_parallel_bwd(
         trans=False,
     )
     """
-    if NUM_PARALLEL_BLOCKS >= SM_COUNT or use_chunk_loop:
+
+    if USE_CHUNK_LOOP:
         fn = lasd_parallel_state_parallel_reduce
     else:
         fn = lasd_parallel_state_parallel_reduce_sep

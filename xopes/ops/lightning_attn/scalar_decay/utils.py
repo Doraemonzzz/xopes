@@ -8,7 +8,7 @@ from xopes.utils import generate_configs
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
+            "BLOCK_C": [16, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
         }
@@ -290,7 +290,8 @@ def _lasd_parallel_state_reduce(
         states_block_ptr += D * E * stride
 
     # !!! important
-    state *= c
+    if REVERSE:
+        state *= c
 
     tl.store(
         final_states_block_ptr,
@@ -303,7 +304,7 @@ def _lasd_parallel_state_reduce(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
+            "BLOCK_C": [16, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
         }
@@ -535,7 +536,8 @@ def _lasd_parallel_state_parallel_reduce(
         off_block_n += stride  # !!! important
 
     # !!! important
-    state *= c
+    if REVERSE:
+        state *= c
 
     tl.store(
         final_states_block_ptr,
@@ -548,7 +550,7 @@ def _lasd_parallel_state_parallel_reduce(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
+            "BLOCK_C": [16, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
         }
@@ -698,7 +700,7 @@ def _lasd_parallel_intra(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
+            "BLOCK_C": [16, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
         }
@@ -840,9 +842,9 @@ def _lasd_parallel_inter(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
+            "BLOCK_C": [16, 128],
+            "BLOCK_D": [32, 128],
+            "BLOCK_E": [32, 128],
         }
     ),
     key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
@@ -954,25 +956,34 @@ def _lasd_parallel_intra_inter(
 
     o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
 
+    array_n = tl.arange(0, BLOCK_N)
+    array_kv = array_n
     if REVERSE:
         stride = -1
-        NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
-        NUM_LOOP = NUM_BLOCK_C - off_block_c
     else:
         stride = 1
-        NUM_LOOP = off_block_c + 1
+
+    v_block_ptr = (
+        V
+        + offset_vo
+        + offset_block_vo
+        + array_kv[:, None] * H * E
+        + (offset_block_e + array_e)[None, :]
+    )
+    mask_kv = (offset_block_n + array_kv) < N
+
+    v = tl.load(v_block_ptr, mask=mask_kv[:, None] & mask_e[None, :], other=0.0)
+
+    diff = (array_q[:, None] - array_kv[None, :]) * stride
+    if USE_LOG_DECAY:
+        decay = log_decay * diff
+        decay = tl.exp(tl.where(diff >= 0, decay, float("-inf")))
 
     for i in range(NUM_BLOCK_D):
         mask_d = (array_d + i * BLOCK_D) < D
         q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
 
         ##### intra start #####
-        if REVERSE:
-            # TODO: test this
-            array_kv = BLOCK_N - BLOCK_C + array_c
-        else:
-            array_kv = array_c
-
         k_trans_block_ptr = (
             K
             + offset_qk
@@ -980,35 +991,15 @@ def _lasd_parallel_intra_inter(
             + array_kv[None, :] * H * D
             + (i * BLOCK_D + array_d)[:, None]
         )
-        v_block_ptr = (
-            V
-            + offset_vo
-            + offset_block_vo
-            + array_kv[:, None] * H * E
-            + (offset_block_e + array_e)[None, :]
+        k_trans = tl.load(
+            k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
         )
-
-        for j in range(NUM_LOOP):
-            mask_kv = (offset_block_n + array_kv) < N
-
-            k_trans = tl.load(
-                k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
-            )
-            v = tl.load(v_block_ptr, mask=mask_kv[:, None] & mask_e[None, :], other=0.0)
-
-            score = tl.dot(q, k_trans)
-            diff = (array_q[:, None] - array_kv[None, :]) * stride
-            if not USE_LOG_DECAY:
-                score = tl.where(diff >= 0, score, 0.0)
-            else:
-                decay = log_decay * diff
-                decay = tl.exp(tl.where(diff >= 0, decay, float("-inf")))
-                score *= decay
-            o += tl.dot(score.to(v.dtype), v)
-
-            k_trans_block_ptr += BLOCK_C * H * D * stride
-            v_block_ptr += BLOCK_C * H * E * stride
-            array_kv += BLOCK_C * stride
+        score = tl.dot(q, k_trans)
+        if not USE_LOG_DECAY:
+            score = tl.where(diff >= 0, score, 0.0)
+        else:
+            score *= decay
+        o += tl.dot(score.to(v.dtype), v)
         ##### intra end #####
 
         ##### inter start #####
@@ -1016,6 +1007,7 @@ def _lasd_parallel_intra_inter(
             state_block_ptr, mask=mask_d[:, None] & mask_e[None, :], other=0.0
         ).to(q.dtype)
         o_ = tl.dot(q, state)
+
         if USE_LOG_DECAY:
             o_ *= q_decay
         o += o_

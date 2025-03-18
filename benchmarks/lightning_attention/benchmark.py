@@ -1,4 +1,5 @@
 import os
+import time
 
 import numpy as np
 import torch
@@ -75,7 +76,8 @@ configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         x_vals=[2**i for i in range(8, 16)],
-        # x_vals=[2**i for i in range(8, 10)],
+        # x_vals=[2**i for i in range(8, 11)],
+        # x_vals=[2**i for i in range(11, 12)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -127,15 +129,15 @@ configs = [
     )
     for bench_type in [
         "speed",
-        "memory",
+        # "memory",
     ]
     for mode in [
         "fwd",
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    for b, h, d in [[4, 32, 128]]
-    # for b, h, d in [[1, 4, 128]]
+    # for b, h, d in [[4, 32, 128]]
+    for b, h, d in [[4, 32, 128], [1, 16, 128]]
     # for b, h, d in [[4, 1, 128]]
     # for b, h, d in [[4, 32, 128], [4, 32, 64], [1, 32, 128], [4, 1, 128]]
 ]
@@ -196,7 +198,7 @@ def benchmark(
 
         return ms
     else:
-        rep = 20
+        rep = 5
         try:
             torch.cuda.reset_peak_memory_stats(device)
             mb_arr = []
@@ -211,6 +213,10 @@ def benchmark(
         return mb
 
 
+start_time = time.time()
 save_path = "stat/la"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
+end_time = time.time()
+total_time = end_time - start_time
+print(f"Total runtime: {total_time:.2f} seconds ({total_time/60:.2f} minutes)")
