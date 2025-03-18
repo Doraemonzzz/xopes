@@ -41,7 +41,7 @@ def lasd_recurrence(q, k, v, **kwargs):
 
 
 def lasd_parallel(q, k, v, **kwargs):
-    return torch.compile(lasd_parallel_triton)(q, k, v, ld=kwargs["ld"])[0]
+    return lasd_parallel_triton(q, k, v, ld=kwargs["ld"])[0]
 
 
 def land_parallel(q, k, v, **kwargs):
@@ -64,6 +64,7 @@ module_map = {
     "lasd_r": lasd_recurrence,
     "lasd_p": lasd_parallel,
     "land_p": land_parallel,
+    "lasd_pl": lasd_parallel,
     "lasd3_p": lasd3_parallel,
     "flash": flash_attn_wrapper,
     "lightning_p": lightning_parallel,
@@ -75,32 +76,33 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        # x_vals=[2**i for i in range(8, 16)],
-        # x_vals=[2**i for i in range(8, 11)],
-        x_vals=[2**i for i in range(11, 12)],
+        x_vals=[2**i for i in range(8, 16)],
+        # x_vals=[2**i for i in range(10, 11)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            # "lasd_r",
+            "lasd_r",
             "lasd_p",
             "land_p",
-            # "lasd3_p",
-            # "flash",
-            # "lightning_p",
-            # "lightning_c",
-            # "gla_k",
+            "lasd_pl",
+            "lasd3_p",
+            "flash",
+            "lightning_p",
+            "lightning_c",
+            "gla_k",
             "gla_s_k",
         ],
         line_names=[
-            # "LASDR",
-            "LASDP",
-            "LANDP",
-            # "LASD3P",
-            # "Flash",
-            # "LP",
-            # "LC",
-            # "GLA_K",
+            "LASD_R",
+            "LASD_P",
+            "LAND_P",
+            "LASD_PL",
+            "LASD3_P",
+            "Flash",
+            "LP",
+            "LC",
+            "GLA_K",
             "GLA_S_K",
         ],
         styles=[
@@ -129,15 +131,15 @@ configs = [
     )
     for bench_type in [
         "speed",
-        # "memory",
+        "memory",
     ]
     for mode in [
         "fwd",
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    for b, h, d in [[4, 32, 128]]
-    # for b, h, d in [[4, 32, 128], [1, 16, 128]]
+    # for b, h, d in [[4, 32, 128]]
+    for b, h, d in [[4, 32, 128], [1, 16, 128]]
 ]
 
 
@@ -162,7 +164,10 @@ def benchmark(
     q = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     k = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     v = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
-    ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device))  # .requires_grad_()
+    if provider == "lasd_pl":
+        ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device)).requires_grad_()
+    else:
+        ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device))
     ld3 = F.logsigmoid(
         torch.randn((b, n, h), dtype=dtype, device=device)
     ).requires_grad_()

@@ -857,7 +857,7 @@ def _lasd_parallel_intra_inter(
     V,  # B N H E
     STATES,  # B H L D E if not trans_states, B H L E D if trans_states
     LOG_DECAY,  # H
-    X,  # B N H D
+    X,  # B N H E
     DLOG_DECAY,  # B N H NUM_BLOCK_E
     CU_SEQLENS,  # M
     B: tl.constexpr,
@@ -983,14 +983,6 @@ def _lasd_parallel_intra_inter(
         decay = log_decay * diff
         decay = tl.exp(tl.where(diff >= 0, decay, float("-inf")))
 
-    if COMPUTE_DLD:
-        dlog_decay = tl.zeros(
-            [
-                BLOCK_N,
-            ],
-            dtype=tl.float32,
-        )
-
     for i in range(NUM_BLOCK_D):
         mask_d = (array_d + i * BLOCK_D) < D
         q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
@@ -1037,7 +1029,7 @@ def _lasd_parallel_intra_inter(
         mask=mask_c[:, None] & mask_e[None, :],
     )
 
-    if REVERSE and COMPUTE_DLD:
+    if COMPUTE_DLD:
         x_block_ptr = (
             X
             + offset_vo
@@ -1045,17 +1037,19 @@ def _lasd_parallel_intra_inter(
             + (offset_block_c + array_c)[:, None] * H * E
             + (offset_block_e + array_e)[None, :]
         )
-        x = tl.load(x_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0)
+        x = tl.load(x_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0).to(
+            tl.float32
+        )
         # N D -> N
-        dld = tl.cumsum(tl.sum(x * o, axis=1), axis=0, reverse=True)
-        # B N H NUM_BLOCK_E
+        dld = tl.sum(x * o, axis=-1)
+
         offset_dld = off_b * N * H * NUM_BLOCK_E + off_h * NUM_BLOCK_E
-        offset_block_dld = off_block_n * H * NUM_BLOCK_E
+        offset_block_dld = offset_block_n * H * NUM_BLOCK_E
         dld_block_ptr = (
             DLOG_DECAY
             + offset_dld
             + offset_block_dld
-            + (array_q + array_e)[None, :]
+            + (offset_block_c + array_c) * H * NUM_BLOCK_E
             + off_block_e
         )
-        tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty))
+        tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty), mask=mask_c)

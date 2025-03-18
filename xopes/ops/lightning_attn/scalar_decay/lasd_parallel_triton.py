@@ -4,6 +4,7 @@ import torch
 import triton
 from einops import repeat
 
+from xopes.ops.cumsum import cumsum_fn
 from xopes.ops.lightning_attn.log_decay import compute_dld_fn
 from xopes.ops.lightning_attn.scalar_decay.utils import (
     _lasd_parallel_inter,
@@ -14,7 +15,7 @@ from xopes.ops.lightning_attn.scalar_decay.utils import (
     _lasd_parallel_state_reduce,
 )
 from xopes.utils import contiguous
-from xopes.utils.constant import SM_COUNT
+from xopes.utils.constant import SM_COUNT, XOPES_DEBUG
 
 
 @contiguous
@@ -386,10 +387,10 @@ def lasd_parallel_intra_inter(
     use_ld = ld is not None
     compute_dld = x is not None and ld is not None and ld.requires_grad
 
-    if d >= 256:
-        BLOCK_C = 64
-        BLOCK_D = 64
-        BLOCK_E = 64
+    if XOPES_DEBUG:
+        BLOCK_C = 16
+        BLOCK_D = 32
+        BLOCK_E = 32
     else:
         BLOCK_C = 128
         BLOCK_D = 128
@@ -448,7 +449,7 @@ def lasd_parallel_intra_inter(
         else:
             dld = dld.sum(-1)
 
-        # todo, revcumsum
+        dld = cumsum_fn(dld, dim=1, reverse=True)
 
     return o, dld
 
@@ -740,17 +741,7 @@ def lasd_parallel_bwd(
             cu_seqlens=cu_seqlens,
         )
 
-        # # b n h d -> n h
-        # dld = (q * dq - k * dk).sum(-1).sum(0)
-        # dld = cumsum_fn(dld, dim=0, reverse=True).sum(0)
-
-        # if dfinal_state is not None:
-        #     n = q.shape[1]
-        #     # !!! important, the following line is equivalent to the following line
-        #     # dld = cumsum_fn(dld, dim=0, reverse=True)
-        #     # dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0))
-        #     # dld = dld.sum(0)
-        #     dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0) * n)
+        dld = dld.sum(0).sum(0)
     else:
         dld = None
 
@@ -815,21 +806,6 @@ class LasdParallelFunction(torch.autograd.Function):
             states=states,
             use_chunk_loop=use_chunk_loop,
         )
-
-        # if ld is not None and ld.requires_grad:
-        #     # b n h d -> n h
-        #     dld = (q * dq - k * dk).sum(-1).sum(0)
-        #     dld = cumsum_fn(dld, dim=0, reverse=True).sum(0)
-
-        #     if dfinal_state is not None:
-        #         n = q.shape[1]
-        #         # !!! important, the following line is equivalent to the following line
-        #         # dld = cumsum_fn(dld, dim=0, reverse=True)
-        #         # dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0))
-        #         # dld = dld.sum(0)
-        #         dld.add_((final_state * dfinal_state).sum(-1).sum(-1).sum(0) * n)
-        # else:
-        #     dld = None
 
         return (dq, dk, dv, dld, dinitial_state, None, None, None)
 

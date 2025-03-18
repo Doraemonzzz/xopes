@@ -67,8 +67,8 @@ folder=logcumsumexp
 ##### lightning_attention 250314
 folder=lightning_attention
 
-##### dld 250318
-folder=lightning_attention/log_decay/dld
+# ##### dld 250318
+# folder=lightning_attention/log_decay/dld
 
 mkdir -p $folder/log
 
