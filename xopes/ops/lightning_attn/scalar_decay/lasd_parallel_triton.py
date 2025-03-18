@@ -4,6 +4,7 @@ import torch
 import triton
 from einops import repeat
 
+from xopes.ops.lightning_attn.log_decay import compute_dld_fn
 from xopes.ops.lightning_attn.scalar_decay.utils import (
     _lasd_parallel_inter,
     _lasd_parallel_intra,
@@ -731,7 +732,7 @@ def lasd_parallel_bwd(
     )
 
     if ld is not None and ld.requires_grad:
-        dld = compute_dld(
+        dld = compute_dld_fn(
             dld_q=dld_q,  # B N H
             dld_k=dld_k,  # B N H
             dfinal_state=dfinal_state,  # B H D E

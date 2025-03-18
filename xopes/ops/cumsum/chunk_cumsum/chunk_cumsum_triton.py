@@ -151,5 +151,5 @@ if __name__ == "__main__":
     b, n = 2, 512
     dtype = torch.float32
     x = torch.randn((b, n), dtype=dtype).cuda()
-    o = cumsum_triton(x, dim=-1)
+    o = chunk_cumsum_triton(x, dim=-1)
     print(o.shape)

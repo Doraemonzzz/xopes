@@ -92,6 +92,10 @@ folder=lightning_attn/scalar_decay
 # ##### dld 250317
 folder=lightning_attn/log_decay/dld
 
+# ##### chunk_cumsum_reduce 250318
+folder=cumsum/chunk_cumsum_reduce
+# folder=cumsum/chunk_cumsum
+
 mkdir -p $folder/log
 
 
