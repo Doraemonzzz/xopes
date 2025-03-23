@@ -87,7 +87,7 @@ folder=lightning_attn/scalar_decay
 # folder=lightning_attn/positional_encoding
 
 # ##### lcse 250312
-# folder=logcumsumexp
+folder=logcumsumexp
 
 # ##### dld 250317
 # folder=lightning_attn/log_decay/dld

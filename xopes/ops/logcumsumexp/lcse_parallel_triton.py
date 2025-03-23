@@ -17,7 +17,7 @@ from xopes.utils import contiguous, generate_configs
             "BLOCK_N": [64, 128],
         }
     ),
-    key=["b", "n"],
+    key=["B", "N"],
 )
 @triton.jit
 def _lcse_parallel_fwd(
@@ -111,7 +111,7 @@ def _lcse_parallel_fwd(
             "BLOCK_N": [64, 128],
         }
     ),
-    key=["b", "n"],
+    key=["B", "N"],
 )
 @triton.jit
 def _lcse_parallel_bwd(

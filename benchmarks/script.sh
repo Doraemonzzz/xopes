@@ -64,8 +64,8 @@ folder=lightning_attention/positional_encoding
 ##### logcumsumexp 250312
 folder=logcumsumexp
 
-##### lightning_attention 250314
-folder=lightning_attention
+# ##### lightning_attention 250314
+# folder=lightning_attention
 
 # ##### dld 250318
 # folder=lightning_attention/log_decay/dld

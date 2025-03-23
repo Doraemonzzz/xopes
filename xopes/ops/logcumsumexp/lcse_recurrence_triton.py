@@ -16,7 +16,7 @@ from xopes.utils import contiguous, generate_configs
             "BLOCK": [16, 32, 64],
         }
     ),
-    key=["b", "n"],
+    key=["B", "N"],
 )
 @triton.jit
 def _lcse_recurrence_fwd(
@@ -94,7 +94,7 @@ def _lcse_recurrence_fwd(
             "BLOCK": [16, 32, 64],
         }
     ),
-    key=["b", "n"],
+    key=["B", "N"],
 )
 @triton.jit
 def _lcse_recurrence_bwd(
