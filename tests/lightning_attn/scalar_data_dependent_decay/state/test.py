@@ -34,9 +34,6 @@ def get_params():
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("reverse", [True, False])
-
-# @pytest.mark.parametrize("use_initial_state", [False])
-# @pytest.mark.parametrize("reverse", [False])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_lasd3_compute_states(shape, use_initial_state, reverse, dtype):
     torch.manual_seed(2024)

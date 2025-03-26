@@ -8,7 +8,7 @@ from xopes.utils import generate_configs
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
+            "BLOCK_C": [16, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
         }
@@ -318,7 +318,7 @@ def _lasd3_parallel_state_reduce(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
+            "BLOCK_C": [16, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
         }
@@ -567,7 +567,7 @@ def _lasd3_parallel_state_parallel_reduce(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
+            "BLOCK_C": [16, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
         }
@@ -720,7 +720,7 @@ def _lasd3_parallel_intra(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
+            "BLOCK_C": [16, 128],
             "BLOCK_D": [128],
             "BLOCK_E": [128],
         }

@@ -842,9 +842,6 @@ def _lasd_parallel_inter(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            # "BLOCK_C": [16, 128],
-            # "BLOCK_D": [32, 128],
-            # "BLOCK_E": [32, 128],
         }
     ),
     key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],

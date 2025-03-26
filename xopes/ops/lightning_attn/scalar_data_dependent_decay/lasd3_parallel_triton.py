@@ -502,6 +502,7 @@ def lasd3_parallel_intra_inter(
 
 
 ########## Fwd start ##########
+@contiguous
 def lasd3_parallel_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -597,6 +598,7 @@ def lasd3_parallel_fwd(
     return o, states
 
 
+@contiguous
 def lasd3_parallel_bwd(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -607,6 +609,7 @@ def lasd3_parallel_bwd(
     dfinal_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     states: Optional[torch.Tensor] = None,
+    use_chunk_loop: bool = False,
 ):
     """
     Backward pass for Lightning Attention with Data-Dependent Scalar Decay in parallel mode.
@@ -633,14 +636,16 @@ def lasd3_parallel_bwd(
     e = v.shape[-1]
 
     MAX_BLOCK_N = triton.next_power_of_2(n)
-    MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
+    NUM_PARALLEL_BLOCKS = b * h
+    USE_CHUNK_LOOP = NUM_PARALLEL_BLOCKS >= SM_COUNT or use_chunk_loop
 
-    if n <= 512:
+    if n <= 512 or USE_CHUNK_LOOP:
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
+    MAX_BLOCK_C = MAX_BLOCK_N
 
     ld_cumsum = chunk_cumsum_fn(
         ld, dim=1, reverse=False, chunk_size=BLOCK_N
@@ -825,6 +830,7 @@ class Lasd3ParallelFunction(torch.autograd.Function):
         if not save_states:
             states = None
         ctx.save_for_backward(q, k, v, ld, initial_state, cu_seqlens, states)
+        ctx.use_chunk_loop = use_chunk_loop
         del states
 
         return output, final_state
@@ -833,7 +839,7 @@ class Lasd3ParallelFunction(torch.autograd.Function):
     @contiguous
     def backward(ctx, do, dfinal_state):
         q, k, v, ld, initial_state, cu_seqlens, states = ctx.saved_tensors
-
+        use_chunk_loop = ctx.use_chunk_loop
         dq, dk, dv, dld, dinitial_state = lasd3_parallel_bwd(
             q=q,
             k=k,
@@ -844,6 +850,7 @@ class Lasd3ParallelFunction(torch.autograd.Function):
             dfinal_state=dfinal_state,
             cu_seqlens=cu_seqlens,
             states=states,
+            use_chunk_loop=use_chunk_loop,
         )
 
         return (
@@ -852,6 +859,7 @@ class Lasd3ParallelFunction(torch.autograd.Function):
             dv,
             dld,
             dinitial_state,
+            None,
             None,
             None,
         )
