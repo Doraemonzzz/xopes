@@ -13,6 +13,7 @@ from xopes.utils import get_threshold
 def get_params():
     shapes = [
         # standard shape
+        (2, 256, 12, 128, 128),
         (2, 1024, 8, 32, 16),
         # BLOCK_N +- 1
         (2, 257, 8, 64, 32),
@@ -22,6 +23,8 @@ def get_params():
         (2, 270, 8, 64, 32),
         (2, 270, 8, 33, 16),
         (2, 1125, 8, 43, 33),
+        # LARGE D, E
+        (2, 1125, 8, 255, 257),
     ]
     return shapes
 
@@ -30,8 +33,9 @@ def get_params():
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True, False])
+@pytest.mark.parametrize("use_chunk_loop", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_lasd3(shape, use_initial_state, use_varlen, no_dstate, dtype):
+def test_lasd3(shape, use_initial_state, use_varlen, no_dstate, use_chunk_loop, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     b, n, h, d, e = shape
@@ -99,6 +103,7 @@ def test_lasd3(shape, use_initial_state, use_varlen, no_dstate, dtype):
         ld=ld,
         initial_state=initial_state,
         cu_seqlens=cu_seqlens,
+        use_chunk_loop=use_chunk_loop,
     )
     if no_dstate:
         output_parallel_triton = o_parallel_triton.sum()

@@ -75,7 +75,7 @@ folder=lightning_attn/scalar_decay
 # folder=lightning_attn/scalar_decay/inter
 
 # ##### lasd3 250303
-# folder=lightning_attn/scalar_data_dependent_decay
+folder=lightning_attn/scalar_data_dependent_decay
 # folder=lightning_attn/scalar_data_dependent_decay/intra
 # folder=lightning_attn/scalar_data_dependent_decay/state
 # folder=lightning_attn/scalar_data_dependent_decay/inter
@@ -87,7 +87,7 @@ folder=lightning_attn/scalar_decay
 # folder=lightning_attn/positional_encoding
 
 # ##### lcse 250312
-folder=logcumsumexp
+# folder=logcumsumexp
 
 # ##### dld 250317
 # folder=lightning_attn/log_decay/dld

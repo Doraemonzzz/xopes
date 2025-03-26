@@ -5,6 +5,7 @@ import triton
 
 from xopes.ops.lightning_attn.scalar_data_dependent_decay.lasd3_parallel_triton import (
     lasd3_parallel_state_parallel,
+    lasd3_parallel_state_parallel_reduce,
     lasd3_parallel_state_reduce,
 )
 from xopes.ops.lightning_attn.scalar_data_dependent_decay.torch_utils import (
@@ -33,6 +34,9 @@ def get_params():
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("reverse", [True, False])
+
+# @pytest.mark.parametrize("use_initial_state", [False])
+# @pytest.mark.parametrize("reverse", [False])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_lasd3_compute_states(shape, use_initial_state, reverse, dtype):
     torch.manual_seed(2024)
@@ -116,6 +120,26 @@ def test_lasd3_compute_states(shape, use_initial_state, reverse, dtype):
         BLOCK_N=BLOCK_N,
     )
 
+    global_states_fuse = lasd3_parallel_state_parallel_reduce(
+        k=k,
+        v=v,
+        b=b,
+        n=n,
+        h=h,
+        d=d,
+        e=e,
+        initial_state=initial_state,
+        ld=ld,
+        ld_cumsum=None,
+        cu_seqlens=None,
+        reverse=reverse,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+    )
+
     l = global_states_ref.shape[2]
     for i in range(l):
         print(
@@ -130,3 +154,20 @@ def test_lasd3_compute_states(shape, use_initial_state, reverse, dtype):
 
     # Assert results match within tolerance
     assert torch.allclose(global_states_ref, global_states, atol=atol, rtol=rtol)
+
+    for i in range(l):
+        print(
+            i,
+            "states diff norm: ",
+            torch.norm(global_states_ref[:, :, i] - global_states_fuse[:, :, i]).item(),
+        )
+
+    print(
+        "global_states diff max: ",
+        torch.abs(global_states_ref - global_states_fuse).max().item(),
+    )
+    print(
+        "global_states diff norm: ",
+        torch.norm(global_states_ref - global_states_fuse).item(),
+    )
+    assert torch.allclose(global_states_ref, global_states_fuse, atol=atol, rtol=rtol)

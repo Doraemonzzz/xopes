@@ -479,6 +479,7 @@ def lasd_parallel_fwd(
         cu_seqlens: Cumulative sequence lengths for variable length sequences
         reverse: Whether to process the sequence in reverse order
         trans: Whether to transpose the final output
+        use_chunk_loop: Whether to use chunk loop
 
     Returns:
         o: Output tensor of shape (B, N, H, E)
@@ -499,7 +500,7 @@ def lasd_parallel_fwd(
         BLOCK_N = 256
     MAX_BLOCK_C = BLOCK_N
 
-    # step1: compute states in parallel or chunk loop
+    # step1: Compute states in parallel or chunk loop
     if USE_CHUNK_LOOP:
         fn = lasd_parallel_state_parallel_reduce
     else:
@@ -807,7 +808,7 @@ class LasdParallelFunction(torch.autograd.Function):
             use_chunk_loop=use_chunk_loop,
         )
 
-        return (dq, dk, dv, dld, dinitial_state, None, None, None)
+        return (dq, dk, dv, dld, dinitial_state, None, None, None, None)
 
 
 def lasd_parallel_triton(
