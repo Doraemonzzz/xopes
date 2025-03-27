@@ -454,7 +454,7 @@ def lasd3_parallel_intra_inter(
     else:
         NUM_BLOCK_E = 0
         dld = None
-        
+
     def grid(meta):
         return (
             b * h * NUM_BLOCK_N,
@@ -691,13 +691,13 @@ def lasd3_parallel_bwd(
         )
 
     dq, dld_q = lasd3_parallel_intra_inter(
-        q=do, # b n h e
-        k=v, # b n h e
-        v=k, # b n h d
-        states=states, # b h (m + 1) d e
+        q=do,  # b n h e
+        k=v,  # b n h e
+        v=k,  # b n h d
+        states=states,  # b h (m + 1) d e
         ld=ld,
         ld_cumsum=ld_cumsum,
-        x=q, # b n h d
+        x=q,  # b n h d
         cu_seqlens=cu_seqlens,
         reverse=False,
         trans=True,
@@ -719,8 +719,8 @@ def lasd3_parallel_bwd(
 
     # Compute dstates for dk and dv
     dstates = fn(
-        k=q, # b n h d
-        v=do, # b n h e
+        k=q,  # b n h d
+        v=do,  # b n h e
         b=b,
         n=n,
         h=h,
@@ -739,15 +739,15 @@ def lasd3_parallel_bwd(
     )
 
     dk, dld_k = lasd3_parallel_intra_inter(
-        q=v, # b n h e
-        k=do, # b n h e
-        v=q, # b n h d
-        states=dstates, # b h (m + 1) d e
+        q=v,  # b n h e
+        k=do,  # b n h e
+        v=q,  # b n h d
+        states=dstates,  # b h (m + 1) d e
         ld=ld,
         ld_cumsum=ld_cumsum,
         ld_reverse_cumsum=ld_reverse_cumsum,
-        x=k, # b n h d
-        final_state=dfinal_state, # b h d e
+        x=k,  # b n h d
+        final_state=dfinal_state,  # b h d e
         cu_seqlens=cu_seqlens,
         reverse=True,
         trans=True,
