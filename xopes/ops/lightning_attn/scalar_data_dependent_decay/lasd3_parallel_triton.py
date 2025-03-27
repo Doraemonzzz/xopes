@@ -4,7 +4,7 @@ import torch
 import triton
 from einops import repeat
 
-from xopes.ops.cumsum import chunk_cumsum_fn, cumsum_fn
+from xopes.ops.cumsum import chunk_cumsum_fn, chunk_reverse_cumsum_fn, cumsum_fn
 from xopes.ops.lightning_attn.log_decay import compute_dld_fn
 from xopes.ops.lightning_attn.scalar_data_dependent_decay.utils import (
     _lasd3_parallel_inter,
@@ -55,11 +55,13 @@ def lasd3_parallel_state_parallel(
 
     if ld_cumsum is None:
         if reverse:
-            ld_ = torch.zeros((b, 1, h), dtype=torch.float32, device=k.device)
-            ld = torch.cat([ld[:, 1:], ld_], dim=1)
-        ld_cumsum = chunk_cumsum_fn(
-            ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
-        ).contiguous()
+            ld_cumsum = chunk_reverse_cumsum_fn(
+                ld, dim=1, chunk_size=BLOCK_N
+            ).contiguous()
+        else:
+            ld_cumsum = chunk_cumsum_fn(
+                ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
+            ).contiguous()
 
     _lasd3_parallel_state_parallel[grid](
         K=k,
@@ -115,10 +117,8 @@ def lasd3_parallel_state_reduce(
 
     if ld_cumsum is None:
         if reverse:
-            ld_ = torch.zeros((b, 1, h), dtype=torch.float32, device=states.device)
-            ld__ = torch.cat([ld[:, 1:], ld_], dim=1)
-            ld_cumsum = chunk_cumsum_fn(
-                ld__, dim=1, reverse=reverse, chunk_size=BLOCK_N
+            ld_cumsum = chunk_reverse_cumsum_fn(
+                ld, dim=1, chunk_size=BLOCK_N
             ).contiguous()
         else:
             ld_cumsum = chunk_cumsum_fn(
@@ -187,10 +187,8 @@ def lasd3_parallel_state_parallel_reduce(
 
     if ld_cumsum is None:
         if reverse:
-            ld_ = torch.zeros((b, 1, h), dtype=torch.float32, device=states.device)
-            ld__ = torch.cat([ld[:, 1:], ld_], dim=1)
-            ld_cumsum = chunk_cumsum_fn(
-                ld__, dim=1, reverse=reverse, chunk_size=BLOCK_N
+            ld_cumsum = chunk_reverse_cumsum_fn(
+                ld, dim=1, chunk_size=BLOCK_N
             ).contiguous()
         else:
             ld_cumsum = chunk_cumsum_fn(
@@ -376,11 +374,13 @@ def lasd3_parallel_inter(
 
     if ld_cumsum is None:
         if reverse:
-            ld_ = torch.zeros((b, 1, h), dtype=torch.float32, device=k.device)
-            ld = torch.cat([ld[:, 1:], ld_], dim=1)
-        ld_cumsum = chunk_cumsum_fn(
-            ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
-        ).contiguous()
+            ld_cumsum = chunk_reverse_cumsum_fn(
+                ld, dim=1, chunk_size=BLOCK_N
+            ).contiguous()
+        else:
+            ld_cumsum = chunk_cumsum_fn(
+                ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
+            ).contiguous()
 
     _lasd3_parallel_inter[grid](
         Q=q,
@@ -468,10 +468,8 @@ def lasd3_parallel_intra_inter(
         ).contiguous()
 
     if ld_reverse_cumsum is None and reverse:
-        ld_ = torch.zeros((b, 1, h), dtype=torch.float32, device=k.device)
-        ld__ = torch.cat([ld[:, 1:], ld_], dim=1)
-        ld_reverse_cumsum = chunk_cumsum_fn(
-            ld__, dim=1, reverse=True, chunk_size=BLOCK_N
+        ld_reverse_cumsum = chunk_reverse_cumsum_fn(
+            ld, dim=1, chunk_size=BLOCK_N
         ).contiguous()
 
     _lasd3_parallel_intra_inter[grid](
@@ -711,10 +709,8 @@ def lasd3_parallel_bwd(
     final_state = states[:, :, -1, :, :]
     del states
 
-    ld_ = torch.zeros((b, 1, h), dtype=torch.float32, device=k.device)
-    ld__ = torch.cat([ld[:, 1:], ld_], dim=1)
-    ld_reverse_cumsum = chunk_cumsum_fn(
-        ld__, dim=1, reverse=True, chunk_size=BLOCK_N
+    ld_reverse_cumsum = chunk_reverse_cumsum_fn(
+        ld, dim=1, chunk_size=BLOCK_N
     ).contiguous()
 
     # Compute dstates for dk and dv
