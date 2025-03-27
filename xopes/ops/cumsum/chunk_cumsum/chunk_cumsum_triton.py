@@ -59,7 +59,7 @@ def _chunk_cumsum(
 class ChunkCumSumTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
-    def forward(ctx, x, dim=-1, reverse=False, chunk_size=128):
+    def forward(ctx, x, reverse=False, chunk_size=128):
         b, n = x.shape
         m = (n + chunk_size - 1) // chunk_size
         BLOCK_C = triton.next_power_of_2(chunk_size)
@@ -78,7 +78,6 @@ class ChunkCumSumTriton(torch.autograd.Function):
             REVERSE=reverse,
         )
 
-        ctx.dim = dim
         ctx.reverse = reverse
         ctx.chunk_size = chunk_size
 
@@ -87,7 +86,6 @@ class ChunkCumSumTriton(torch.autograd.Function):
     @staticmethod
     @contiguous
     def backward(ctx, do):
-        ctx.dim
         reverse = ctx.reverse
         chunk_size = ctx.chunk_size
 
@@ -109,7 +107,7 @@ class ChunkCumSumTriton(torch.autograd.Function):
             REVERSE=not reverse,
         )
 
-        return dx.contiguous(), None, None, None
+        return dx.contiguous(), None, None
 
 
 @contiguous
@@ -138,7 +136,7 @@ def chunk_cumsum_triton(
 
     # reshape input data into 2D tensor
     x = x.reshape(-1, x.shape[-1]).contiguous()
-    o = ChunkCumSumTriton.apply(x, -1, reverse, chunk_size)
+    o = ChunkCumSumTriton.apply(x, reverse, chunk_size)
     o = o.reshape(shape)
 
     if dim != -1:
