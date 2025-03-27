@@ -5,6 +5,7 @@ import triton
 from einops import repeat
 
 from xopes.ops.cumsum import chunk_cumsum_fn, cumsum_fn
+from xopes.ops.lightning_attn.log_decay import compute_dld_fn
 from xopes.ops.lightning_attn.scalar_data_dependent_decay.utils import (
     _lasd3_parallel_inter,
     _lasd3_parallel_intra,
@@ -431,6 +432,8 @@ def lasd3_parallel_intra_inter(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 
+    compute_dld = x is not None and ld is not None and ld.requires_grad
+
     if XOPES_DEBUG:
         BLOCK_C = 16
         BLOCK_D = 32
@@ -445,9 +448,13 @@ def lasd3_parallel_intra_inter(
     else:
         o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
 
-    NUM_BLOCK_E = triton.cdiv(e, BLOCK_E)
-    dld = torch.empty((b, n, h, NUM_BLOCK_E), dtype=q.dtype, device=q.device)
-
+    if compute_dld:
+        NUM_BLOCK_E = triton.cdiv(e, BLOCK_E)
+        dld = torch.empty((b, n, h, NUM_BLOCK_E), dtype=q.dtype, device=q.device)
+    else:
+        NUM_BLOCK_E = 0
+        dld = None
+        
     def grid(meta):
         return (
             b * h * NUM_BLOCK_N,
@@ -475,6 +482,8 @@ def lasd3_parallel_intra_inter(
         STATES=states,
         LOG_DECAY=ld_cumsum,
         LOG_DECAY_REVERSE=ld_reverse_cumsum,
+        X=x,
+        DLOG_DECAY=dld,
         CU_SEQLENS=cu_seqlens,
         B=b,
         N=n,
@@ -482,6 +491,7 @@ def lasd3_parallel_intra_inter(
         D=d,
         E=e,
         USE_CU_SEQLENS=use_cu_seqlens,
+        COMPUTE_DLD=compute_dld,
         REVERSE=reverse,
         TRANS=trans,
         BLOCK_N=BLOCK_N,
@@ -491,7 +501,16 @@ def lasd3_parallel_intra_inter(
         NUM_BLOCK_E=NUM_BLOCK_E,
     )
 
-    return o
+    if compute_dld:
+        # B N H NUM_BLOCK_E -> B N H
+        if dld.shape[-1] == 1:
+            dld = dld.squeeze(-1)
+        else:
+            dld = dld.sum(-1)
+
+        dld = cumsum_fn(dld, dim=1, reverse=True)
+
+    return o, dld
 
 
 ########## Fwd start ##########
@@ -540,7 +559,7 @@ def lasd3_parallel_fwd(
         BLOCK_N = 256
     MAX_BLOCK_C = BLOCK_N
 
-    # step1: Compute states in parallel or chunk loop
+    # Step1: Compute states in parallel or chunk loop
     if USE_CHUNK_LOOP:
         fn = lasd3_parallel_state_parallel_reduce
     else:
@@ -570,8 +589,8 @@ def lasd3_parallel_fwd(
         BLOCK_N=BLOCK_N,
     )
 
-    # Step3: Compute intra and inter in parallel, for each chunk, parallel over sub-chunk
-    o = lasd3_parallel_intra_inter(
+    # Step2: Compute intra and inter in parallel, for each chunk, parallel over sub-chunk
+    o, _ = lasd3_parallel_intra_inter(
         q=q,
         k=k,
         v=v,
@@ -640,38 +659,30 @@ def lasd3_parallel_bwd(
         BLOCK_N = 256
     MAX_BLOCK_C = MAX_BLOCK_N
 
+    if USE_CHUNK_LOOP:
+        fn = lasd3_parallel_state_parallel_reduce
+    else:
+        fn = lasd3_parallel_state_parallel_reduce_sep
+
     ld_cumsum = chunk_cumsum_fn(
         ld, dim=1, reverse=False, chunk_size=BLOCK_N
     ).contiguous()
 
     # Recompute states if not provided
     if states is None:
-        states = lasd3_parallel_state_parallel(
+        states = fn(
             k=k,
             v=v,
-            ld=ld,
-            ld_cumsum=ld_cumsum,
-            cu_seqlens=cu_seqlens,
-            reverse=False,
-            MAX_BLOCK_N=MAX_BLOCK_N,
-            MAX_BLOCK_C=MAX_BLOCK_C,
-            MAX_BLOCK_E=MAX_BLOCK_E,
-            MAX_BLOCK_D=MAX_BLOCK_D,
-            BLOCK_N=BLOCK_N,
-        )
-
-        states = lasd3_parallel_state_reduce(
             b=b,
             n=n,
             h=h,
             d=d,
             e=e,
-            states=states,
             initial_state=initial_state,
             ld=ld,
             ld_cumsum=ld_cumsum,
             cu_seqlens=cu_seqlens,
-            reverse=False,
+            reverse=reverse,
             MAX_BLOCK_N=MAX_BLOCK_N,
             MAX_BLOCK_C=MAX_BLOCK_C,
             MAX_BLOCK_E=MAX_BLOCK_E,
@@ -679,13 +690,14 @@ def lasd3_parallel_bwd(
             BLOCK_N=BLOCK_N,
         )
 
-    dq = lasd3_parallel_intra_inter(
-        q=do,
-        k=v,
-        v=k,
-        states=states,
+    dq, dld_q = lasd3_parallel_intra_inter(
+        q=do, # b n h e
+        k=v, # b n h e
+        v=k, # b n h d
+        states=states, # b h (m + 1) d e
         ld=ld,
         ld_cumsum=ld_cumsum,
+        x=q, # b n h d
         cu_seqlens=cu_seqlens,
         reverse=False,
         trans=True,
@@ -706,27 +718,14 @@ def lasd3_parallel_bwd(
     ).contiguous()
 
     # Compute dstates for dk and dv
-    dstates = lasd3_parallel_state_parallel(
-        k=q,
-        v=do,
-        ld=ld,
-        ld_cumsum=ld_reverse_cumsum,
-        cu_seqlens=cu_seqlens,
-        reverse=True,
-        MAX_BLOCK_N=MAX_BLOCK_N,
-        MAX_BLOCK_C=MAX_BLOCK_C,
-        MAX_BLOCK_E=MAX_BLOCK_E,
-        MAX_BLOCK_D=MAX_BLOCK_D,
-        BLOCK_N=BLOCK_N,
-    )
-
-    dstates = lasd3_parallel_state_reduce(
+    dstates = fn(
+        k=q, # b n h d
+        v=do, # b n h e
         b=b,
         n=n,
         h=h,
         d=d,
         e=e,
-        states=dstates,
         initial_state=dfinal_state,
         ld=ld,
         ld_cumsum=ld_reverse_cumsum,
@@ -739,14 +738,16 @@ def lasd3_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
-    dk = lasd3_parallel_intra_inter(
-        q=v,
-        k=do,
-        v=q,
-        states=dstates,
+    dk, dld_k = lasd3_parallel_intra_inter(
+        q=v, # b n h e
+        k=do, # b n h e
+        v=q, # b n h d
+        states=dstates, # b h (m + 1) d e
         ld=ld,
         ld_cumsum=ld_cumsum,
         ld_reverse_cumsum=ld_reverse_cumsum,
+        x=k, # b n h d
+        final_state=dfinal_state, # b h d e
         cu_seqlens=cu_seqlens,
         reverse=True,
         trans=True,
@@ -757,7 +758,7 @@ def lasd3_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
-    dv = lasd3_parallel_intra_inter(
+    dv, _ = lasd3_parallel_intra_inter(
         q=k,
         k=q,
         v=do,
@@ -782,13 +783,16 @@ def lasd3_parallel_bwd(
         and initial_state.requires_grad
     )
 
-    # Compute gradient for log decay (data-dependent decay)
-    dld = (q * dq - k * dk).sum(dim=-1)
-    dld = cumsum_fn(dld, dim=1, reverse=True)
-
-    if dfinal_state is not None:
-        dld_state = (final_state * dfinal_state).sum(dim=-1).sum(dim=-1).unsqueeze(1)
-        dld = dld + dld_state
+    if ld is not None and ld.requires_grad:
+        dld = compute_dld_fn(
+            dld_q=dld_q,  # B N H
+            dld_k=dld_k,  # B N H
+            dfinal_state=dfinal_state,  # B H D E
+            final_state=final_state,  # B H D E
+            cu_seqlens=cu_seqlens,
+        )
+    else:
+        dld = None
 
     return dq, dk, dv, dld, dstates[:, :, -1, :, :] if need_dfinal_state else None
 

@@ -500,7 +500,7 @@ def lasd_parallel_fwd(
         BLOCK_N = 256
     MAX_BLOCK_C = BLOCK_N
 
-    # step1: Compute states in parallel or chunk loop
+    # Step1: Compute states in parallel or chunk loop
     if USE_CHUNK_LOOP:
         fn = lasd_parallel_state_parallel_reduce
     else:
@@ -661,7 +661,7 @@ def lasd_parallel_bwd(
         v=k,  # b n h d
         states=states,  # b h (m + 1) d e
         ld=ld,
-        x=q,
+        x=q,  # b n h d
         cu_seqlens=cu_seqlens,
         reverse=False,
         trans=True,

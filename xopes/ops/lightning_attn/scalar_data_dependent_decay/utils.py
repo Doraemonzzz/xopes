@@ -875,6 +875,8 @@ def _lasd3_parallel_intra_inter(
     STATES,  # B H L D E if not trans_states, B H L E D if trans_states
     LOG_DECAY,  # B N H
     LOG_DECAY_REVERSE,  # B N H
+    X,  # B N H E
+    DLOG_DECAY,  # B N H NUM_BLOCK_E
     CU_SEQLENS,  # M
     B: tl.constexpr,
     N: tl.constexpr,
@@ -882,6 +884,7 @@ def _lasd3_parallel_intra_inter(
     D: tl.constexpr,
     E: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
+    COMPUTE_DLD: tl.constexpr,
     REVERSE: tl.constexpr,
     TRANS: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -960,13 +963,6 @@ def _lasd3_parallel_intra_inter(
 
     array_n = tl.arange(0, BLOCK_N)
     array_kv = array_n
-    # if REVERSE:
-    #     stride = -1
-    #     # NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
-    #     # NUM_LOOP = NUM_BLOCK_C - off_block_c
-    # else:
-    #     stride = 1
-    #     # NUM_LOOP = off_block_c + 1
 
     ldq_block_ptr = (
         LOG_DECAY + offset_ld + offset_block_ld + (offset_block_c + array_c) * H
@@ -1002,11 +998,6 @@ def _lasd3_parallel_intra_inter(
         q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
 
         ##### intra start #####
-        # if REVERSE:
-        #     array_kv = BLOCK_N - BLOCK_C + array_c
-        # else:
-        #     array_kv = array_c
-
         k_trans_block_ptr = (
             K
             + offset_qk
@@ -1052,3 +1043,28 @@ def _lasd3_parallel_intra_inter(
         o.to(o_block_ptr.dtype.element_ty),
         mask=mask_c[:, None] & mask_e[None, :],
     )
+
+    if COMPUTE_DLD:
+        x_block_ptr = (
+            X
+            + offset_vo
+            + offset_block_vo
+            + (offset_block_c + array_c)[:, None] * H * E
+            + (offset_block_e + array_e)[None, :]
+        )
+        x = tl.load(x_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0).to(
+            tl.float32
+        )
+        # N D -> N
+        dld = tl.sum(x * o, axis=-1)
+
+        offset_dld = off_b * N * H * NUM_BLOCK_E + off_h * NUM_BLOCK_E
+        offset_block_dld = offset_block_n * H * NUM_BLOCK_E
+        dld_block_ptr = (
+            DLOG_DECAY
+            + offset_dld
+            + offset_block_dld
+            + (offset_block_c + array_c) * H * NUM_BLOCK_E
+            + off_block_e
+        )
+        tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty), mask=mask_c)
