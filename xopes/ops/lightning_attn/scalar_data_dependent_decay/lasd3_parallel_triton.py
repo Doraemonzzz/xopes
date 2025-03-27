@@ -42,9 +42,7 @@ def lasd3_parallel_state_parallel(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 
-    states = torch.empty(
-        (b, h, NUM_BLOCK_N + 1, d, e), dtype=torch.float32, device=k.device
-    )
+    states = torch.empty((b, h, NUM_BLOCK_N + 1, d, e), dtype=k.dtype, device=k.device)
 
     def grid(meta):
         return (
@@ -605,7 +603,7 @@ def lasd3_parallel_fwd(
         BLOCK_N=BLOCK_N,
     )
 
-    return o, states
+    return o, states, ld_cumsum
 
 
 @contiguous
@@ -619,6 +617,7 @@ def lasd3_parallel_bwd(
     dfinal_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     states: Optional[torch.Tensor] = None,
+    ld_cumsum: Optional[torch.Tensor] = None,
     use_chunk_loop: bool = False,
 ):
     """
@@ -634,7 +633,8 @@ def lasd3_parallel_bwd(
         dfinal_state: Gradient of final state tensor
         cu_seqlens: Cumulative sequence lengths for variable length sequences
         states: Cached states from forward pass (optional)
-
+        ld_cumsum: Cached ld_cumsum from forward pass (optional)
+        use_chunk_loop: Whether to use chunk loop
     Returns:
         dq: Gradient of query tensor
         dk: Gradient of key tensor
@@ -662,10 +662,6 @@ def lasd3_parallel_bwd(
     else:
         fn = lasd3_parallel_state_parallel_reduce_sep
 
-    ld_cumsum = chunk_cumsum_fn(
-        ld, dim=1, reverse=False, chunk_size=BLOCK_N
-    ).contiguous()
-
     # Recompute states if not provided
     if states is None:
         states = fn(
@@ -687,6 +683,11 @@ def lasd3_parallel_bwd(
             MAX_BLOCK_D=MAX_BLOCK_D,
             BLOCK_N=BLOCK_N,
         )
+
+    if ld_cumsum is None:
+        ld_cumsum = chunk_cumsum_fn(
+            ld, dim=1, reverse=False, chunk_size=BLOCK_N
+        ).contiguous()
 
     dq, dld_q = lasd3_parallel_intra_inter(
         q=do,  # b n h e
@@ -808,7 +809,7 @@ class Lasd3ParallelFunction(torch.autograd.Function):
         use_chunk_loop=False,
     ):
         # Forward computation
-        output, states = lasd3_parallel_fwd(
+        output, states, ld_cumsum = lasd3_parallel_fwd(
             q=q,
             k=k,
             v=v,
@@ -822,7 +823,8 @@ class Lasd3ParallelFunction(torch.autograd.Function):
         final_state = states[:, :, -1, :, :]
         if not save_states:
             states = None
-        ctx.save_for_backward(q, k, v, ld, initial_state, cu_seqlens, states)
+            ld_cumsum = None
+        ctx.save_for_backward(q, k, v, ld, initial_state, cu_seqlens, states, ld_cumsum)
         ctx.use_chunk_loop = use_chunk_loop
         del states
 
@@ -831,7 +833,7 @@ class Lasd3ParallelFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
     def backward(ctx, do, dfinal_state):
-        q, k, v, ld, initial_state, cu_seqlens, states = ctx.saved_tensors
+        q, k, v, ld, initial_state, cu_seqlens, states, ld_cumsum = ctx.saved_tensors
         use_chunk_loop = ctx.use_chunk_loop
         dq, dk, dv, dld, dinitial_state = lasd3_parallel_bwd(
             q=q,
@@ -843,6 +845,7 @@ class Lasd3ParallelFunction(torch.autograd.Function):
             dfinal_state=dfinal_state,
             cu_seqlens=cu_seqlens,
             states=states,
+            ld_cumsum=ld_cumsum,
             use_chunk_loop=use_chunk_loop,
         )
 

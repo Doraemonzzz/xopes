@@ -554,7 +554,8 @@ def _lasd3_parallel_state_parallel_reduce(
         off_block_n += stride  # !!! important
 
     # !!! important
-    state *= c
+    if REVERSE:
+        state *= c
 
     tl.store(
         final_states_block_ptr,
@@ -922,7 +923,7 @@ def _lasd3_parallel_intra_inter(
     array_e = tl.arange(0, BLOCK_E)
     array_d = tl.arange(0, BLOCK_D)
     array_c = tl.arange(0, BLOCK_C)
-    array_q = offset_block_c + array_c
+    offset_block_c + array_c
 
     q_block_ptr = (
         Q
@@ -991,7 +992,7 @@ def _lasd3_parallel_intra_inter(
     )
     mask_kv = (offset_block_n + array_kv) < N
     v = tl.load(v_block_ptr, mask=mask_kv[:, None] & mask_e[None, :], other=0.0)
-    diff = (array_q[:, None] - array_kv[None, :]) * stride  # !!! important
+    ldk_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array_kv * H
 
     for i in range(NUM_BLOCK_D):
         mask_d = (array_d + i * BLOCK_D) < D
@@ -1005,7 +1006,6 @@ def _lasd3_parallel_intra_inter(
             + array_kv[None, :] * H * D
             + (i * BLOCK_D + array_d)[:, None]
         )
-        ldk_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array_kv * H
 
         k_trans = tl.load(
             k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
@@ -1015,7 +1015,6 @@ def _lasd3_parallel_intra_inter(
         score = tl.dot(q, k_trans)
 
         log_decay = (ldq[:, None] - ldk[None, :]) * stride
-        # decay = tl.exp(tl.where(diff >= 0, log_decay, float("-inf")))
         decay = tl.exp(tl.where(log_decay <= 0, log_decay, float("-inf")))
         score *= decay
         o += tl.dot(score.to(v.dtype), v)

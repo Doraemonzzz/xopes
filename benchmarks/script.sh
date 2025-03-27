@@ -58,14 +58,14 @@ folder=normalize/normalize_with_gate
 # ##### lasd 250220
 # folder=lightning_attention/scalar_decay
 
-##### lape 250309
-folder=lightning_attention/positional_encoding
+# ##### lape 250309
+# folder=lightning_attention/positional_encoding
 
-##### logcumsumexp 250312
-folder=logcumsumexp
+# ##### logcumsumexp 250312
+# folder=logcumsumexp
 
-# ##### lightning_attention 250314
-# folder=lightning_attention
+##### lightning_attention 250314
+folder=lightning_attention
 
 # ##### dld 250318
 # folder=lightning_attention/log_decay/dld
