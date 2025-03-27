@@ -95,6 +95,7 @@ folder=lightning_attn/scalar_data_dependent_decay
 # ##### chunk_cumsum_reduce 250318
 # folder=cumsum/chunk_cumsum_reduce
 # folder=cumsum/chunk_cumsum
+folder=cumsum/chunk_reverse_cumsum
 
 mkdir -p $folder/log
 
