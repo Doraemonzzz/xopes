@@ -112,6 +112,7 @@ class ChunkCumSumTriton(torch.autograd.Function):
         return dx.contiguous(), None, None, None
 
 
+@contiguous
 def chunk_cumsum_triton(
     x: torch.Tensor,
     dim: int = -1,
@@ -119,7 +120,7 @@ def chunk_cumsum_triton(
     chunk_size: int = 128,
 ) -> torch.Tensor:
     """
-    Applies cumulative sum using Triton.
+    Applies chunk cumulative sum using Triton.
 
     Args:
         x: Input tensor
