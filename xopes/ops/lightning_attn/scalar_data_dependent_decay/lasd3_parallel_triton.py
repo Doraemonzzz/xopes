@@ -14,7 +14,7 @@ from xopes.ops.lightning_attn.scalar_data_dependent_decay.utils import (
     _lasd3_parallel_state_reduce,
 )
 from xopes.utils import contiguous
-from xopes.utils.constant import SM_COUNT
+from xopes.utils.constant import SM_COUNT, XOPES_DEBUG
 
 
 @contiguous
@@ -308,19 +308,12 @@ def lasd3_parallel_intra(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 
-    def grid_partial(MAX_BLOCK_C, MAX_BLOCK_E):
-        def grid(meta):
-            meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
-            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
-            return (
-                b * h * NUM_BLOCK_N,
-                triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
-                triton.cdiv(e, meta["BLOCK_E"]),
-            )
-
-        return grid
-
-    grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_E)
+    def grid(meta):
+        return (
+            b * h * NUM_BLOCK_N,
+            triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
+            triton.cdiv(e, meta["BLOCK_E"]),
+        )
 
     if ld_cumsum is None:
         ld_cumsum = chunk_cumsum_fn(
@@ -373,20 +366,12 @@ def lasd3_parallel_inter(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 
-    def grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E):
-        def grid(meta):
-            meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
-            meta["BLOCK_D"] = min(meta["BLOCK_D"], MAX_BLOCK_D)
-            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
-            return (
-                b * h * NUM_BLOCK_N,
-                triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
-                triton.cdiv(e, meta["BLOCK_E"]),
-            )
-
-        return grid
-
-    grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E)
+    def grid(meta):
+        return (
+            b * h * NUM_BLOCK_N,
+            triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
+            triton.cdiv(e, meta["BLOCK_E"]),
+        )
 
     if ld_cumsum is None:
         if reverse:
@@ -446,25 +431,29 @@ def lasd3_parallel_intra_inter(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
 
+    if XOPES_DEBUG:
+        BLOCK_C = 16
+        BLOCK_D = 32
+        BLOCK_E = 32
+    else:
+        BLOCK_C = 128
+        BLOCK_D = 128
+        BLOCK_E = 128
+
     if use_cu_seqlens:
         o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
     else:
         o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
 
-    def grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E):
-        def grid(meta):
-            meta["BLOCK_C"] = min(meta["BLOCK_C"], MAX_BLOCK_C)
-            meta["BLOCK_D"] = min(meta["BLOCK_D"], MAX_BLOCK_D)
-            meta["BLOCK_E"] = min(meta["BLOCK_E"], MAX_BLOCK_E)
-            return (
-                b * h * NUM_BLOCK_N,
-                triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
-                triton.cdiv(e, meta["BLOCK_E"]),
-            )
+    NUM_BLOCK_E = triton.cdiv(e, BLOCK_E)
+    dld = torch.empty((b, n, h, NUM_BLOCK_E), dtype=q.dtype, device=q.device)
 
-        return grid
-
-    grid = grid_partial(MAX_BLOCK_C, MAX_BLOCK_D, MAX_BLOCK_E)
+    def grid(meta):
+        return (
+            b * h * NUM_BLOCK_N,
+            triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
+            triton.cdiv(e, meta["BLOCK_E"]),
+        )
 
     if ld_cumsum is None:
         ld_cumsum = chunk_cumsum_fn(
@@ -496,6 +485,10 @@ def lasd3_parallel_intra_inter(
         REVERSE=reverse,
         TRANS=trans,
         BLOCK_N=BLOCK_N,
+        BLOCK_C=BLOCK_C,
+        BLOCK_D=BLOCK_D,
+        BLOCK_E=BLOCK_E,
+        NUM_BLOCK_E=NUM_BLOCK_E,
     )
 
     return o

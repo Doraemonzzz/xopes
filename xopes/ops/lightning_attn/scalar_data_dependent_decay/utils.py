@@ -855,9 +855,6 @@ def _lasd3_parallel_inter(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 32, 64, 128],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
         }
     ),
     key=[
@@ -891,6 +888,7 @@ def _lasd3_parallel_intra_inter(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    NUM_BLOCK_E: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
@@ -960,13 +958,15 @@ def _lasd3_parallel_intra_inter(
 
     o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
 
-    if REVERSE:
-        stride = -1
-        NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
-        NUM_LOOP = NUM_BLOCK_C - off_block_c
-    else:
-        stride = 1
-        NUM_LOOP = off_block_c + 1
+    array_n = tl.arange(0, BLOCK_N)
+    array_kv = array_n
+    # if REVERSE:
+    #     stride = -1
+    #     # NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
+    #     # NUM_LOOP = NUM_BLOCK_C - off_block_c
+    # else:
+    #     stride = 1
+    #     # NUM_LOOP = off_block_c + 1
 
     ldq_block_ptr = (
         LOG_DECAY + offset_ld + offset_block_ld + (offset_block_c + array_c) * H
@@ -974,6 +974,7 @@ def _lasd3_parallel_intra_inter(
     ldq = tl.load(ldq_block_ptr, mask=mask_c, other=0.0).to(tl.float32)
 
     if REVERSE:
+        stride = -1
         ldq_inter_block_ptr = (
             LOG_DECAY_REVERSE
             + offset_ld
@@ -982,17 +983,29 @@ def _lasd3_parallel_intra_inter(
         )
         ldq_inter = tl.load(ldq_inter_block_ptr, mask=mask_c, other=0.0).to(tl.float32)
     else:
+        stride = 1
         ldq_inter = ldq
+
+    v_block_ptr = (
+        V
+        + offset_vo
+        + offset_block_vo
+        + array_kv[:, None] * H * E
+        + (offset_block_e + array_e)[None, :]
+    )
+    mask_kv = (offset_block_n + array_kv) < N
+    v = tl.load(v_block_ptr, mask=mask_kv[:, None] & mask_e[None, :], other=0.0)
+    diff = (array_q[:, None] - array_kv[None, :]) * stride  # !!! important
 
     for i in range(NUM_BLOCK_D):
         mask_d = (array_d + i * BLOCK_D) < D
         q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
 
         ##### intra start #####
-        if REVERSE:
-            array_kv = BLOCK_N - BLOCK_C + array_c
-        else:
-            array_kv = array_c
+        # if REVERSE:
+        #     array_kv = BLOCK_N - BLOCK_C + array_c
+        # else:
+        #     array_kv = array_c
 
         k_trans_block_ptr = (
             K
@@ -1001,36 +1014,20 @@ def _lasd3_parallel_intra_inter(
             + array_kv[None, :] * H * D
             + (i * BLOCK_D + array_d)[:, None]
         )
-        v_block_ptr = (
-            V
-            + offset_vo
-            + offset_block_vo
-            + array_kv[:, None] * H * E
-            + (offset_block_e + array_e)[None, :]
-        )
         ldk_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array_kv * H
 
-        for j in range(NUM_LOOP):
-            mask_kv = (offset_block_n + array_kv) < N
+        k_trans = tl.load(
+            k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
+        )
+        ldk = tl.load(ldk_block_ptr, mask=mask_kv, other=0).to(tl.float32)
 
-            k_trans = tl.load(
-                k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
-            )
-            v = tl.load(v_block_ptr, mask=mask_kv[:, None] & mask_e[None, :], other=0.0)
-            ldk = tl.load(ldk_block_ptr, mask=mask_kv, other=0).to(tl.float32)
+        score = tl.dot(q, k_trans)
 
-            score = tl.dot(q, k_trans)
-            diff = (array_q[:, None] - array_kv[None, :]) * stride  # !!! important
-            log_decay = (ldq[:, None] - ldk[None, :]) * stride
-            # decay = tl.exp(tl.where(diff >= 0, log_decay, float("-inf")))
-            decay = tl.exp(tl.where(log_decay <= 0, log_decay, float("-inf")))
-            score *= decay
-            o += tl.dot(score.to(v.dtype), v)
-
-            k_trans_block_ptr += BLOCK_C * H * D * stride
-            v_block_ptr += BLOCK_C * H * E * stride
-            ldk_block_ptr += BLOCK_C * H * stride
-            array_kv += BLOCK_C * stride
+        log_decay = (ldq[:, None] - ldk[None, :]) * stride
+        # decay = tl.exp(tl.where(diff >= 0, log_decay, float("-inf")))
+        decay = tl.exp(tl.where(log_decay <= 0, log_decay, float("-inf")))
+        score *= decay
+        o += tl.dot(score.to(v.dtype), v)
         ##### intra end #####
 
         ##### inter start #####
