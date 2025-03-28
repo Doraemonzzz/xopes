@@ -1,4 +1,5 @@
 import os
+import time
 
 import numpy as np
 import torch
@@ -113,12 +114,17 @@ def benchmark(
                 fn()
                 mb_arr.append(get_memory(device))
             mb = np.mean(mb_arr)
-        except:
+        except Exception as e:
+            print(f"Error setting up {provider}: {e}")
             mb = -1
 
         return mb
 
 
-save_path = "stat/benchmark"
+start_time = time.time()
+save_path = "stat/multinomial"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
+end_time = time.time()
+total_time = end_time - start_time
+print(f"Total time: {total_time} seconds")

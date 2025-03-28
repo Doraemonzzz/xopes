@@ -1,4 +1,5 @@
 import os
+import time
 
 import numpy as np
 import torch
@@ -126,7 +127,8 @@ def benchmark(
 
     try:
         fn = lambda: module(x, theta, shape=shape[2:-1], l=l, act=act, dim=dim)
-    except:
+    except Exception as e:
+        print(f"Error setting up {provider}: {e}")
         fn = None
 
     if mode == "bwd":
@@ -140,13 +142,15 @@ def benchmark(
                 do = torch.cat([do_token, do], dim=-2)
 
             fn = lambda: o.backward(do, retain_graph=True)
-        except:
+        except Exception as e:
+            print(f"Error setting up {provider}: {e}")
             fn = None
 
     if bench_type == "speed":
         try:
             ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-        except:
+        except Exception as e:
+            print(f"Error setting up {provider}: {e}")
             ms = -1
 
         return ms
@@ -159,12 +163,17 @@ def benchmark(
                 fn()
                 mb_arr.append(get_memory(device))
             mb = np.mean(mb_arr)
-        except:
+        except Exception as e:
+            print(f"Error setting up {provider}: {e}")
             mb = -1
 
         return mb
 
 
+start_time = time.time()
 save_path = "stat/lrpe_cosine_md"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
+end_time = time.time()
+total_time = end_time - start_time
+print(f"Total time: {total_time} seconds")

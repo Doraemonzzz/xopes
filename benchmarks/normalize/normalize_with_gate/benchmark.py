@@ -1,4 +1,5 @@
 import os
+import time
 
 import numpy as np
 import torch
@@ -196,7 +197,10 @@ def benchmark(
         return mb
 
 
-if __name__ == "__main__":
-    save_path = "stat/normalize_gate"
-    os.makedirs(save_path, exist_ok=True)
-    benchmark.run(save_path=save_path, print_data=True)
+start_time = time.time()
+save_path = "stat/normalize_gate"
+os.makedirs(save_path, exist_ok=True)
+benchmark.run(save_path=save_path, print_data=True)
+end_time = time.time()
+total_time = end_time - start_time
+print(f"Total time: {total_time} seconds")

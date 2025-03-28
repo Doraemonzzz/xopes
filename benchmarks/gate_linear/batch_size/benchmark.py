@@ -1,4 +1,5 @@
 import os
+import time
 
 import numpy as np
 import torch
@@ -106,7 +107,7 @@ def benchmark(
     try:
         fn = lambda: module(x1, x2, weight, bias, residual, act)
     except Exception as e:
-        print(e)
+        print(f"Error setting up {provider}: {e}")
         fn = None
 
     if mode == "bwd":
@@ -115,14 +116,14 @@ def benchmark(
             do = torch.randn((b, d2), dtype=dtype, device=device)
             fn = lambda: o.backward(do, retain_graph=True)
         except Exception as e:
-            print(e)
+            print(f"Error setting up {provider}: {e}")
             fn = None
 
     if bench_type == "speed":
         try:
             ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
         except Exception as e:
-            print(e)
+            print(f"Error setting up {provider}: {e}")
             ms = -1
         return ms
     else:
@@ -135,11 +136,15 @@ def benchmark(
                 mb_arr.append(get_memory(device))
             mb = np.mean(mb_arr)
         except Exception as e:
-            print(e)
+            print(f"Error setting up {provider}: {e}")
             mb = -1
         return mb
 
 
+start_time = time.time()
 save_path = "stat/gate_linear"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
+end_time = time.time()
+total_time = end_time - start_time
+print(f"Total time: {total_time} seconds")
