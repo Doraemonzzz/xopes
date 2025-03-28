@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops.cumsum import cumsum_torch, cumsum_triton
+from xopes.ops.cumsum.chunk_cumsum import chunk_cumsum_torch, chunk_cumsum_triton
 from xopes.utils import get_memory
 
 device = torch.device("cuda")
@@ -16,17 +16,20 @@ dtype_map = {
 }
 
 module_map = {
-    "triton": cumsum_triton,
-    "torch": cumsum_torch,
-    "torch_compile": torch.compile(cumsum_torch),
+    "triton": chunk_cumsum_triton,
+    "torch": chunk_cumsum_torch,
+    "torch_compile": torch.compile(chunk_cumsum_torch),
 }
+
+# Fixed chunk size
+chunk_size = 128
 
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         x_vals=[2**i for i in range(10, 16)],
         xlabel="Sequence Length",
-        ylabel="Execution Time(ms)",
+        ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory Usage(MB)",
         line_arg="provider",
         line_vals=[
             "triton",
@@ -39,7 +42,7 @@ configs = [
             ("orange", "-"),
             ("green", "-"),
         ],
-        plot_name=f"cumsum-{bench_type}-{mode}-batch{b}-reverse_{reverse}-{dtype_name}",
+        plot_name=f"chunk_cumsum-{bench_type}-{mode}-batch{b}-reverse_{reverse}-{dtype_name}",
         args={
             "b": b,
             "dtype": dtype_map[dtype_name],
@@ -49,7 +52,7 @@ configs = [
             "reverse": reverse,
         },
     )
-    for reverse in [True, False]
+    for reverse in [False]
     for bench_type in ["speed", "memory"]
     for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
@@ -79,8 +82,9 @@ def benchmark(
     module = module_map[provider]
 
     try:
-        fn = lambda: module(x, reverse=reverse)
-    except:
+        fn = lambda: module(x, dim=-1, reverse=reverse, chunk_size=chunk_size)
+    except Exception as e:
+        print(f"Error setting up {provider}: {e}")
         fn = None
 
     if mode == "bwd":
@@ -116,6 +120,6 @@ def benchmark(
         return mb
 
 
-save_path = "stat/cumsum"
+save_path = "stat/chunk_cumsum"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)

@@ -70,6 +70,9 @@ folder=lightning_attention
 # ##### dld 250318
 # folder=lightning_attention/log_decay/dld
 
+# ##### chunk_cumsum 250327
+folder=chunk_cumsum
+
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0
