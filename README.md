@@ -199,6 +199,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 [Benchmark Add]
 [Document Add]
 [Test Add]
+[Enhancement]
+[Refactor]
 ```
 
 Symbol Explanation: When benchmarking, use `o` to represent the output of the function. For the function name, use `fn_version` where `fn` is the function name and `version` can be either `torch` or `triton`.
