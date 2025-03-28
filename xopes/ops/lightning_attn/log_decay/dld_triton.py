@@ -61,7 +61,6 @@ def _compute_dld_kernel(
 
     # If using final_state, calculate additional term
     if USE_FINAL_STATE:
-        # dld_state = tl.load(DLD_STATE + off_b * H + off_h, other=0.0).to(tl.float32)
         dld_state = tl.load(DLD_STATE + off_b * H + off_h).to(tl.float32)
         dld += dld_state
 

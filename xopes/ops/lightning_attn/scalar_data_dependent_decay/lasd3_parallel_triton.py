@@ -437,9 +437,9 @@ def lasd3_parallel_intra_inter(
         BLOCK_D = 32
         BLOCK_E = 32
     else:
-        BLOCK_C = 128
-        BLOCK_D = 128
-        BLOCK_E = 128
+        BLOCK_C = min(MAX_BLOCK_C, 128)
+        BLOCK_D = min(MAX_BLOCK_D, 128)
+        BLOCK_E = min(MAX_BLOCK_E, 128)
 
     if use_cu_seqlens:
         o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
@@ -553,7 +553,7 @@ def lasd3_parallel_fwd(
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
-    MAX_BLOCK_C = BLOCK_N
+    MAX_BLOCK_C = MAX_BLOCK_N
 
     # Step1: Compute states in parallel or chunk loop
     if USE_CHUNK_LOOP:
@@ -635,6 +635,7 @@ def lasd3_parallel_bwd(
         states: Cached states from forward pass (optional)
         ld_cumsum: Cached ld_cumsum from forward pass (optional)
         use_chunk_loop: Whether to use chunk loop
+
     Returns:
         dq: Gradient of query tensor
         dk: Gradient of key tensor

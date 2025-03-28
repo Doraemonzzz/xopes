@@ -82,28 +82,28 @@ configs = [
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            "lasd_r",
-            "lasd_p",
-            "land_p",
-            "lasd_pl",
+            # "lasd_r",
+            # "lasd_p",
+            # "land_p",
+            # "lasd_pl",
             "lasd3_p",
-            "flash",
-            "lightning_p",
-            "lightning_c",
-            "gla_k",
-            "gla_s_k",
+            # "flash",
+            # "lightning_p",
+            # "lightning_c",
+            # "gla_k",
+            # "gla_s_k",
         ],
         line_names=[
-            "LASD_R",
-            "LASD_P",
-            "LAND_P",
-            "LASD_PL",
+            # "LASD_R",
+            # "LASD_P",
+            # "LAND_P",
+            # "LASD_PL",
             "LASD3_P",
-            "Flash",
-            "LP",
-            "LC",
-            "GLA_K",
-            "GLA_S_K",
+            # "Flash",
+            # "LP",
+            # "LC",
+            # "GLA_K",
+            # "GLA_S_K",
         ],
         styles=[
             ("red", "-"),
@@ -138,8 +138,8 @@ configs = [
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    # for b, h, d in [[4, 32, 128]]
-    for b, h, d in [[4, 32, 128], [1, 16, 128]]
+    for b, h, d in [[4, 32, 128]]
+    # for b, h, d in [[4, 32, 128], [1, 16, 128]]
 ]
 
 
