@@ -5,7 +5,11 @@ import numpy as np
 import torch
 import triton
 
-from xopes.ops.cumsum import cumsum_torch, cumsum_triton
+from xopes.ops.cumsum.cumsum import (
+    cumsum_chunk_loop_triton,
+    cumsum_torch,
+    cumsum_triton,
+)
 from xopes.utils import get_memory
 
 device = torch.device("cuda")
@@ -18,6 +22,7 @@ dtype_map = {
 
 module_map = {
     "triton": cumsum_triton,
+    "triton_chunk_loop": cumsum_chunk_loop_triton,
     "torch": cumsum_torch,
     "torch_compile": torch.compile(cumsum_torch),
 }
@@ -31,18 +36,21 @@ configs = [
         line_arg="provider",
         line_vals=[
             "triton",
+            "triton_chunk_loop",
             "torch",
             "torch_compile",
         ],
-        line_names=["tr", "to", "toc"],
+        line_names=["tr", "trc", "to", "toc"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
             ("green", "-"),
+            ("blue", "-"),
         ],
         plot_name=f"cumsum-{bench_type}-{mode}-batch{b}-reverse_{reverse}-{dtype_name}",
         args={
             "b": b,
+            "h": h,
             "dtype": dtype_map[dtype_name],
             "device": device,
             "mode": mode,
@@ -55,6 +63,7 @@ configs = [
     for mode in ["fwd", "bwd"]
     for dtype_name in ["bf16"]
     for b in [4096]
+    for h in [1]
 ]
 
 
@@ -62,6 +71,7 @@ configs = [
 def benchmark(
     b,
     n,
+    h,
     dtype,
     device,
     mode,
@@ -74,7 +84,10 @@ def benchmark(
     warmup = 25
     rep = 100
 
-    shape = (b, n)
+    if h == 1:
+        shape = (b, n)
+    else:
+        shape = (b, n, h)
     x = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
 
     module = module_map[provider]

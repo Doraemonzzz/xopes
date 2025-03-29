@@ -15,7 +15,7 @@ folder=lrpe/cosine/_1d
 # folder=normalize/rms_norm
 # folder=normalize/group_norm
 # folder=normalize/layer_norm
-folder=normalize/normalize_with_gate
+# folder=normalize/normalize_with_gate
 
 # ##### householder 250101
 # folder=householder
@@ -45,8 +45,8 @@ folder=normalize/normalize_with_gate
 # ##### act 250116
 # folder=act
 
-# ##### cumsum 250130
-# folder=cumsum
+##### cumsum 250130
+folder=cumsum
 
 # ##### gate_linear 250201
 # folder=gate_linear/hidden_dim
@@ -64,15 +64,15 @@ folder=normalize/normalize_with_gate
 # ##### logcumsumexp 250312
 # folder=logcumsumexp
 
-##### lightning_attention 250314
-folder=lightning_attention
+# ##### lightning_attention 250314
+# folder=lightning_attention
 
 # ##### dld 250318
 # folder=lightning_attention/log_decay/dld
 
 # ##### chunk_cumsum 250327
 # folder=chunk_cumsum/chunk_cumsum
-folder=chunk_cumsum/chunk_cumsum_decay
+# folder=chunk_cumsum/chunk_cumsum_decay
 
 mkdir -p $folder/log
 

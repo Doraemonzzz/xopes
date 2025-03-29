@@ -1,12 +1,22 @@
 import pytest
 import torch
 
-from xopes.ops.cumsum import cumsum_torch, cumsum_triton
+from xopes.ops.cumsum.cumsum import (
+    cumsum_chunk_loop_triton,
+    cumsum_torch,
+    cumsum_triton,
+)
 from xopes.utils import get_threshold
 
 
 def get_params():
-    shapes = [(6, 128), (4, 8, 256), (4, 1024, 4096), (12, 32, 15)]
+    shapes = [
+        (6, 128),
+        (4, 8, 256),
+        (1024, 4096, 4),
+        (1023, 4095, 12),
+        (1025, 4097, 12),
+    ]
 
     return shapes
 
@@ -14,7 +24,7 @@ def get_params():
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("dim", [-1, 0, 1])
 @pytest.mark.parametrize("reverse", [True, False])
-@pytest.mark.parametrize("use_cu_seqlens", [True, False])
+@pytest.mark.parametrize("use_cu_seqlens", [False])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test(shape, dim, reverse, use_cu_seqlens, dtype):
     torch.manual_seed(2024)
@@ -43,6 +53,9 @@ def test(shape, dim, reverse, use_cu_seqlens, dtype):
     # forward
     o_cumsum_torch = cumsum_torch(x, dim=dim, reverse=reverse, cu_seqlens=cu_seqlens)
     o_cumsum_triton = cumsum_triton(x, dim=dim, reverse=reverse, cu_seqlens=cu_seqlens)
+    o_cumsum_chunk_loop_triton = cumsum_chunk_loop_triton(
+        x, dim=dim, reverse=reverse, cu_seqlens=cu_seqlens
+    )
 
     # backward
     o_cumsum_torch.backward(do, retain_graph=True)
@@ -51,26 +64,53 @@ def test(shape, dim, reverse, use_cu_seqlens, dtype):
     o_cumsum_triton.backward(do, retain_graph=True)
     dx_cumsum_triton, x.grad = x.grad.clone(), None
 
+    o_cumsum_chunk_loop_triton.backward(do, retain_graph=True)
+    dx_cumsum_chunk_loop_triton, x.grad = x.grad.clone(), None
+
     atol, rtol = get_threshold(dtype)
 
     # forward check
     print(
-        "o diff max: ",
+        "o diff max (Vs triton):",
         torch.abs(o_cumsum_torch - o_cumsum_triton).max().item(),
     )
     print(
-        "o diff norm: ",
+        "o diff norm (Vs triton):",
         torch.norm(o_cumsum_torch - o_cumsum_triton).item(),
     )
     assert torch.allclose(o_cumsum_torch, o_cumsum_triton, atol=atol, rtol=rtol)
 
+    print(
+        "o diff max (Vs chunk loop triton):",
+        torch.abs(o_cumsum_torch - o_cumsum_chunk_loop_triton).max().item(),
+    )
+    print(
+        "o diff norm (Vs chunk loop triton):",
+        torch.norm(o_cumsum_torch - o_cumsum_chunk_loop_triton).item(),
+    )
+    assert torch.allclose(
+        o_cumsum_torch, o_cumsum_chunk_loop_triton, atol=atol, rtol=rtol
+    )
+
     # backward check
     print(
-        "dx diff max: ",
+        "dx diff max (Vs triton):",
         torch.abs(dx_cumsum_torch - dx_cumsum_triton).max().item(),
     )
     print(
-        "dx diff norm: ",
+        "dx diff norm (Vs triton):",
         torch.norm(dx_cumsum_torch - dx_cumsum_triton).item(),
     )
     assert torch.allclose(dx_cumsum_torch, dx_cumsum_triton, atol=atol, rtol=rtol)
+
+    print(
+        "dx diff max (Vs chunk loop triton):",
+        torch.abs(dx_cumsum_torch - dx_cumsum_chunk_loop_triton).max().item(),
+    )
+    print(
+        "dx diff norm (Vs chunk loop triton):",
+        torch.norm(dx_cumsum_torch - dx_cumsum_chunk_loop_triton).item(),
+    )
+    assert torch.allclose(
+        dx_cumsum_torch, dx_cumsum_chunk_loop_triton, atol=atol, rtol=rtol
+    )

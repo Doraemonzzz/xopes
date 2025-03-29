@@ -97,8 +97,6 @@ def chunk_cumsum_decay_triton(
     h = prod(x.shape, start_dim=2)
     m = (n + chunk_size - 1) // chunk_size
     BLOCK_C = triton.next_power_of_2(chunk_size)
-    MAX_FUSED_SIZE = 65536 // x.element_size() // BLOCK_C
-    min(MAX_FUSED_SIZE, triton.next_power_of_2(h))
 
     # allocate output
     o = torch.empty_like(x)

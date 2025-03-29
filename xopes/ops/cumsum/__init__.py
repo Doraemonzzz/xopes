@@ -9,8 +9,7 @@ from .chunk_reverse_cumsum import (
     chunk_reverse_cumsum_torch,
     chunk_reverse_cumsum_triton,
 )
-from .cumsum_torch import cumsum_torch
-from .cumsum_triton import cumsum_triton
+from .cumsum import cumsum_torch, cumsum_triton
 
 
 def cumsum_fn(

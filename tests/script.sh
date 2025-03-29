@@ -61,7 +61,7 @@ folder=lightning_attn/vector_decay
 # folder=lightning_attn/vector_decay_unit_test
 
 ##### cumsum 250129
-# folder=cumsum
+# folder=cumsum/cumsum
 
 # ##### gate_linear 250201
 # folder=gate_linear
@@ -97,6 +97,7 @@ folder=lightning_attn/scalar_data_dependent_decay
 # folder=cumsum/chunk_cumsum
 # folder=cumsum/chunk_reverse_cumsum
 # folder=cumsum/chunk_cumsum_decay
+folder=cumsum/cumsum
 
 mkdir -p $folder/log
 
