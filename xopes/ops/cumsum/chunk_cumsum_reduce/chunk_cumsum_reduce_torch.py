@@ -6,6 +6,7 @@ def chunk_cumsum_reduce_torch(
     dim: int = -1,
     reverse: bool = False,
     chunk_size: int = 128,
+    **kwargs,
 ):
     """
     Convert chunked cumulative sums into a complete cumulative sum result.

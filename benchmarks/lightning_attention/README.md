@@ -5,6 +5,7 @@
 - lasd_r: Triton recurrence
 - lasd_p: Lightning attention with scalar decay
 - land_p: Lightning attention with no decay
+- lasd_pl: Lightning attention with learnable scalar decay
 - flash: Flash attention
 - lightning_p: Origin lightning attention parallel version
 - lightning_c: Origin lightning attention chunk loop version

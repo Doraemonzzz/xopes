@@ -116,6 +116,7 @@ def chunk_cumsum_triton(
     dim: int = -1,
     reverse: bool = False,
     chunk_size: int = 128,
+    **kwargs,
 ) -> torch.Tensor:
     """
     Applies chunk cumulative sum using Triton.
@@ -135,14 +136,14 @@ def chunk_cumsum_triton(
     shape = x.shape
 
     # reshape input data into 2D tensor
-    x = x.reshape(-1, x.shape[-1]).contiguous()
+    x = x.reshape(-1, x.shape[-1])
     o = ChunkCumSumTriton.apply(x, reverse, chunk_size)
     o = o.reshape(shape)
 
     if dim != -1:
         o = o.transpose(dim, -1)
 
-    return o.contiguous()
+    return o
 
 
 if __name__ == "__main__":

@@ -77,7 +77,8 @@ configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         # x_vals=[2**i for i in range(8, 16)],
-        x_vals=[2**i for i in range(10, 11)],
+        x_vals=[2**i for i in range(8, 11)],
+        # x_vals=[2**i for i in range(15, 16)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -91,7 +92,7 @@ configs = [
             # "lightning_p",
             # "lightning_c",
             # "gla_k",
-            # "gla_s_k",
+            "gla_s_k",
         ],
         line_names=[
             # "LASD_R",
@@ -103,7 +104,7 @@ configs = [
             # "LP",
             # "LC",
             # "GLA_K",
-            # "GLA_S_K",
+            "GLA_S_K",
         ],
         styles=[
             ("red", "-"),

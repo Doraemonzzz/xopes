@@ -4,7 +4,7 @@ import torch
 import triton
 from einops import repeat
 
-from xopes.ops.cumsum import chunk_cumsum_fn, chunk_reverse_cumsum_fn, cumsum_fn
+from xopes.ops.cumsum import chunk_cumsum_scalar_decay_fn, cumsum_fn
 from xopes.ops.lightning_attn.log_decay import compute_dld_fn
 from xopes.ops.lightning_attn.scalar_data_dependent_decay.utils import (
     _lasd3_parallel_inter,
@@ -52,14 +52,9 @@ def lasd3_parallel_state_parallel(
         )
 
     if ld_cumsum is None:
-        if reverse:
-            ld_cumsum = chunk_reverse_cumsum_fn(
-                ld, dim=1, chunk_size=BLOCK_N
-            ).contiguous()
-        else:
-            ld_cumsum = chunk_cumsum_fn(
-                ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
-            ).contiguous()
+        ld_cumsum = chunk_cumsum_scalar_decay_fn(
+            ld, reverse=reverse, chunk_size=BLOCK_N
+        )
 
     _lasd3_parallel_state_parallel[grid](
         K=k,
@@ -114,14 +109,9 @@ def lasd3_parallel_state_reduce(
         )
 
     if ld_cumsum is None:
-        if reverse:
-            ld_cumsum = chunk_reverse_cumsum_fn(
-                ld, dim=1, chunk_size=BLOCK_N
-            ).contiguous()
-        else:
-            ld_cumsum = chunk_cumsum_fn(
-                ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
-            ).contiguous()
+        ld_cumsum = chunk_cumsum_scalar_decay_fn(
+            ld, reverse=reverse, chunk_size=BLOCK_N
+        )
 
     _lasd3_parallel_state_reduce[grid](
         STATE=initial_state,
@@ -184,14 +174,9 @@ def lasd3_parallel_state_parallel_reduce(
         )
 
     if ld_cumsum is None:
-        if reverse:
-            ld_cumsum = chunk_reverse_cumsum_fn(
-                ld, dim=1, chunk_size=BLOCK_N
-            ).contiguous()
-        else:
-            ld_cumsum = chunk_cumsum_fn(
-                ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
-            ).contiguous()
+        ld_cumsum = chunk_cumsum_scalar_decay_fn(
+            ld, reverse=reverse, chunk_size=BLOCK_N
+        )
 
     _lasd3_parallel_state_parallel_reduce[grid](
         K=k,
@@ -313,9 +298,7 @@ def lasd3_parallel_intra(
         )
 
     if ld_cumsum is None:
-        ld_cumsum = chunk_cumsum_fn(
-            ld, dim=1, reverse=False, chunk_size=BLOCK_N
-        ).contiguous()
+        ld_cumsum = chunk_cumsum_scalar_decay_fn(ld, reverse=False, chunk_size=BLOCK_N)
 
     _lasd3_parallel_intra[grid](
         Q=q,
@@ -371,14 +354,9 @@ def lasd3_parallel_inter(
         )
 
     if ld_cumsum is None:
-        if reverse:
-            ld_cumsum = chunk_reverse_cumsum_fn(
-                ld, dim=1, chunk_size=BLOCK_N
-            ).contiguous()
-        else:
-            ld_cumsum = chunk_cumsum_fn(
-                ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
-            ).contiguous()
+        ld_cumsum = chunk_cumsum_scalar_decay_fn(
+            ld, reverse=reverse, chunk_size=BLOCK_N
+        )
 
     _lasd3_parallel_inter[grid](
         Q=q,
@@ -461,14 +439,12 @@ def lasd3_parallel_intra_inter(
         )
 
     if ld_cumsum is None:
-        ld_cumsum = chunk_cumsum_fn(
-            ld, dim=1, reverse=False, chunk_size=BLOCK_N
-        ).contiguous()
+        ld_cumsum = chunk_cumsum_scalar_decay_fn(ld, reverse=False, chunk_size=BLOCK_N)
 
     if ld_reverse_cumsum is None and reverse:
-        ld_reverse_cumsum = chunk_reverse_cumsum_fn(
-            ld, dim=1, chunk_size=BLOCK_N
-        ).contiguous()
+        ld_reverse_cumsum = chunk_cumsum_scalar_decay_fn(
+            ld, reverse=True, chunk_size=BLOCK_N
+        )
 
     _lasd3_parallel_intra_inter[grid](
         Q=q,
@@ -553,6 +529,7 @@ def lasd3_parallel_fwd(
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
+
     MAX_BLOCK_C = MAX_BLOCK_N
 
     # Step1: Compute states in parallel or chunk loop
@@ -561,9 +538,7 @@ def lasd3_parallel_fwd(
     else:
         fn = lasd3_parallel_state_parallel_reduce_sep
 
-    ld_cumsum = chunk_cumsum_fn(
-        ld, dim=1, reverse=reverse, chunk_size=BLOCK_N
-    ).contiguous()
+    ld_cumsum = chunk_cumsum_scalar_decay_fn(ld, reverse=reverse, chunk_size=BLOCK_N)
 
     states = fn(
         k=k,
@@ -686,9 +661,7 @@ def lasd3_parallel_bwd(
         )
 
     if ld_cumsum is None:
-        ld_cumsum = chunk_cumsum_fn(
-            ld, dim=1, reverse=False, chunk_size=BLOCK_N
-        ).contiguous()
+        ld_cumsum = chunk_cumsum_scalar_decay_fn(ld, reverse=False, chunk_size=BLOCK_N)
 
     dq, dld_q = lasd3_parallel_intra_inter(
         q=do,  # b n h e
@@ -711,9 +684,9 @@ def lasd3_parallel_bwd(
     final_state = states[:, :, -1, :, :]
     del states
 
-    ld_reverse_cumsum = chunk_reverse_cumsum_fn(
-        ld, dim=1, chunk_size=BLOCK_N
-    ).contiguous()
+    ld_reverse_cumsum = chunk_cumsum_scalar_decay_fn(
+        ld, reverse=True, chunk_size=BLOCK_N
+    )
 
     # Compute dstates for dk and dv
     dstates = fn(
@@ -896,7 +869,9 @@ def lasd3_parallel_triton(
         initial_state = initial_state.squeeze(0)
         # treat for varlen training
         if len(initial_state.shape) == 3:
-            initial_state = repeat(initial_state, "h d e -> b h d e", b=b).contiguous()
+            initial_state = repeat(
+                initial_state, "h d e -> b h d e", b=b
+            )  # .contiguous()
 
     return Lasd3ParallelFunction.apply(
         q,

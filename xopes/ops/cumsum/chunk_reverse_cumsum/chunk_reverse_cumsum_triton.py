@@ -60,6 +60,7 @@ def chunk_reverse_cumsum_triton(
     x: torch.Tensor,
     dim: int = -1,
     chunk_size: int = 128,
+    **kwargs,
 ) -> torch.Tensor:
     """
     Compute the chunk reverse cumulative sum of a tensor along a specified dimension.

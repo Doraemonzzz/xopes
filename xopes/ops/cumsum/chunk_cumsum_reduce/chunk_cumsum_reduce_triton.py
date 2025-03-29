@@ -65,6 +65,7 @@ def chunk_cumsum_reduce_triton(
     dim: int = -1,
     reverse: bool = False,
     chunk_size: int = 128,
+    **kwargs,
 ) -> torch.Tensor:
     """
     Convert chunked cumulative sums into a complete cumulative sum result.

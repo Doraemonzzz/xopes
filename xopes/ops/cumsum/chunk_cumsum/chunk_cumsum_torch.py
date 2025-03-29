@@ -6,6 +6,7 @@ def chunk_cumsum_torch(
     dim: int = -1,
     reverse: bool = False,
     chunk_size: int = 128,
+    **kwargs,
 ):
     """
     Compute the chunk cumulative sum of a tensor along a specified dimension.

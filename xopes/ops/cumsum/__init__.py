@@ -3,6 +3,7 @@ from typing import Optional
 import torch
 
 from .chunk_cumsum import chunk_cumsum_torch, chunk_cumsum_triton
+from .chunk_cumsum_decay import chunk_cumsum_scalar_decay_triton
 from .chunk_cumsum_reduce import chunk_cumsum_reduce_torch, chunk_cumsum_reduce_triton
 from .chunk_reverse_cumsum import (
     chunk_reverse_cumsum_torch,
@@ -47,3 +48,11 @@ def chunk_cumsum_reduce_fn(
     return chunk_cumsum_reduce_triton(
         x=x, dim=dim, reverse=reverse, chunk_size=chunk_size
     )
+
+
+def chunk_cumsum_scalar_decay_fn(
+    x: torch.Tensor,
+    reverse: bool = False,
+    chunk_size: int = 128,
+):
+    return chunk_cumsum_scalar_decay_triton(x=x, reverse=reverse, chunk_size=chunk_size)
