@@ -1,6 +1,8 @@
 import functools
 import itertools
 import math
+from functools import reduce
+from operator import mul
 
 import torch
 import triton
@@ -144,3 +146,32 @@ def is_dim_valid(shape1, shape2):
         if shape1[i] != shape2[i]:
             return False
     return True
+
+
+def prod(shape, start_dim=0, end_dim=None):
+    """
+    Calculate the product of dimensions in a tensor shape
+
+    Args:
+        shape: The shape to calculate the product (tuple, list or torch.Size)
+        start_dim: Starting dimension (inclusive)
+        end_dim: Ending dimension (inclusive), None means until the last dimension
+
+    Returns:
+        Product of the dimensions
+    """
+    if end_dim is None:
+        end_dim = len(shape) - 1
+
+    # Ensure dimensions are within valid range
+    start_dim = max(0, start_dim)
+    end_dim = min(len(shape) - 1, end_dim)
+
+    # Extract dimensions for product calculation
+    dims = shape[start_dim : end_dim + 1]
+
+    # Return 1 if the dimension list is empty
+    if not dims:
+        return 1
+
+    return reduce(mul, dims, 1)

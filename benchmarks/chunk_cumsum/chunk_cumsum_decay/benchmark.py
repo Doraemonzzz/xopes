@@ -7,7 +7,7 @@ import triton
 
 from xopes.ops.cumsum.baseline import chunk_local_cumsum_wrapper
 from xopes.ops.cumsum.chunk_cumsum import chunk_cumsum_torch
-from xopes.ops.cumsum.chunk_cumsum_decay import chunk_cumsum_scalar_decay_triton
+from xopes.ops.cumsum.chunk_cumsum_decay import chunk_cumsum_decay_triton
 from xopes.ops.cumsum.chunk_reverse_cumsum import chunk_reverse_cumsum_torch
 from xopes.utils import get_memory
 
@@ -22,7 +22,7 @@ dtype_map = {
 
 # Define implementation mapping
 module_map = {
-    "triton": chunk_cumsum_scalar_decay_triton,
+    "triton": chunk_cumsum_decay_triton,
     "torch": chunk_cumsum_torch,
     "torch_compile": torch.compile(chunk_cumsum_torch),
     "torch_reverse": chunk_reverse_cumsum_torch,
@@ -35,8 +35,8 @@ configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         # Use a wider range for detailed benchmarking
-        # x_vals=[2**i for i in range(10, 16)],
-        x_vals=[2**i for i in range(10, 11)],
+        x_vals=[2**i for i in range(10, 16)],
+        # x_vals=[2**i for i in range(10, 11)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory Usage(MB)",
         line_arg="provider",
@@ -53,7 +53,7 @@ configs = [
             ("green", "-"),
             ("orange", "-"),
         ],
-        plot_name=f"chunk_cumsum_scalar_decay-{bench_type}-batch{b}-h{h}-reverse_{reverse}-{dtype_name}",
+        plot_name=f"chunk_cumsum_decay-{bench_type}-b{b}-h{h}-d{d}-reverse_{reverse}-{dtype_name}",
         args={
             "b": b,
             "dtype": dtype_map[dtype_name],
@@ -62,6 +62,7 @@ configs = [
             "reverse": reverse,
             "chunk_size": chunk_size,
             "h": h,
+            "d": d,
         },
     )
     for reverse in [False, True]
@@ -70,8 +71,11 @@ configs = [
         "bf16",
     ]
     for b in [4, 16]
+    # for b in [16]
     for chunk_size in [128]
     for h in [16]
+    for d in [1, 128]
+    # for d in [128]
 ]
 
 
@@ -86,6 +90,7 @@ def benchmark(
     reverse=False,
     chunk_size=128,
     h=16,
+    d=128,
 ):
     # Set seed for reproducibility
     torch.manual_seed(2024)
@@ -93,7 +98,10 @@ def benchmark(
     rep = 100
 
     # Create input tensor
-    shape = (b, n, h)
+    if d == 1:
+        shape = (b, n, h)
+    else:
+        shape = (b, n, h, d)
     x = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
 
     # Get the appropriate module
@@ -136,9 +144,9 @@ def benchmark(
 
 # Run benchmarks
 start_time = time.time()
-save_path = "stat/chunk_cumsum_scalar_decay"
+save_path = "stat/chunk_cumsum_decay"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
 end_time = time.time()
 total_time = end_time - start_time
-print(f"Total time: {total_time} seconds")
+print(f"Total time: {total_time} seconds ({total_time/60:.2f} minutes)")

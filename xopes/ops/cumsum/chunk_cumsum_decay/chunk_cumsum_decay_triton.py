@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
-from xopes.utils import generate_configs
+from xopes.utils import generate_configs, prod
 
 
 @triton.autotune(
@@ -18,7 +18,7 @@ from xopes.utils import generate_configs
     ],
 )
 @triton.jit
-def _chunk_cumsum_scalar_decay(
+def _chunk_cumsum_decay(
     X,  # B N H
     O,  # B N H
     B: tl.constexpr,
@@ -26,6 +26,7 @@ def _chunk_cumsum_scalar_decay(
     H: tl.constexpr,
     C: tl.constexpr,
     BLOCK_C: tl.constexpr,
+    BLOCK_H: tl.constexpr,
     REVERSE: tl.constexpr,  # if True, o[i] = x[n] + x[n-1] + ... + x[n - i + 1]
 ):
     off_b = tl.program_id(0)
@@ -34,7 +35,7 @@ def _chunk_cumsum_scalar_decay(
 
     # compute offset
     offset_b = off_b * N * H
-    offset_h = off_h
+    offset_h = off_h * BLOCK_H + tl.arange(0, BLOCK_H)
     offset_c = off_c * C
 
     # mask
@@ -51,21 +52,25 @@ def _chunk_cumsum_scalar_decay(
         mask_o = (array_o >= offset_c) & (array_o < N)
         mask_x = mask_o
 
+    mask_h = offset_h < H
+    mask_x_block = mask_x[:, None] & mask_h[None, :]
+    mask_o_block = mask_o[:, None] & mask_h[None, :]
+
     # compute block ptr
-    x_block_ptr = X + offset_b + offset_h + array_x * H
-    o_block_ptr = O + offset_b + offset_h + array_o * H
+    x_block_ptr = X + offset_b + array_x[:, None] * H + offset_h[None, :]
+    o_block_ptr = O + offset_b + array_o[:, None] * H + offset_h[None, :]
 
     # load
-    x = tl.load(x_block_ptr, mask=mask_x, other=0.0).to(tl.float32)
+    x = tl.load(x_block_ptr, mask=mask_x_block, other=0.0).to(tl.float32)
 
     # compute cumsum
     o = tl.cumsum(x)
 
     # store
-    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_o)
+    tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_o_block)
 
 
-def chunk_cumsum_scalar_decay_triton(
+def chunk_cumsum_decay_triton(
     x: torch.Tensor,
     reverse: bool = False,
     chunk_size: int = 128,
@@ -75,22 +80,26 @@ def chunk_cumsum_scalar_decay_triton(
     Applies chunk cumulative sum for log decay in linear attentionusing Triton.
 
     Args:
-        x: Input tensor of shape (B, N, H), operate on N dimension
+        x: Input tensor of shape (B, N, ...), operate on N dimension
         reverse: If True, compute reverse cumsum
         chunk_size: The size of the chunks to use for the cumulative sum.
 
     Returns:
         Cumulative sum of input tensor along specified dimension
     """
-    b, n, h = x.shape
+    b, n = x.shape[:2]
+    h = prod(x.shape, start_dim=2)
     m = (n + chunk_size - 1) // chunk_size
     BLOCK_C = triton.next_power_of_2(chunk_size)
+    MAX_FUSED_SIZE = 65536 // x.element_size() // BLOCK_C
+    BLOCK_H = min(MAX_FUSED_SIZE, triton.next_power_of_2(h))
+    NUM_BLOCK_H = triton.cdiv(h, BLOCK_H)
 
     # allocate output
     o = torch.empty_like(x)
 
-    grid = (b, h, m)
-    _chunk_cumsum_scalar_decay[grid](
+    grid = (b, NUM_BLOCK_H, m)
+    _chunk_cumsum_decay[grid](
         X=x,
         O=o,
         B=b,
@@ -98,6 +107,7 @@ def chunk_cumsum_scalar_decay_triton(
         H=h,
         C=chunk_size,
         BLOCK_C=BLOCK_C,
+        BLOCK_H=BLOCK_H,
         REVERSE=reverse,
     )
 
@@ -109,5 +119,5 @@ if __name__ == "__main__":
     b, n, h = 2, 512, 128
     dtype = torch.float32
     x = torch.randn((b, n, h), dtype=dtype).cuda()
-    o = chunk_cumsum_scalar_decay_triton(x, reverse=True, chunk_size=128)
+    o = chunk_cumsum_decay_triton(x, reverse=True, chunk_size=128)
     print(o.shape)

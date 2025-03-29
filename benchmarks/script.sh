@@ -72,7 +72,7 @@ folder=lightning_attention
 
 # ##### chunk_cumsum 250327
 # folder=chunk_cumsum/chunk_cumsum
-# folder=chunk_cumsum/chunk_cumsum_scalar_decay
+folder=chunk_cumsum/chunk_cumsum_decay
 
 mkdir -p $folder/log
 

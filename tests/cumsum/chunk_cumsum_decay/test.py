@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from xopes.ops.cumsum.chunk_cumsum import chunk_cumsum_torch
-from xopes.ops.cumsum.chunk_cumsum_decay import chunk_cumsum_scalar_decay_triton
+from xopes.ops.cumsum.chunk_cumsum_decay import chunk_cumsum_decay_triton
 from xopes.ops.cumsum.chunk_reverse_cumsum import chunk_reverse_cumsum_torch
 from xopes.utils import get_threshold
 
@@ -10,12 +10,20 @@ from xopes.utils import get_threshold
 def get_params():
     # Test with various shapes to ensure robustness
     shapes = [
+        # b n h
         (2, 128, 64),
         (4, 256, 128),
         (4, 256, 129),
         (4, 256, 127),
         (1, 129, 64),
         (8, 255, 128),
+        # b n h d
+        (2, 128, 16, 64),
+        (4, 256, 16, 128),
+        (4, 256, 16, 129),
+        (4, 256, 16, 127),
+        (1, 129, 16, 64),
+        (8, 255, 16, 128),
     ]
 
     return shapes
@@ -25,7 +33,7 @@ def get_params():
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("chunk_size", [128, 64, 32])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test_chunk_cumsum_scalar_decay(shape, reverse, chunk_size, dtype):
+def test_chunk_cumsum_decay(shape, reverse, chunk_size, dtype):
     # Set random seed for reproducibility
     torch.manual_seed(2024)
     device = torch.device("cuda")
@@ -39,10 +47,8 @@ def test_chunk_cumsum_scalar_decay(shape, reverse, chunk_size, dtype):
     else:
         fn = chunk_cumsum_torch
 
-    o_torch = fn(x, dim=-2, reverse=reverse, chunk_size=chunk_size)
-    o_triton = chunk_cumsum_scalar_decay_triton(
-        x, reverse=reverse, chunk_size=chunk_size
-    )
+    o_torch = fn(x, dim=1, reverse=reverse, chunk_size=chunk_size)
+    o_triton = chunk_cumsum_decay_triton(x, reverse=reverse, chunk_size=chunk_size)
 
     # Get tolerance based on dtype
     atol, rtol = get_threshold(dtype)

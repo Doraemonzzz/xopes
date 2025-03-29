@@ -1,1 +1,1 @@
-from .chunk_cumsum_scalar_decay_triton import chunk_cumsum_scalar_decay_triton
+from .chunk_cumsum_decay_triton import chunk_cumsum_decay_triton

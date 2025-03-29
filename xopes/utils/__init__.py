@@ -15,5 +15,6 @@ from .utils import (
     max_power_of_2_divisor,
     next_power_of_two,
     pack,
+    prod,
     unpack,
 )
