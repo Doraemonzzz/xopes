@@ -36,7 +36,7 @@ configs = [
         x_names=["n"],
         # Use a wider range for detailed benchmarking
         x_vals=[2**i for i in range(10, 16)],
-        # x_vals=[2**i for i in range(10, 11)],
+        # x_vals=[2**i for i in range(11, 12)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory Usage(MB)",
         line_arg="provider",

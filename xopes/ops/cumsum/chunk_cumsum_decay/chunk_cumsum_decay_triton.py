@@ -9,12 +9,18 @@ from xopes.utils import generate_configs, prod
     generate_configs(
         {
             "num_warps": [1, 2, 4, 8],
+            "BLOCK_H": [
+                16,
+                32,
+                64,
+            ],
         }
     ),
     key=[
         "B",
         "N",
-        "H" "REVERSE",
+        "H",
+        "REVERSE",
     ],
 )
 @triton.jit
@@ -92,13 +98,15 @@ def chunk_cumsum_decay_triton(
     m = (n + chunk_size - 1) // chunk_size
     BLOCK_C = triton.next_power_of_2(chunk_size)
     MAX_FUSED_SIZE = 65536 // x.element_size() // BLOCK_C
-    BLOCK_H = min(MAX_FUSED_SIZE, triton.next_power_of_2(h))
-    NUM_BLOCK_H = triton.cdiv(h, BLOCK_H)
+    min(MAX_FUSED_SIZE, triton.next_power_of_2(h))
 
     # allocate output
     o = torch.empty_like(x)
 
-    grid = (b, NUM_BLOCK_H, m)
+    def grid(meta):
+        NUM_BLOCK_H = triton.cdiv(h, meta["BLOCK_H"])
+        return (b, NUM_BLOCK_H, m)
+
     _chunk_cumsum_decay[grid](
         X=x,
         O=o,
@@ -107,7 +115,7 @@ def chunk_cumsum_decay_triton(
         H=h,
         C=chunk_size,
         BLOCK_C=BLOCK_C,
-        BLOCK_H=BLOCK_H,
+        # BLOCK_H=BLOCK_H,
         REVERSE=reverse,
     )
 
