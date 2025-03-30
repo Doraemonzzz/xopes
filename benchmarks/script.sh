@@ -69,6 +69,7 @@ folder=lightning_attention
 
 # ##### dld 250318
 # folder=lightning_attention/log_decay/dld
+folder=lightning_attention/log_decay/log_decay_with_cumsum
 
 # ##### chunk_cumsum 250327
 # folder=chunk_cumsum/chunk_cumsum

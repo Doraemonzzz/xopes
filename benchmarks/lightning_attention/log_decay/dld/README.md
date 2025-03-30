@@ -1,8 +1,10 @@
-# A100
+# Lightning Attention dld compute
 
-## With Dstate
+## A100
 
-### Speed
+### With Dstate
+
+#### Speed
 ```
 dld-benchmark-speed-fwd-batch4-head32-dim128-dim128-True-bf16:
          n     Torch    Triton
@@ -17,7 +19,7 @@ dld-benchmark-speed-fwd-batch4-head32-dim128-dim128-True-bf16:
 ```
 
 
-### Memory
+#### Memory
 ```
 dld-benchmark-memory-fwd-batch4-head32-dim128-dim128-True-bf16:
          n      Torch     Triton
@@ -31,9 +33,9 @@ dld-benchmark-memory-fwd-batch4-head32-dim128-dim128-True-bf16:
 7  32768.0  32.000488  32.000488
 ```
 
-## Without Dstate
+### Without Dstate
 
-### Speed
+#### Speed
 ```
 dld-benchmark-speed-fwd-batch4-head32-dim128-dim128-False-bf16:
          n     Torch    Triton
@@ -47,9 +49,7 @@ dld-benchmark-speed-fwd-batch4-head32-dim128-dim128-False-bf16:
 7  32768.0  1.816161  0.118786
 ```
 
-
-
-### Memory
+#### Memory
 ```
 dld-benchmark-memory-fwd-batch4-head32-dim128-dim128-False-bf16:
          n    Torch   Triton
