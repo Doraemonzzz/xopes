@@ -1,3 +1,4 @@
 from .cumsum_chunk_loop_triton import cumsum_chunk_loop_triton
+from .cumsum_no_reshape_triton import cumsum_no_reshape_triton
 from .cumsum_torch import cumsum_torch
 from .cumsum_triton import cumsum_triton

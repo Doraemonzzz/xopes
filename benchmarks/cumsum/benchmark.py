@@ -7,6 +7,7 @@ import triton
 
 from xopes.ops.cumsum.cumsum import (
     cumsum_chunk_loop_triton,
+    cumsum_no_reshape_triton,
     cumsum_torch,
     cumsum_triton,
 )
@@ -23,6 +24,7 @@ dtype_map = {
 module_map = {
     "triton": cumsum_triton,
     "triton_chunk_loop": cumsum_chunk_loop_triton,
+    "triton_no_reshape": cumsum_no_reshape_triton,
     "torch": cumsum_torch,
     "torch_compile": torch.compile(cumsum_torch),
 }
@@ -37,17 +39,25 @@ configs = [
         line_vals=[
             "triton",
             "triton_chunk_loop",
+            "triton_no_reshape",
             "torch",
             "torch_compile",
         ],
-        line_names=["tr", "trc", "to", "toc"],
+        line_names=[
+            "tr",
+            "trc",
+            "trnr",
+            "to",
+            "toc",
+        ],
         styles=[
             ("red", "-"),
             ("orange", "-"),
             ("green", "-"),
             ("blue", "-"),
+            ("purple", "-"),
         ],
-        plot_name=f"cumsum-{bench_type}-{mode}-batch{b}-reverse_{reverse}-{dtype_name}",
+        plot_name=f"cumsum-{bench_type}-{mode}-b{b}-h{h}-reverse_{reverse}-{dtype_name}",
         args={
             "b": b,
             "h": h,
@@ -60,10 +70,12 @@ configs = [
     )
     for reverse in [True, False]
     for bench_type in ["speed", "memory"]
-    for mode in ["fwd", "bwd"]
+    for mode in [
+        "fwd",
+    ]
     for dtype_name in ["bf16"]
-    for b in [4096]
-    for h in [1]
+    for b in [12]
+    for h in [1, 128]
 ]
 
 
@@ -93,8 +105,9 @@ def benchmark(
     module = module_map[provider]
 
     try:
-        fn = lambda: module(x, reverse=reverse)
-    except:
+        fn = lambda: module(x, dim=1, reverse=reverse)
+    except Exception as e:
+        print(f"Error setting up {provider}: {e}")
         fn = None
 
     if mode == "bwd":
@@ -136,4 +149,4 @@ os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
 end_time = time.time()
 total_time = end_time - start_time
-print(f"Total time: {total_time} seconds")
+print(f"Total time: {total_time} seconds ({(total_time/60):.2f} minutes)")

@@ -78,7 +78,7 @@ configs = [
         x_names=["n"],
         # x_vals=[2**i for i in range(8, 16)],
         x_vals=[2**i for i in range(8, 11)],
-        # x_vals=[2**i for i in range(15, 16)],
+        # x_vals=[2**i for i in range(8, 9)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -132,10 +132,10 @@ configs = [
     )
     for bench_type in [
         "speed",
-        "memory",
+        # "memory",
     ]
     for mode in [
-        "fwd",
+        # "fwd",
         "bwd",
     ]
     for dtype_name in ["bf16"]

@@ -3,6 +3,7 @@ import torch
 
 from xopes.ops.cumsum.cumsum import (
     cumsum_chunk_loop_triton,
+    cumsum_no_reshape_triton,
     cumsum_torch,
     cumsum_triton,
 )
@@ -56,6 +57,9 @@ def test(shape, dim, reverse, use_cu_seqlens, dtype):
     o_cumsum_chunk_loop_triton = cumsum_chunk_loop_triton(
         x, dim=dim, reverse=reverse, cu_seqlens=cu_seqlens
     )
+    o_cumsum_no_reshape_triton = cumsum_no_reshape_triton(
+        x, dim=dim, reverse=reverse, cu_seqlens=cu_seqlens
+    )
 
     # backward
     o_cumsum_torch.backward(do, retain_graph=True)
@@ -66,6 +70,9 @@ def test(shape, dim, reverse, use_cu_seqlens, dtype):
 
     o_cumsum_chunk_loop_triton.backward(do, retain_graph=True)
     dx_cumsum_chunk_loop_triton, x.grad = x.grad.clone(), None
+
+    o_cumsum_no_reshape_triton.backward(do, retain_graph=True)
+    dx_cumsum_no_reshape_triton, x.grad = x.grad.clone(), None
 
     atol, rtol = get_threshold(dtype)
 
@@ -92,6 +99,18 @@ def test(shape, dim, reverse, use_cu_seqlens, dtype):
         o_cumsum_torch, o_cumsum_chunk_loop_triton, atol=atol, rtol=rtol
     )
 
+    print(
+        "o diff max (Vs triton no reshape):",
+        torch.abs(o_cumsum_torch - o_cumsum_no_reshape_triton).max().item(),
+    )
+    print(
+        "o diff norm (Vs triton no reshape):",
+        torch.norm(o_cumsum_torch - o_cumsum_no_reshape_triton).item(),
+    )
+    assert torch.allclose(
+        o_cumsum_torch, o_cumsum_no_reshape_triton, atol=atol, rtol=rtol
+    )
+
     # backward check
     print(
         "dx diff max (Vs triton):",
@@ -113,4 +132,16 @@ def test(shape, dim, reverse, use_cu_seqlens, dtype):
     )
     assert torch.allclose(
         dx_cumsum_torch, dx_cumsum_chunk_loop_triton, atol=atol, rtol=rtol
+    )
+
+    print(
+        "dx diff max (Vs triton no reshape):",
+        torch.abs(dx_cumsum_torch - dx_cumsum_no_reshape_triton).max().item(),
+    )
+    print(
+        "dx diff norm (Vs triton no reshape):",
+        torch.norm(dx_cumsum_torch - dx_cumsum_no_reshape_triton).item(),
+    )
+    assert torch.allclose(
+        dx_cumsum_torch, dx_cumsum_no_reshape_triton, atol=atol, rtol=rtol
     )

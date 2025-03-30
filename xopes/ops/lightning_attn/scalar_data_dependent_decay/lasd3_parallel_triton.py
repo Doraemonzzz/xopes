@@ -4,8 +4,8 @@ import torch
 import triton
 from einops import repeat
 
-from xopes.ops.cumsum import chunk_cumsum_decay_fn, cumsum_fn
-from xopes.ops.lightning_attn.log_decay import compute_dld_fn
+from xopes.ops.cumsum import chunk_cumsum_decay_fn
+from xopes.ops.lightning_attn.log_decay import compute_dld_with_cumsum_fn
 from xopes.ops.lightning_attn.scalar_data_dependent_decay.utils import (
     _lasd3_parallel_inter,
     _lasd3_parallel_intra,
@@ -463,15 +463,6 @@ def lasd3_parallel_intra_inter(
         NUM_BLOCK_E=NUM_BLOCK_E,
     )
 
-    if compute_dld:
-        # B N H NUM_BLOCK_E -> B N H
-        if dld.shape[-1] == 1:
-            dld = dld.squeeze(-1)
-        else:
-            dld = dld.sum(-1)
-
-        dld = cumsum_fn(dld, dim=1, reverse=True)
-
     return o, dld
 
 
@@ -743,12 +734,13 @@ def lasd3_parallel_bwd(
     )
 
     if ld is not None and ld.requires_grad:
-        dld = compute_dld_fn(
-            dld_q=dld_q,  # B N H
-            dld_k=dld_k,  # B N H
+        dld = compute_dld_with_cumsum_fn(
+            dld_q=dld_q,  # B N H F
+            dld_k=dld_k,  # B N H F
             dfinal_state=dfinal_state,  # B H D E
             final_state=final_state,  # B H D E
             cu_seqlens=cu_seqlens,
+            sum_option=-1,
         )
     else:
         dld = None

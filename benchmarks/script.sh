@@ -65,7 +65,7 @@ folder=cumsum
 # folder=logcumsumexp
 
 # ##### lightning_attention 250314
-# folder=lightning_attention
+folder=lightning_attention
 
 # ##### dld 250318
 # folder=lightning_attention/log_decay/dld

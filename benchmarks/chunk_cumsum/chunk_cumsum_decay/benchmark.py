@@ -36,7 +36,6 @@ configs = [
         x_names=["n"],
         # Use a wider range for detailed benchmarking
         x_vals=[2**i for i in range(10, 16)],
-        # x_vals=[2**i for i in range(11, 12)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory Usage(MB)",
         line_arg="provider",
@@ -71,11 +70,9 @@ configs = [
         "bf16",
     ]
     for b in [4, 16]
-    # for b in [16]
-    for chunk_size in [128]
     for h in [16]
     for d in [1, 128]
-    # for d in [128]
+    for chunk_size in [128]
 ]
 
 
