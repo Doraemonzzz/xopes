@@ -35,6 +35,12 @@ def get_params():
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True, False])
 @pytest.mark.parametrize("use_chunk_loop", [True, False])
+
+# @pytest.mark.parametrize("use_initial_state", [False])
+# @pytest.mark.parametrize("use_log_decay", [True])
+# @pytest.mark.parametrize("use_varlen", [False])
+# @pytest.mark.parametrize("no_dstate", [True])
+# @pytest.mark.parametrize("use_chunk_loop", [True])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test(
     shape,
