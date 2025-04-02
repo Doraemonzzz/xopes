@@ -404,7 +404,6 @@ def _lasd3_parallel_state_parallel_reduce(
     mask_e = (array_e + offset_block_e) < E
     mask = mask_d[:, None] & mask_e[None, :]
 
-    # c = 1.0
     if REVERSE:
         # !!! important
         first_decay_block_ptr = LOG_DECAY + offset_ld

@@ -379,30 +379,20 @@ def _lasd_parallel_state_parallel_reduce(
         L = N % BLOCK_N
         if L == 0:
             L = BLOCK_N
+
         if REVERSE:  # !!! important
             L -= 1
+            c = tl.exp(log_decay)
 
         # !!! important
         last_decay = tl.exp(log_decay * L)
 
-        # !!! important
-        if REVERSE:
-            c = tl.exp(log_decay)
+        # # !!! important
+        # if REVERSE:
 
-        k_decay = tl.exp(log_decay * (BLOCK_C - 1 - tl.arange(0, BLOCK_C)))
-        block_decay_local = tl.exp(log_decay * BLOCK_C)
-
+        M = BLOCK_N
         if USE_PAD:
-            M = N % BLOCK_C
-            last_decay_local = tl.exp(log_decay * M)
-            if REVERSE:
-                array = tl.arange(0, BLOCK_C)
-            else:
-                array = M - 1 - tl.arange(0, BLOCK_C)
-            array = tl.where(
-                array >= 0, array, 0
-            )  # !!! important, otherwise the decay will be nan, nan * 0 != 0
-            last_k_decay = tl.exp(log_decay * array)
+            M = N % BLOCK_N
 
     # compute
     if USE_INITIAL_STATE:
@@ -438,6 +428,13 @@ def _lasd_parallel_state_parallel_reduce(
             states_block_ptr, state.to(states_block_ptr.dtype.element_ty), mask=mask
         )
 
+        ##### update global state
+        if USE_LOG_DECAY:
+            if off_block_n == NUM_BLOCK_N - 1:
+                state *= last_decay
+            else:
+                state *= block_decay
+
         ##### compute local state
         cnt = offset_block_n
         offset_block_qk = offset_block_n * H * D
@@ -446,10 +443,6 @@ def _lasd_parallel_state_parallel_reduce(
 
         # for reverse, local loop start from the last block
         if REVERSE:
-            # TODO: test speed
-            # BLOCK_N - BLOCK_C, ... , BLOCK_N - 1
-            # array_c = BLOCK_N - BLOCK_C + array_c
-            # BLOCK_N - 1, ... , BLOCK_N - BLOCK_C
             array_c = BLOCK_N - 1 - array_c
         else:
             array_c = array_c
@@ -469,74 +462,78 @@ def _lasd_parallel_state_parallel_reduce(
             + (array_e + offset_block_e)[None, :]
         )
 
-        current_state = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
+        # current_state = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
 
         for j in range(NUM_BLOCK_C):
             array = offset_block_n + array_c
             mask_c = array < N
-            k_trans = tl.load(
-                k_trans_block_ptr, mask=mask_c[None, :] & mask_d[:, None], other=0.0
-            )
-            v = tl.load(v_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0)
 
-            if USE_LOG_DECAY:
-                if cnt < N:
-                    # last step
-                    if USE_PAD:
+            if cnt < N:
+                k_trans = tl.load(
+                    k_trans_block_ptr, mask=mask_c[None, :] & mask_d[:, None], other=0.0
+                )
+                v = tl.load(
+                    v_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
+                )
+
+                if USE_LOG_DECAY:
+                    if REVERSE:
+                        # last block
                         if off_block_n == NUM_BLOCK_N - 1:
-                            if cnt + BLOCK_C >= N:
-                                k_trans = (k_trans * last_k_decay[None, :]).to(
-                                    k_trans.dtype
+                            # last sub block
+                            if cnt + BLOCK_C > N:
+                                decay_array = (
+                                    M
+                                    - j * BLOCK_C
+                                    - tl.arange(0, BLOCK_C)
+                                    - N % BLOCK_C
                                 )
-                                current_state = (
-                                    last_decay_local * current_state
-                                    + tl.dot(k_trans, v)
-                                )
+                                decay_array = tl.where(decay_array >= 0, decay_array, 0)
+                                k_decay = tl.exp(log_decay * decay_array)
                             else:
-                                k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
-                                current_state = (
-                                    block_decay_local * current_state
-                                    + tl.dot(k_trans, v)
+                                k_decay = tl.exp(
+                                    log_decay
+                                    * (
+                                        BLOCK_N
+                                        - 1
+                                        - j * BLOCK_C
+                                        - tl.arange(0, BLOCK_C)
+                                    )
                                 )
                         else:
-                            k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
-                            current_state = block_decay_local * current_state + tl.dot(
-                                k_trans, v
+                            k_decay = tl.exp(
+                                log_decay
+                                * (BLOCK_N - 1 - j * BLOCK_C - tl.arange(0, BLOCK_C))
                             )
+
                     else:
-                        k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
-                        current_state = block_decay_local * current_state + tl.dot(
-                            k_trans, v
-                        )
-            else:
-                current_state += tl.dot(k_trans, v)
+                        # last block
+                        if off_block_n == NUM_BLOCK_N - 1:
+                            # last sub block
+                            decay_array = M - 1 - j * BLOCK_C - tl.arange(0, BLOCK_C)
+                            decay_array = tl.where(decay_array >= 0, decay_array, 0)
+                            k_decay = tl.exp(log_decay * decay_array)
+                        else:
+                            k_decay = tl.exp(
+                                log_decay
+                                * (BLOCK_N - 1 - j * BLOCK_C - tl.arange(0, BLOCK_C))
+                            )
+
+                    k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
+
+                state += tl.dot(k_trans, v)
 
             k_trans_block_ptr += BLOCK_C * H * D * stride
             v_block_ptr += BLOCK_C * H * E * stride
             array_c += BLOCK_C * stride
             cnt += BLOCK_C * stride
 
-        ##### update global state
-        if USE_LOG_DECAY:
-            if REVERSE:
-                if i == 0:
-                    state = last_decay * state + current_state
-                else:
-                    state = block_decay * state + current_state
-            else:
-                if i == NUM_BLOCK_N - 1:
-                    state = last_decay * state + current_state
-                else:
-                    state = block_decay * state + current_state
-        else:
-            state += current_state
-
         states_block_ptr += D * E * stride
         offset_block_n += BLOCK_N * stride
         off_block_n += stride  # !!! important
 
     # !!! important
-    if REVERSE:
+    if USE_LOG_DECAY and REVERSE:
         state *= c
 
     tl.store(

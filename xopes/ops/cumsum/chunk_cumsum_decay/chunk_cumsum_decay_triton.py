@@ -113,7 +113,6 @@ def chunk_cumsum_decay_triton(
         H=h,
         C=chunk_size,
         BLOCK_C=BLOCK_C,
-        # BLOCK_H=BLOCK_H,
         REVERSE=reverse,
     )
 
