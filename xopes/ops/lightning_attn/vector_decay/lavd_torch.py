@@ -37,8 +37,10 @@ def lavd_torch(
         use_ldk = True
     if ldv is not None:
         use_ldv = True
-    assert use_ldk and ldk is not None, "ldk must be provided if use_ldk is True"
-    assert use_ldv and ldv is not None, "ldv must be provided if use_ldv is True"
+    if use_ldk:
+        assert ldk is not None, "ldk must be provided if use_ldk is True"
+    if use_ldv:
+        assert ldv is not None, "ldv must be provided if use_ldv is True"
     assert use_ldk or use_ldv, "At least one of ldk or ldv must be used"
 
     dtype = q.dtype

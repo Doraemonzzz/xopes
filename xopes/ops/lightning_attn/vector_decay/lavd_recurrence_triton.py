@@ -35,7 +35,6 @@ def _lavd_recurrence_fwd(
     CU_SEQLENS,  # M
     O,  # B N H E
     FINAL_STATE,  # B H D E
-    LOG_DECAY,  # B N H
     B: tl.constexpr,
     N: tl.constexpr,
     H: tl.constexpr,
@@ -74,9 +73,9 @@ def _lavd_recurrence_fwd(
         v_block_ptr = V + offset_vo + array_e
     o_block_ptr = O + offset_vo + array_e
     if USE_DECAY_K:
-        log_decay_k_block_ptr = LOG_DECAY_K + offset_qk
+        log_decay_k_block_ptr = LOG_DECAY_K + offset_qk + array_d
     if USE_DECAY_V:
-        log_decay_v_block_ptr = LOG_DECAY_V + offset_vo
+        log_decay_v_block_ptr = LOG_DECAY_V + offset_vo + array_e
     mask_d = array_d < D
     mask_e = array_e < E
 
@@ -101,20 +100,28 @@ def _lavd_recurrence_fwd(
         if not SHARE_K:
             k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
             if USE_DECAY_K:
-                log_decay_k = tl.load(log_decay_k_block_ptr).to(tl.float32)
+                log_decay_k = tl.load(log_decay_k_block_ptr, mask=mask_d, other=0.0).to(
+                    tl.float32
+                )
                 decay_k = tl.exp(log_decay_k)
         else:
-            log_decay_k = tl.load(log_decay_k_block_ptr).to(tl.float32)
+            log_decay_k = tl.load(log_decay_k_block_ptr, mask=mask_d, other=0.0).to(
+                tl.float32
+            )
             decay_k = tl.exp(log_decay_k)
             k = 1 - decay_k
 
         if not SHARE_V:
             v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
             if USE_DECAY_V:
-                log_decay_v = tl.load(log_decay_v_block_ptr).to(tl.float32)
+                log_decay_v = tl.load(log_decay_v_block_ptr, mask=mask_e, other=0.0).to(
+                    tl.float32
+                )
                 decay_v = tl.exp(log_decay_v)
         else:
-            log_decay_v = tl.load(log_decay_v_block_ptr).to(tl.float32)
+            log_decay_v = tl.load(log_decay_v_block_ptr, mask=mask_e, other=0.0).to(
+                tl.float32
+            )
             decay_v = tl.exp(log_decay_v)
             v = 1 - decay_v
 
@@ -193,7 +200,6 @@ def lavd_recurrence_fwd(
         CU_SEQLENS=cu_seqlens,
         O=o,
         FINAL_STATE=final_state,
-        LOG_DECAY=ld,
         B=b,
         N=n,
         H=h,
@@ -230,7 +236,6 @@ def _lavd_recurrence_bwd_dq(
     STATE,  # B H D E
     CU_SEQLENS,  # M
     FINAL_STATE,  # B H D E
-    LOG_DECAY,  # B N H
     DO,  # B N H E
     DSTATE,  # B H D E
     DQ,  # B N H D
@@ -276,9 +281,9 @@ def _lavd_recurrence_bwd_dq(
     do_block_ptr = DO + offset_vo + array_e
     dq_block_ptr = DQ + offset_qk + array_d
     if USE_DECAY_K:
-        log_decay_k_block_ptr = LOG_DECAY_K + offset_qk
+        log_decay_k_block_ptr = LOG_DECAY_K + offset_qk + array_d
     if USE_DECAY_V:
-        log_decay_v_block_ptr = LOG_DECAY_V + offset_vo
+        log_decay_v_block_ptr = LOG_DECAY_V + offset_vo + array_e
     mask_d = array_d < D
     mask_e = array_e < E
 
@@ -299,20 +304,28 @@ def _lavd_recurrence_bwd_dq(
         if not SHARE_K:
             k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
             if USE_DECAY_K:
-                log_decay_k = tl.load(log_decay_k_block_ptr).to(tl.float32)
+                log_decay_k = tl.load(log_decay_k_block_ptr, mask=mask_d, other=0.0).to(
+                    tl.float32
+                )
                 decay_k = tl.exp(log_decay_k)
         else:
-            log_decay_k = tl.load(log_decay_k_block_ptr).to(tl.float32)
+            log_decay_k = tl.load(log_decay_k_block_ptr, mask=mask_d, other=0.0).to(
+                tl.float32
+            )
             decay_k = tl.exp(log_decay_k)
             k = 1 - decay_k
 
         if not SHARE_V:
             v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
             if USE_DECAY_V:
-                log_decay_v = tl.load(log_decay_v_block_ptr).to(tl.float32)
+                log_decay_v = tl.load(log_decay_v_block_ptr, mask=mask_e, other=0.0).to(
+                    tl.float32
+                )
                 decay_v = tl.exp(log_decay_v)
         else:
-            log_decay_v = tl.load(log_decay_v_block_ptr).to(tl.float32)
+            log_decay_v = tl.load(log_decay_v_block_ptr, mask=mask_e, other=0.0).to(
+                tl.float32
+            )
             decay_v = tl.exp(log_decay_v)
             v = 1 - decay_v
 
@@ -366,7 +379,6 @@ def _lavd_recurrence_bwd_dk_dv(
     STATE,  # B H D E
     CU_SEQLENS,  # M
     FINAL_STATE,  # B H D E
-    LOG_DECAY,  # H
     DO,  # B N H E
     DSTATE,  # B H D E
     DQ,  # B N H D
@@ -416,9 +428,9 @@ def _lavd_recurrence_bwd_dk_dv(
     dk_block_ptr = DK + offset_qk + array_d
     dv_block_ptr = DV + offset_vo + array_e
     if USE_DECAY_K:
-        log_decay_k_block_ptr = LOG_DECAY_K + offset_qk
+        log_decay_k_block_ptr = LOG_DECAY_K + offset_qk + array_d
     if USE_DECAY_V:
-        log_decay_v_block_ptr = LOG_DECAY_V + offset_vo
+        log_decay_v_block_ptr = LOG_DECAY_V + offset_vo + array_e
     mask_d = array_d < D
     mask_e = array_e < E
 
@@ -434,14 +446,20 @@ def _lavd_recurrence_bwd_dk_dv(
     else:
         dstate = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
+    if SHARE_K:
+        decay_k = tl.full((BLOCK_D,), 1.0, dtype=tl.float32)
+    if SHARE_V:
+        decay_v = tl.full((BLOCK_E,), 1.0, dtype=tl.float32)
     # compute
     for i in range(N):
         # update
         q_block_ptr -= H * D
         if not SHARE_K:
             k_block_ptr -= H * D
+
         if not SHARE_V:
             v_block_ptr -= H * E
+
         do_block_ptr -= H * E
         dk_block_ptr -= H * D
         dv_block_ptr -= H * E
@@ -451,15 +469,21 @@ def _lavd_recurrence_bwd_dk_dv(
         # !!! IMPORTANT
         if i > 0:
             if USE_DECAY_K:
-                log_decay_k_block_ptr -= H * D
-                log_decay_k = tl.load(log_decay_k_block_ptr).to(tl.float32)
-                decay_k = tl.exp(log_decay_k)
+                if not SHARE_K:
+                    log_decay_k_block_ptr -= H * D
+                    log_decay_k = tl.load(
+                        log_decay_k_block_ptr, mask=mask_d, other=0.0
+                    ).to(tl.float32)
+                    decay_k = tl.exp(log_decay_k)
                 dstate = decay_k[:, None] * dstate
 
             if USE_DECAY_V:
-                log_decay_v_block_ptr -= H * E
-                log_decay_v = tl.load(log_decay_v_block_ptr).to(tl.float32)
-                decay_v = tl.exp(log_decay_v)
+                if not SHARE_V:
+                    log_decay_v_block_ptr -= H * E
+                    log_decay_v = tl.load(
+                        log_decay_v_block_ptr, mask=mask_e, other=0.0
+                    ).to(tl.float32)
+                    decay_v = tl.exp(log_decay_v)
                 dstate = dstate * decay_v[None, :]
 
         dstate += q[:, None] * do[None, :]
@@ -467,10 +491,20 @@ def _lavd_recurrence_bwd_dk_dv(
         if not SHARE_K:
             k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
         else:
+            log_decay_k_block_ptr -= H * D
+            log_decay_k = tl.load(log_decay_k_block_ptr, mask=mask_d, other=0.0).to(
+                tl.float32
+            )
+            decay_k = tl.exp(log_decay_k)
             k = 1 - decay_k
         if not SHARE_V:
             v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         else:
+            log_decay_v_block_ptr -= H * E
+            log_decay_v = tl.load(log_decay_v_block_ptr, mask=mask_e, other=0.0).to(
+                tl.float32
+            )
+            decay_v = tl.exp(log_decay_v)
             v = 1 - decay_v
         dk = tl.sum(dstate * v[None, :], axis=-1)
         dv = tl.sum(dstate * k[:, None], axis=0)
@@ -479,15 +513,17 @@ def _lavd_recurrence_bwd_dk_dv(
 
     # !!! IMPORTANT
     if USE_DECAY_K:
-        log_decay_k_block_ptr -= H * D
-        log_decay_k = tl.load(log_decay_k_block_ptr).to(tl.float32)
-        decay_k = tl.exp(log_decay_k)
+        if not SHARE_K:
+            log_decay_k_block_ptr -= H * D
+            log_decay_k = tl.load(log_decay_k_block_ptr).to(tl.float32)
+            decay_k = tl.exp(log_decay_k)
         dstate = decay_k[:, None] * dstate
 
     if USE_DECAY_V:
-        log_decay_v_block_ptr -= H * E
-        log_decay_v = tl.load(log_decay_v_block_ptr).to(tl.float32)
-        decay_v = tl.exp(log_decay_v)
+        if not SHARE_V:
+            log_decay_v_block_ptr -= H * E
+            log_decay_v = tl.load(log_decay_v_block_ptr).to(tl.float32)
+            decay_v = tl.exp(log_decay_v)
         dstate = dstate * decay_v[None, :]
 
     dinitial_state_block_ptr = (
@@ -511,6 +547,7 @@ def lavd_recurrence_bwd(
     initial_state: Optional[torch.Tensor] = None,
     final_state: Optional[torch.Tensor] = None,
     do: Optional[torch.Tensor] = None,
+    o: Optional[torch.Tensor] = None,
     dfinal_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
 ):
@@ -532,8 +569,18 @@ def lavd_recurrence_bwd(
     BLOCK_E = triton.next_power_of_2(e)
 
     dq = torch.empty_like(q)
-    dk = torch.empty_like(k)
-    dv = torch.empty_like(v)
+    if share_k:
+        dk = torch.empty_like(ldk)
+        k = 1 - torch.exp(ldk.float())
+    else:
+        dk = torch.empty_like(k)
+
+    if share_v:
+        dv = torch.empty_like(ldv)
+        v = 1 - torch.exp(ldv.float())
+    else:
+        dv = torch.empty_like(v)
+
     dinitial_state = torch.empty(b, h, d, e, device=q.device, dtype=torch.float32)
 
     def grid(meta):
@@ -548,7 +595,6 @@ def lavd_recurrence_bwd(
         STATE=initial_state,
         CU_SEQLENS=cu_seqlens,
         FINAL_STATE=final_state,
-        LOG_DECAY=ld,
         DO=do,
         DSTATE=dfinal_state,
         DQ=dq,
@@ -580,7 +626,6 @@ def lavd_recurrence_bwd(
         STATE=initial_state,
         CU_SEQLENS=cu_seqlens,
         FINAL_STATE=final_state,
-        LOG_DECAY=ld,
         DO=do,
         DSTATE=dfinal_state,
         DQ=dq,
@@ -629,7 +674,6 @@ def lavd_recurrence_bwd(
             dldk = cumsum_fn(dldk, dim=1, reverse=True)
 
             if dfinal_state is not None:
-                print(dldk.shape, dldk_state.shape, final_state.shape)
                 dldk = dldk + dldk_state
 
     dldv = None
@@ -655,14 +699,14 @@ def lavd_recurrence_bwd(
                 dldv = dldv + dldv_state
 
     if share_k:
-        dk = None
-        # k = 1 - exp(log_decay_k)
+        # k = 1 - exp(ldk)
         dldk += dk * (-torch.exp(ldk))
+        dk = None
 
     if share_v:
-        dv = None
-        # v = 1 - exp(log_decay_v)
+        # v = 1 - exp(ldv)
         dldv += dv * (-torch.exp(ldv))
+        dv = None
 
     dinitial_state = dinitial_state if use_initial_state else None
 
@@ -698,7 +742,9 @@ class LavdRecurrenceFunction(torch.autograd.Function):
         )
 
         # Save tensors needed for backward
-        ctx.save_for_backward(q, k, v, ldk, ldv, initial_state, final_state, cu_seqlens)
+        ctx.save_for_backward(
+            q, k, v, ldk, ldv, initial_state, final_state, cu_seqlens, output
+        )
         ctx.use_ldk = use_ldk
         ctx.use_ldv = use_ldv
 
@@ -707,7 +753,17 @@ class LavdRecurrenceFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
     def backward(ctx, do, dfinal_state):
-        q, k, v, ldk, ldv, initial_state, final_state, cu_seqlens = ctx.saved_tensors
+        (
+            q,
+            k,
+            v,
+            ldk,
+            ldv,
+            initial_state,
+            final_state,
+            cu_seqlens,
+            output,
+        ) = ctx.saved_tensors
         use_ldk = ctx.use_ldk
         use_ldv = ctx.use_ldv
 
@@ -722,6 +778,7 @@ class LavdRecurrenceFunction(torch.autograd.Function):
             initial_state=initial_state,
             final_state=final_state,
             do=do,
+            o=output,
             dfinal_state=dfinal_state,
             cu_seqlens=cu_seqlens,
         )
