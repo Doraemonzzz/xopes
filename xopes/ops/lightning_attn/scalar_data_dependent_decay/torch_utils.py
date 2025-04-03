@@ -205,7 +205,12 @@ def compute_states(
         return local_states, global_states
 
     local_states, global_states = _compute_states(
-        k, v, ld, initial_state, BLOCK_N, reverse
+        k=k,
+        v=v,
+        ld=ld,
+        initial_state=initial_state,
+        BLOCK_N=BLOCK_N,
+        reverse=reverse,
     )
 
     return local_states, global_states
@@ -232,7 +237,7 @@ def lasd3_inter_torch(
         ki = k[:, start:end, :, :]
         vi = v[:, start:end, :, :]
         ld_i = ld[:, start:end]
-        o_intra_i = lasd3_intra_torch(qi, ki, vi, ld_i)
+        o_intra_i = lasd3_intra_torch(q=qi, k=ki, v=vi, ld=ld_i, BLOCK_N=BLOCK_N)
         o_intra.append(o_intra_i)
     o_intra = torch.cat(o_intra, dim=1)
 

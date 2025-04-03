@@ -6,15 +6,13 @@ import torch
 
 def lavd_torch(
     q: torch.Tensor,
-    k: Optional[torch.Tensor] = None,
-    v: Optional[torch.Tensor] = None,
+    k: torch.Tensor,
+    v: torch.Tensor,
     ldk: Optional[torch.Tensor] = None,
     ldv: Optional[torch.Tensor] = None,
     use_ldk: bool = True,
     use_ldv: bool = False,
     initial_state: Optional[torch.Tensor] = None,
-    cu_seqlens: Optional[torch.LongTensor] = None,
-    **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Applies Lightning Attention with Vector Decay in Pytorch.
@@ -37,24 +35,20 @@ def lavd_torch(
         use_ldk = True
     if ldv is not None:
         use_ldv = True
-    assert use_ldk and ldk is not None, "ldk must be provided if use_ldk is True"
-    assert use_ldv and ldv is not None, "ldv must be provided if use_ldv is True"
     assert use_ldk or use_ldv, "At least one of ldk or ldv must be used"
 
     dtype = q.dtype
     q = q.float()
+    k = k.float()
+    v = v.float()
 
-    if use_ldk and k is None:
-        ldk = ldk.float()
-        k = 1 - torch.exp(ldk)
-    else:
-        k = k.float()
+    if use_ldk and ldk is None:
+        ldk = torch.log(1 - k)
+    ldk = ldk.float()
 
-    if use_ldv and v is None:
-        ldv = ldv.float()
-        v = 1 - torch.exp(ldv)
-    else:
-        v = v.float()
+    if use_ldv and ldv is None:
+        ldv = torch.log(1 - v)
+    ldv = ldv.float()
 
     b, n, h, d = q.shape
     e = v.shape[-1]
@@ -71,18 +65,19 @@ def lavd_torch(
         ki = k[:, i]
         vi = v[:, i]
         if use_ldk:
-            dk_i = torch.exp(ldk[:, i]).unsqueeze(-1)
-        else:
-            dk_i = 1
-
+            dk_i = torch.exp(ldk[:, i])
         if use_ldv:
-            dv_i = torch.exp(ldv[:, i]).unsqueeze(-2)
-        else:
-            dv_i = 1
+            dv_i = torch.exp(ldv[:, i])
 
         state_ = torch.einsum("b h d, b h e -> b h d e", ki, vi)
 
-        state = dk_i * state * dv_i + state_
+        if use_ldk:
+            state = dk_i.unsqueeze(-1) * state
+
+        if use_ldv:
+            state = state * dv_i.unsqueeze(-2)
+
+        state = state + state_
         oi = torch.einsum("b h d, b h d e -> b h e", qi, state)
         o[:, i] = oi
 
