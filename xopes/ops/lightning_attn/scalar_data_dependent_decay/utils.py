@@ -398,7 +398,6 @@ def _lasd3_parallel_state_parallel_reduce(
         + (offset_block_d + array_d[:, None]) * E
         + (offset_block_e + array_e[None, :])
     )
-    ld_cumsum_block_ptr = LOG_DECAY_CUMSUM + offset_ld + offset_ld_sum
 
     mask_d = (array_d + offset_block_d) < D
     mask_e = (array_e + offset_block_e) < E
@@ -500,7 +499,6 @@ def _lasd3_parallel_state_parallel_reduce(
             cnt += BLOCK_C * stride
 
         states_block_ptr += D * E * stride
-        ld_cumsum_block_ptr += BLOCK_N * H * stride
         offset_block_n += BLOCK_N * stride
         off_block_n += stride  # !!! important
 

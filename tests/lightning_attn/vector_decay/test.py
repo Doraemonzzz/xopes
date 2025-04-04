@@ -90,7 +90,6 @@ def test(
 
     # Generate input tensors
     q = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
-    v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
 
     if share_k:
         use_ldk = True

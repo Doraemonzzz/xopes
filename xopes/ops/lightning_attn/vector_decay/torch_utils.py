@@ -152,6 +152,7 @@ def compute_states(
     ldv: Optional[torch.Tensor] = None,
     use_ldk: bool = True,
     use_ldv: bool = False,
+    initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     BLOCK_N: int = 256,
@@ -163,6 +164,7 @@ def compute_states(
         ldv: Optional[torch.Tensor] = None,
         use_ldk: bool = True,
         use_ldv: bool = False,
+        cu_seqlens: Optional[torch.LongTensor] = None,
         reverse: bool = False,
         BLOCK_N: int = 256,
     ):
@@ -208,25 +210,25 @@ def compute_states(
                 if reverse:
                     if j == m - 1:
                         dk_ = 1
-                        dv_ = 1  # does not affect the result
+                        dv_ = 1
                     else:
                         if use_ldk:
-                            dk_ = torch.exp(ldk[:, j + 1]).unsqueeze(-1)
+                            dk_ = torch.exp(ldk_i[:, j + 1]).unsqueeze(-1)
                         else:
                             dk_ = 1
 
                         if use_ldv:
-                            dv_ = torch.exp(ldv[:, j + 1]).unsqueeze(-2)
+                            dv_ = torch.exp(ldv_i[:, j + 1]).unsqueeze(-2)
                         else:
                             dv_ = 1
                 else:
                     if use_ldk:
-                        dk_ = torch.exp(ldk[:, j]).unsqueeze(-1)
+                        dk_ = torch.exp(ldk_i[:, j]).unsqueeze(-1)
                     else:
                         dk_ = 1
 
                     if use_ldv:
-                        dv_ = torch.exp(ldv[:, j]).unsqueeze(-2)
+                        dv_ = torch.exp(ldv_i[:, j]).unsqueeze(-2)
                     else:
                         dv_ = 1
                 state_ = torch.einsum(
@@ -258,14 +260,6 @@ def compute_states(
             c = 0
 
         for i in range(n):
-            if reverse:
-                if i == 0:
-                    decay = 1
-                else:
-                    decay = torch.exp(ld[:, i - 1]).unsqueeze(-1).unsqueeze(-1)
-            else:
-                decay = torch.exp(ld[:, i]).unsqueeze(-1).unsqueeze(-1)
-
             if reverse:
                 if i == 0:
                     dk_ = 1
