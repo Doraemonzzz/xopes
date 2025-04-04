@@ -100,6 +100,7 @@ folder=lightning_attn/scalar_data_dependent_decay
 # folder=lightning_attn/vector_decay
 folder=lightning_attn/vector_decay/state
 folder=lightning_attn/vector_decay/inter
+folder=lightning_attn/vector_decay/intra
 
 mkdir -p $folder/log
 

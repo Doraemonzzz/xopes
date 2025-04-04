@@ -6,6 +6,7 @@ import triton
 from xopes.ops.cumsum import chunk_cumsum_decay_fn
 from xopes.ops.lightning_attn.vector_decay.utils import (
     _lavd_parallel_inter,
+    _lavd_parallel_intra,
     _lavd_parallel_state_parallel,
     _lavd_parallel_state_parallel_reduce,
     _lavd_parallel_state_reduce,
@@ -260,7 +261,93 @@ def lavd_parallel_state_parallel_reduce(
 
 
 ##### intra and inter #####
-lavd_parallel_intra = None
+@contiguous
+def lavd_parallel_intra(
+    q: torch.Tensor,
+    k: Optional[torch.Tensor] = None,
+    v: Optional[torch.Tensor] = None,
+    ldk: Optional[torch.Tensor] = None,
+    ldv: Optional[torch.Tensor] = None,
+    ldk_cumsum: Optional[torch.Tensor] = None,
+    ldv_cumsum: Optional[torch.Tensor] = None,
+    use_ldk: bool = True,
+    use_ldv: bool = False,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    reverse: bool = False,
+    MAX_BLOCK_N: int = 256,
+    MAX_BLOCK_C: int = 256,
+    MAX_BLOCK_E: int = 128,
+    MAX_BLOCK_D: int = 128,
+    BLOCK_N: int = 256,
+):
+    if k is None:
+        b, n, h, d = ldk.shape
+        ldk.dtype
+        ldk.device
+    else:
+        b, n, h, d = k.shape
+        k.dtype
+        k.device
+
+    if v is None:
+        e = ldv.shape[-1]
+    else:
+        e = v.shape[-1]
+
+    use_cu_seqlens = cu_seqlens is not None
+    if use_cu_seqlens:
+        b = cu_seqlens.shape[0] - 1
+
+    if use_cu_seqlens:
+        o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
+    else:
+        o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
+
+    NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
+    use_pad = n % BLOCK_N != 0
+
+    def grid(meta):
+        return (
+            b * h * NUM_BLOCK_N,
+            triton.cdiv(BLOCK_N, meta["BLOCK_C"]),
+            triton.cdiv(e, meta["BLOCK_E"]),
+        )
+
+    if use_ldk and ldk_cumsum is None:
+        ldk_cumsum = chunk_cumsum_decay_fn(ldk, reverse=reverse, chunk_size=BLOCK_N)
+
+    if use_ldv and ldv_cumsum is None:
+        ldv_cumsum = chunk_cumsum_decay_fn(ldv, reverse=reverse, chunk_size=BLOCK_N)
+
+    share_k = k is None
+    share_v = v is None
+
+    _lavd_parallel_intra[grid](
+        Q=q,
+        K=k,
+        V=v,
+        O=o,
+        LOG_DECAY_K=ldk,
+        LOG_DECAY_V=ldv,
+        LOG_DECAY_K_CUMSUM=ldk_cumsum,
+        LOG_DECAY_V_CUMSUM=ldv_cumsum,
+        CU_SEQLENS=cu_seqlens,
+        B=b,
+        N=n,
+        H=h,
+        D=d,
+        E=e,
+        USE_DECAY_K=use_ldk,
+        USE_DECAY_V=use_ldv,
+        USE_CU_SEQLENS=use_cu_seqlens,
+        REVERSE=reverse,
+        USE_PAD=use_pad,
+        SHARE_K=share_k,
+        SHARE_V=share_v,
+        BLOCK_N=BLOCK_N,
+    )
+
+    return o
 
 
 @contiguous

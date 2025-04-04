@@ -425,8 +425,6 @@ def lavd_inter_torch(
 
     o = torch.cat(o, dim=1)
 
-    print("aaa", o.shape, o_intra.shape)
-
     o_inter = o - o_intra
 
     return o_inter
