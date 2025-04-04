@@ -767,6 +767,183 @@ def _lavd_parallel_state_parallel_reduce(
     )
 
 
-_lavd_parallel_inter = None
+@triton.autotune(
+    generate_configs(
+        {
+            "num_warps": [4, 8, 16, 32],
+            "BLOCK_C": [16, 128],
+            "BLOCK_D": [128],
+            "BLOCK_E": [128],
+        }
+    ),
+    key=[
+        "B",
+        "N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+    ],
+)
+@triton.jit
+def _lavd_parallel_inter(
+    Q,  # B N H D
+    O,  # B N H E
+    STATES,  # B H L D E if not trans_states, B H L E D if trans_states
+    LOG_DECAY_K_CUMSUM,  # B N H D
+    LOG_DECAY_V_CUMSUM,  # B N H E
+    CU_SEQLENS,  # M
+    B: tl.constexpr,
+    N: tl.constexpr,
+    H: tl.constexpr,
+    D: tl.constexpr,
+    E: tl.constexpr,
+    USE_DECAY_K: tl.constexpr,
+    USE_DECAY_V: tl.constexpr,
+    USE_CU_SEQLENS: tl.constexpr,
+    REVERSE: tl.constexpr,
+    TRANS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
+):
+    NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
+    NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
+
+    off_bhn = tl.program_id(0)
+    off_bh = off_bhn // NUM_BLOCK_N
+    off_b = off_bh // H
+    off_h = off_bh % H
+    off_block_n = off_bhn % NUM_BLOCK_N
+    off_block_c = tl.program_id(1)
+    off_block_e = tl.program_id(2)
+
+    # compute offset
+    offset_qk = off_b * N * H * D + off_h * D
+    offset_vo = off_b * N * H * E + off_h * E
+    offset_ldk = offset_qk
+    offset_ldv = offset_vo
+    offset_block_n = off_block_n * BLOCK_N
+    offset_block_qk = offset_block_n * H * D
+    offset_block_vo = offset_block_n * H * E
+    offset_block_ldk = offset_block_qk
+    offset_block_ldv = offset_block_vo
+    offset_block_c = off_block_c * BLOCK_C
+    offset_block_e = off_block_e * BLOCK_E
+
+    offset_state = off_bh * (NUM_BLOCK_N + 1) * D * E
+    offset_block_state = off_block_n * D * E
+
+    # compute block ptr and mask
+    array_e = tl.arange(0, BLOCK_E)
+    array_d = tl.arange(0, BLOCK_D)
+    array_c = tl.arange(0, BLOCK_C)
+    q_block_ptr = (
+        Q
+        + offset_qk
+        + offset_block_qk
+        + (offset_block_c + array_c[:, None]) * H * D
+        + array_d[None, :]
+    )
+    o_block_ptr = (
+        O
+        + offset_vo
+        + offset_block_vo
+        + (offset_block_c + array_c)[:, None] * H * E
+        + (offset_block_e + array_e)[None, :]
+    )
+    if TRANS:
+        # if trans_states, the states are stored in the shape of B H L E D, the shape we need to load is D E
+        state_block_ptr = (
+            STATES
+            + offset_state
+            + offset_block_state
+            + array_d[:, None]
+            + (offset_block_e + array_e)[None, :] * D
+        )
+    else:
+        state_block_ptr = (
+            STATES
+            + offset_state
+            + offset_block_state
+            + array_d[:, None] * E
+            + (offset_block_e + array_e)[None, :]
+        )
+
+    mask_e = (offset_block_e + array_e) < E
+    mask_c = (offset_block_n + offset_block_c + array_c) < N
+    mask_v = mask_c[:, None] & mask_e[None, :]
+
+    if USE_DECAY_K:
+        ldk_block_ptr = (
+            LOG_DECAY_K_CUMSUM
+            + offset_ldk
+            + offset_block_ldk
+            + (offset_block_c + array_c[:, None]) * H * D
+            + array_d[None, :]
+        )
+
+    # if USE_DECAY_V:
+    #     ldv_block_ptr = (
+    #         LOG_DECAY_V_CUMSUM + offset_ldv + offset_block_ldv + (offset_block_c + array_c)[:, None] * H * E + (offset_block_e + array_e)[None, :]
+    #     )
+    #     ldv = tl.load(ldv_block_ptr, mask=mask_q, other=0.0).to(tl.float32)
+
+    # ldq_block_ptr = (
+    #     LOG_DECAY + offset_ld + offset_block_ld + (offset_block_c + array_c) * H
+    # )
+    # ldq = tl.load(ldq_block_ptr, mask=mask_c, other=0.0).to(tl.float32)
+
+    o = tl.load(o_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0).to(
+        tl.float32
+    )
+    for i in range(NUM_BLOCK_D):
+        mask_d = (array_d + i * BLOCK_D) < D
+        mask_q = mask_c[:, None] & mask_d[None, :]
+        mask_de = mask_d[:, None] & mask_e[None, :]
+
+        q = tl.load(q_block_ptr, mask=mask_q, other=0.0)
+
+        if USE_DECAY_K:
+            ldk = tl.load(ldk_block_ptr, mask=mask_q, other=0.0).to(tl.float32)
+            q = (q * tl.exp(ldk)).to(q.dtype)
+
+        state = tl.load(state_block_ptr, mask=mask_de, other=0.0).to(q.dtype)
+
+        tl.static_print("aaa", q, state)
+        o_ = tl.dot(q, state)
+        o += o_
+
+        q_block_ptr += BLOCK_D
+
+        if USE_DECAY_K:
+            ldk_block_ptr += BLOCK_D * H * D
+
+        if TRANS:
+            state_block_ptr += BLOCK_D
+        else:
+            state_block_ptr += BLOCK_D * E
+
+    if USE_DECAY_V:
+        ldv_block_ptr = (
+            LOG_DECAY_V_CUMSUM
+            + offset_ldv
+            + offset_block_ldv
+            + (offset_block_c + array_c)[:, None] * H * E
+            + (offset_block_e + array_e)[None, :]
+        )
+        ldv = tl.load(
+            ldv_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
+        ).to(tl.float32)
+        o = (o * tl.exp(ldv)).to(o.dtype)
+
+    tl.store(
+        o_block_ptr,
+        o.to(o_block_ptr.dtype.element_ty),
+        mask=mask_c[:, None] & mask_e[None, :],
+    )
+
+
 _lavd_parallel_intra = None
 _lavd_parallel_intra_inter = None

@@ -66,7 +66,13 @@ def lavd_intra_torch(
                 :,
                 start:end,
             ]
-            ld_ = ld[:, start:end]
+
+            if use_ldk:
+                ldk_ = ldk[:, start:end]
+
+            if use_ldv:
+                ldv_ = ldv[:, start:end]
+
             state = torch.zeros(b, h, d, e, dtype=torch.float32, device=q.device)
             o_array = []
             if reverse:
@@ -81,22 +87,22 @@ def lavd_intra_torch(
                         dv_ = 1  # does not affect the result
                     else:
                         if use_ldk:
-                            dk_ = torch.exp(ldk[:, j + 1]).unsqueeze(-1)
+                            dk_ = torch.exp(ldk_[:, j + 1]).unsqueeze(-1)
                         else:
                             dk_ = 1
 
                         if use_ldv:
-                            dv_ = torch.exp(ldv[:, j + 1]).unsqueeze(-2)
+                            dv_ = torch.exp(ldv_[:, j + 1]).unsqueeze(-2)
                         else:
                             dv_ = 1
                 else:
                     if use_ldk:
-                        dk_ = torch.exp(ldk[:, j]).unsqueeze(-1)
+                        dk_ = torch.exp(ldk_[:, j]).unsqueeze(-1)
                     else:
                         dk_ = 1
 
                     if use_ldv:
-                        dv_ = torch.exp(ldv[:, j]).unsqueeze(-2)
+                        dv_ = torch.exp(ldv_[:, j]).unsqueeze(-2)
                     else:
                         dv_ = 1
 
@@ -346,6 +352,7 @@ def lavd_inter_torch(
     ldv: Optional[torch.Tensor] = None,
     use_ldk: bool = True,
     use_ldv: bool = False,
+    initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     BLOCK_N: int = 256,
 ):
@@ -384,7 +391,6 @@ def lavd_inter_torch(
             use_ldk=use_ldk,
             use_ldv=use_ldv,
             cu_seqlens=cu_seqlens,
-            reverse=reverse,
             BLOCK_N=BLOCK_N,
         )
         o_intra.append(o_intra_i)
@@ -414,10 +420,12 @@ def lavd_inter_torch(
         state_ = torch.einsum("b h d, b h e -> b h d e", ki, vi)
 
         state = dk_i * state * dv_i + state_
-        oi = torch.einsum("b h d, b h d e -> b h e", qi, state)
+        oi = torch.einsum("b h d, b h d e -> b h e", qi, state).unsqueeze(1)
         o.append(oi)
 
     o = torch.cat(o, dim=1)
+
+    print("aaa", o.shape, o_intra.shape)
 
     o_inter = o - o_intra
 

@@ -99,7 +99,7 @@ folder=lightning_attn/scalar_data_dependent_decay
 # ##### lavd 250122, 250403
 # folder=lightning_attn/vector_decay
 folder=lightning_attn/vector_decay/state
-
+folder=lightning_attn/vector_decay/inter
 
 mkdir -p $folder/log
 
