@@ -12,18 +12,19 @@ from xopes.utils import get_threshold
 
 def get_params():
     shapes = [
-        # # standard shape
-        # (2, 256, 12, 128, 128),
-        # (2, 1024, 8, 32, 16),
-        # # BLOCK_N +- 1
-        # (2, 257, 8, 64, 32),
-        # (2, 255, 8, 64, 32),
-        # (2, 65, 7, 33, 63),
-        # # BLOCK_N +- C
-        # (2, 270, 8, 64, 32),
-        # (2, 270, 8, 33, 16),
-        # (2, 1125, 8, 43, 33),
-        (2, 32, 12, 128, 64),
+        # standard shape
+        (2, 256, 12, 128, 128),
+        (2, 1024, 8, 32, 16),
+        # BLOCK_N +- 1
+        (2, 257, 8, 64, 32),
+        (2, 255, 8, 64, 32),
+        (2, 65, 7, 33, 63),
+        # BLOCK_N +- C
+        (2, 270, 8, 64, 32),
+        (2, 270, 8, 33, 16),
+        (2, 1125, 8, 43, 33),
+        # (2, 32, 12, 128, 64),
+        # (1, 32, 1, 128, 64),
     ]
 
     return shapes
@@ -46,8 +47,13 @@ def get_params():
 
 @pytest.mark.parametrize("use_ldk", [True])
 @pytest.mark.parametrize("use_ldv", [True])
-@pytest.mark.parametrize("share_k", [False])
-@pytest.mark.parametrize("share_v", [False])
+@pytest.mark.parametrize(
+    "share_k",
+    [
+        True,
+    ],
+)
+@pytest.mark.parametrize("share_v", [True])
 @pytest.mark.parametrize(
     "reverse",
     [
@@ -68,7 +74,7 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
     # Generate input tensors
     b, n, h, d, e = shape
 
-    q = torch.randn(b, n, h, d, dtype=dtype, device=device)
+    q = torch.randn(b, n, h, d, dtype=dtype, device=device).requires_grad_()
 
     if share_k:
         use_ldk = True
@@ -107,6 +113,7 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
     MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
+    BLOCK_C = 16
 
     # Forward pass with PyTorch reference implementation
     o_torch = lavd_intra_torch(
@@ -138,18 +145,39 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
         BLOCK_N=BLOCK_N,
     )
 
+    o_torch_sub_intra = lavd_intra_torch(
+        q=q,
+        k=k,
+        v=v,
+        ldk=ldk,
+        ldv=ldv,
+        use_ldk=use_ldk,
+        use_ldv=use_ldv,
+        reverse=reverse,
+        BLOCK_N=BLOCK_C,
+    )
+    o_torch_sub_inter = o_torch - o_torch_sub_intra
+
     # Get thresholds based on dtype for numerical comparison
     atol, rtol = get_threshold(dtype)
+
+    l = (n + BLOCK_C - 1) // BLOCK_C
+    for i in range(l):
+        start = i * BLOCK_C
+        end = min(start + BLOCK_C, n)
+        print(
+            f"block {i} diff norm: {torch.norm(o_torch_sub_inter[:, start:end] - o_triton[:, start:end]).item()}"
+        )
 
     # Print test configuration and results
     print(f"\nShape: {shape}, E: {e}, reverse: {reverse}, dtype: {dtype}")
     print("o diff max: ", torch.abs(o_torch - o_triton).max().item())
     print("o diff norm: ", torch.norm(o_torch - o_triton).item())
 
-    l = (n + BLOCK_N - 1) // BLOCK_N
+    l = (n + BLOCK_C - 1) // BLOCK_C
     for i in range(l):
-        start = i * BLOCK_N
-        end = min(start + BLOCK_N, n)
+        start = i * BLOCK_C
+        end = min(start + BLOCK_C, n)
         print(
             f"block {i} diff norm: {torch.norm(o_torch[:, start:end] - o_triton[:, start:end]).item()}"
         )
