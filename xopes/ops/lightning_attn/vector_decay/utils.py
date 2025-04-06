@@ -808,7 +808,7 @@ def _lavd_parallel_intra(
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
-    NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
+    tl.cdiv(BLOCK_N, BLOCK_C)
 
     off_bhn = tl.program_id(0)
     off_bh = off_bhn // NUM_BLOCK_N
