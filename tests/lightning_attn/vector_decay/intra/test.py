@@ -23,49 +23,46 @@ def get_params():
         (2, 270, 8, 64, 32),
         (2, 270, 8, 33, 16),
         (2, 1125, 8, 43, 33),
-        # (2, 32, 12, 128, 64),
-        # (1, 32, 1, 128, 64),
     ]
 
     return shapes
 
 
 @pytest.mark.parametrize("shape", get_params())
+@pytest.mark.parametrize("use_ldk", [True])
+@pytest.mark.parametrize("use_ldv", [True])
+@pytest.mark.parametrize("share_k", [True, False])
+@pytest.mark.parametrize("share_v", [True, False])
+@pytest.mark.parametrize(
+    "reverse",
+    [
+        True,
+        False,
+    ],
+)
+@pytest.mark.parametrize("BLOCK_N", [64])  # 16 for only sub intra, 64 for full test
+
 # @pytest.mark.parametrize("use_ldk", [True])
 # @pytest.mark.parametrize("use_ldv", [True])
-# @pytest.mark.parametrize("share_k", [True, False])
-# @pytest.mark.parametrize("share_v", [True, False])
+# @pytest.mark.parametrize(
+#     "share_k",
+#     [
+#         True
+#     ],
+# )
+# @pytest.mark.parametrize("share_v", [True])
 # @pytest.mark.parametrize(
 #     "reverse",
 #     [
 #         True,
-#         False,
 #     ],
 # )
-# @pytest.mark.parametrize("BLOCK_N", [16, 64]) # 16 for only sub intra, 64 for full test
-
-
-@pytest.mark.parametrize("use_ldk", [True])
-@pytest.mark.parametrize("use_ldv", [True])
-@pytest.mark.parametrize(
-    "share_k",
-    [
-        True,
-    ],
-)
-@pytest.mark.parametrize("share_v", [True])
-@pytest.mark.parametrize(
-    "reverse",
-    [
-        False,
-    ],
-)
-@pytest.mark.parametrize(
-    "BLOCK_N",
-    [
-        64,
-    ],
-)  # 16 for only sub intra, 64 for full test
+# @pytest.mark.parametrize(
+#     "BLOCK_N",
+#     [
+#         64,
+#     ],
+# )  # 16 for only sub intra, 64 for full test
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N, dtype):
     torch.manual_seed(2024)
