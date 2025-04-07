@@ -41,28 +41,6 @@ def get_params():
     ],
 )
 @pytest.mark.parametrize("BLOCK_N", [64])  # 16 for only sub intra, 64 for full test
-
-# @pytest.mark.parametrize("use_ldk", [True])
-# @pytest.mark.parametrize("use_ldv", [True])
-# @pytest.mark.parametrize(
-#     "share_k",
-#     [
-#         True
-#     ],
-# )
-# @pytest.mark.parametrize("share_v", [True])
-# @pytest.mark.parametrize(
-#     "reverse",
-#     [
-#         True,
-#     ],
-# )
-# @pytest.mark.parametrize(
-#     "BLOCK_N",
-#     [
-#         64,
-#     ],
-# )  # 16 for only sub intra, 64 for full test
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N, dtype):
     torch.manual_seed(2024)

@@ -1,2 +1,3 @@
+from .lavd_parallel_triton import lavd_parallel_triton
 from .lavd_recurrence_triton import lavd_recurrence_triton
 from .lavd_torch import lavd_torch

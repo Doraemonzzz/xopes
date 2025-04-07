@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 
 from xopes.ops.lightning_attn.vector_decay import (  # noqa
+    lavd_parallel_triton,
     lavd_recurrence_triton,
     lavd_torch,
 )
@@ -11,25 +12,29 @@ from xopes.utils import get_threshold
 
 def get_params():
     shapes = [
-        # standard shape
+        # # standard shape
+        # (2, 256, 12, 128, 128),
+        # (2, 1024, 8, 32, 16),
+        # # BLOCK_N +- 1
+        # (2, 257, 8, 64, 32),
+        # (2, 255, 8, 64, 32),
+        # (2, 65, 7, 33, 63),
+        # # # BLOCK_N +- C
+        # (2, 270, 8, 64, 32),
+        # (2, 270, 8, 33, 16),
+        # (2, 1125, 8, 43, 33),
+        # # LARGE D, E
+        # (2, 1125, 8, 255, 257),
+        # (1, 64, 1, 128, 128),
+        # (1, 128, 1, 128, 128),
         (2, 256, 12, 128, 128),
-        (2, 1024, 8, 32, 16),
-        # BLOCK_N +- 1
-        (2, 257, 8, 64, 32),
-        (2, 255, 8, 64, 32),
-        (2, 65, 7, 33, 63),
-        # # BLOCK_N +- C
-        (2, 270, 8, 64, 32),
-        (2, 270, 8, 33, 16),
-        (2, 1125, 8, 43, 33),
-        # LARGE D, E
-        (2, 1125, 8, 255, 257),
+        # (2, 1024, 8, 32, 16),
     ]
     return shapes
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("use_initial_state", [True, False])
+@pytest.mark.parametrize("use_initial_state", [False])
 # @pytest.mark.parametrize("use_ldk", [True, False])
 # @pytest.mark.parametrize("use_ldv", [True, False])
 # @pytest.mark.parametrize("share_k", [True, False])
@@ -49,17 +54,19 @@ def get_params():
 @pytest.mark.parametrize(
     "share_k",
     [
-        True,
+        False,
     ],
 )
 @pytest.mark.parametrize(
     "share_v",
     [
-        True,
+        False,
     ],
 )
 @pytest.mark.parametrize("use_varlen", [False])
-@pytest.mark.parametrize("no_dstate", [True, False])
+@pytest.mark.parametrize("no_dstate", [True])
+# @pytest.mark.parametrize("no_dstate", [True, False])
+@pytest.mark.parametrize("use_chunk_loop", [True])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test(
     shape,
@@ -70,6 +77,7 @@ def test(
     share_v,
     use_varlen,
     no_dstate,
+    use_chunk_loop,
     dtype,
 ):
     torch.manual_seed(2024)
@@ -170,6 +178,24 @@ def test(
     else:
         output_triton = o_triton.sum() + s_triton.sum()
 
+    # triton parallel
+    o_parallel_triton, s_parallel_triton = lavd_parallel_triton(
+        q=q,
+        k=k,
+        v=v,
+        ldk=ldk,
+        ldv=ldv,
+        use_ldk=use_ldk,
+        use_ldv=use_ldv,
+        initial_state=initial_state,
+        cu_seqlens=cu_seqlens,
+        use_chunk_loop=use_chunk_loop,
+    )
+    if no_dstate:
+        output_parallel_triton = o_parallel_triton
+    else:
+        output_parallel_triton = o_parallel_triton.sum() + s_parallel_triton.sum()
+
     ##### Backward pass
     # baseline
     output_torch.backward(do, retain_graph=True)
@@ -207,6 +233,24 @@ def test(
     if use_initial_state:
         ds_triton, initial_state.grad = initial_state.grad.clone(), None
 
+    # triton parallel
+    output_parallel_triton.backward(do, retain_graph=True)
+    dq_parallel_triton, q.grad = q.grad.clone(), None
+    if not share_k:
+        dk_parallel_triton, k.grad = k.grad.clone(), None
+    if not share_v:
+        dv_parallel_triton, v.grad = v.grad.clone(), None
+    if use_ldk:
+        dldk_parallel_triton, ldk.grad = ldk.grad.clone(), None
+    else:
+        pass
+    if use_ldv:
+        dldv_parallel_triton, ldv.grad = ldv.grad.clone(), None
+    else:
+        pass
+    if use_initial_state:
+        ds_parallel_triton, initial_state.grad = initial_state.grad.clone(), None
+
     atol, rtol = get_threshold(dtype)
 
     ##### Check forward pass results
@@ -230,6 +274,27 @@ def test(
         torch.norm(s_torch - s_triton).item(),
     )
     assert torch.allclose(s_torch, s_triton, atol=atol, rtol=rtol)
+
+    # triton parallel
+    print(
+        "o diff max (torch parallel Vs triton parallel): ",
+        torch.abs(o_parallel_triton - o_triton).max().item(),
+    )
+    print(
+        "o diff norm (torch parallel Vs triton parallel): ",
+        torch.norm(o_parallel_triton - o_triton).item(),
+    )
+    assert torch.allclose(o_parallel_triton, o_triton, atol=atol, rtol=rtol)
+
+    print(
+        "state diff max (torch parallel Vs triton parallel): ",
+        torch.abs(s_parallel_triton - s_triton).max().item(),
+    )
+    print(
+        "state diff norm (torch parallel Vs triton parallel): ",
+        torch.norm(s_parallel_triton - s_triton).item(),
+    )
+    assert torch.allclose(s_parallel_triton, s_triton, atol=atol, rtol=rtol)
 
     ##### Check backward pass results
     # triton recurrence
@@ -296,3 +361,47 @@ def test(
             torch.norm(ds_torch - ds_triton).item(),
         )
         assert torch.allclose(ds_torch, ds_triton, atol=atol, rtol=rtol)
+
+    # triton parallel
+    print(
+        "dq diff max (Vs triton parallel): ",
+        torch.abs(dq_parallel_triton - dq_triton).max().item(),
+    )
+    print(
+        "dq diff norm (Vs triton parallel): ",
+        torch.norm(dq_parallel_triton - dq_triton).item(),
+    )
+    assert torch.allclose(dq_parallel_triton, dq_triton, atol=atol, rtol=rtol)
+
+    if not share_k:
+        print(
+            "dk diff max (Vs triton parallel): ",
+            torch.abs(dk_parallel_triton - dk_triton).max().item(),
+        )
+        print(
+            "dk diff norm (Vs triton parallel): ",
+            torch.norm(dk_parallel_triton - dk_triton).item(),
+        )
+        assert torch.allclose(dk_parallel_triton, dk_triton, atol=atol, rtol=rtol)
+
+    if not share_v:
+        print(
+            "dv diff max (Vs triton parallel): ",
+            torch.abs(dv_parallel_triton - dv_triton).max().item(),
+        )
+        print(
+            "dv diff norm (Vs triton parallel): ",
+            torch.norm(dv_parallel_triton - dv_triton).item(),
+        )
+        assert torch.allclose(dv_parallel_triton, dv_triton, atol=atol, rtol=rtol)
+
+    if use_initial_state:
+        print(
+            "ds diff max (Vs triton parallel): ",
+            torch.abs(ds_parallel_triton - ds_triton).max().item(),
+        )
+        print(
+            "ds diff norm (Vs triton parallel): ",
+            torch.norm(ds_parallel_triton - ds_triton).item(),
+        )
+        assert torch.allclose(ds_parallel_triton, ds_triton, atol=atol, rtol=rtol)

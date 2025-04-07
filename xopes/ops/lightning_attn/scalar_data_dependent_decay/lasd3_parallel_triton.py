@@ -835,6 +835,7 @@ def lasd3_parallel_triton(
         v: Value tensor of shape (B, N, H, E)
         ld: Logarithmic decay tensor of shape (B, N, H) - data dependent decay factors
         initial_state: Initial state tensor of shape (B, H, D, E)
+        save_states: Whether to save states for backward
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
 
     Returns:
@@ -849,9 +850,7 @@ def lasd3_parallel_triton(
         initial_state = initial_state.squeeze(0)
         # treat for varlen training
         if len(initial_state.shape) == 3:
-            initial_state = repeat(
-                initial_state, "h d e -> b h d e", b=b
-            )  # .contiguous()
+            initial_state = repeat(initial_state, "h d e -> b h d e", b=b)
 
     return Lasd3ParallelFunction.apply(
         q,

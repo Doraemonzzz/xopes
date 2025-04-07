@@ -35,8 +35,14 @@ def lavd_torch(
     """
     if ldk is not None:
         use_ldk = True
+    else:
+        use_ldk = False
+
     if ldv is not None:
         use_ldv = True
+    else:
+        use_ldv = False
+
     if use_ldk:
         assert ldk is not None, "ldk must be provided if use_ldk is True"
     if use_ldv:
