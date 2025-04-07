@@ -10,7 +10,15 @@ from xopes.utils import contiguous, generate_configs
 
 
 @triton.autotune(
-    generate_configs({"num_warps": [4, 8, 16, 32], "BLOCK_D": [128, 256]}),
+    generate_configs(
+        {
+            "num_warps": [4, 8, 16, 32],
+            "BLOCK_D": [
+                128,
+                256,
+            ],
+        }
+    ),
     key=[
         "B",
         "D",
@@ -421,8 +429,6 @@ def lasr_recurrence_bwd(
         dld_state = (final_state * dfinal_state).unsqueeze(1)
 
     dld = q * dq - k * dk
-    print(torch.max(dq), torch.min(dq))
-    print(torch.max(dk), torch.min(dk))
     dld = cumsum_fn(dld, dim=1, reverse=True)
 
     if dfinal_state is not None:

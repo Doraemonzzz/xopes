@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import triton
+from einops import rearrange
 
 from xopes.ops.lightning_attn.baseline import (
     chunk_gla_wrapper,
@@ -17,6 +18,7 @@ from xopes.ops.lightning_attn.scalar_decay import (
     lasd_parallel_triton,
     lasd_recurrence_triton,
 )
+from xopes.ops.lightning_attn.simple_recurrence import lasr_recurrence_triton
 from xopes.ops.lightning_attn.vector_decay import lavd_parallel_triton
 from xopes.utils import get_memory
 
@@ -57,6 +59,10 @@ def lavd_k_parallel(q, k, v, **kwargs):
     return lavd_parallel_triton(q, k, v, ldk=kwargs["ldk"])[0]
 
 
+def lasr_recurrence(q, k, v, **kwargs):
+    return lasr_recurrence_triton(q, k, v, ld=kwargs["ldk"])[0]
+
+
 def lightning_parallel(q, k, v, **kwargs):
     return lightning_attn_wrapper(q, k, v, ld=kwargs["ld"], variant="parallel")
 
@@ -72,6 +78,7 @@ module_map = {
     "lasd_pl": lasd_parallel,
     "lasd3_p": lasd3_parallel,
     "lavd_k_p": lavd_k_parallel,
+    "lasr_r": lasr_recurrence,
     "flash": flash_attn_wrapper,
     "lightning_p": lightning_parallel,
     "lightning_c": lightning_chunk_loop,
@@ -83,8 +90,8 @@ configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         # x_vals=[2**i for i in range(8, 16)],
-        # x_vals=[2**i for i in range(8, 11)],
-        x_vals=[2**i for i in range(8, 9)],
+        x_vals=[2**i for i in range(8, 11)],
+        # x_vals=[2**i for i in range(8, 9)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -94,7 +101,8 @@ configs = [
             # "land_p",
             # "lasd_pl",
             # "lasd3_p",
-            "lavd_k_p",
+            # "lavd_k_p",
+            "lasr_r",
             # "flash",
             # "lightning_p",
             # "lightning_c",
@@ -107,7 +115,8 @@ configs = [
             # "LAND_P",
             # "LASD_PL",
             # "LASD3_P",
-            "LAVD_K_P",
+            # "LAVD_K_P",
+            "LASR_R",
             # "Flash",
             # "LP",
             # "LC",
@@ -127,6 +136,7 @@ configs = [
             ("magenta", "-"),
             ("gray", "-"),
             ("lime", "-"),
+            ("olive", "-"),
         ],
         plot_name=f"lasd-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
@@ -145,7 +155,7 @@ configs = [
     ]
     for mode in [
         "fwd",
-        # "bwd",
+        "bwd",
     ]
     for dtype_name in ["bf16"]
     for b, h, d in [[4, 32, 128]]
@@ -189,6 +199,11 @@ def benchmark(
     ).requires_grad_()
 
     module = module_map[provider]
+
+    if provider == "lasr_r":
+        q, k, v, ldk = map(
+            lambda x: rearrange(x, "... h d -> ... (h d)"), (q, k, v, ldk)
+        )
 
     try:
         fn = lambda: module(q, k, v, ld=ld, ld3=ld3, ldk=ldk)
