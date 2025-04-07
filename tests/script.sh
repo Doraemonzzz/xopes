@@ -96,11 +96,14 @@ folder=lightning_attn/scalar_data_dependent_decay
 # folder=cumsum/chunk_cumsum_decay
 # folder=cumsum/cumsum
 
-# ##### lavd 250122, 250403
+##### lavd 250122, 250403
 folder=lightning_attn/vector_decay
 folder=lightning_attn/vector_decay/state
 # folder=lightning_attn/vector_decay/inter
 # folder=lightning_attn/vector_decay/intra
+
+##### lasr 250407
+folder=lightning_attn/simple_recurrence
 
 mkdir -p $folder/log
 
