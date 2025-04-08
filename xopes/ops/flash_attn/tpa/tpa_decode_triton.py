@@ -10,8 +10,15 @@ from xopes.utils import generate_configs
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [4, 8, 16, 32],
-            "BLOCK": [128, 256, 512],
+            "num_warps": [
+                2,
+                4,
+                8,
+            ],
+            "BLOCK": [
+                128,
+                256,
+            ],
         }
     ),
     key=[

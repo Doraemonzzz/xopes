@@ -75,6 +75,10 @@ folder=lightning_attention
 # folder=chunk_cumsum/chunk_cumsum
 # folder=chunk_cumsum/chunk_cumsum_decay
 
+##### flash_attn tpa_decode 250408
+folder=flash_attn/tpa_decode
+
+
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0

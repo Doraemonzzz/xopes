@@ -33,14 +33,6 @@ def tpa_decode_torch(
     Returns:
         Output tensor of shape (B, N, H, E)
     """
-    dtype = aq.dtype
-    aq = aq.float()
-    ak = ak.float()
-    av = av.float()
-    bq = bq.float()
-    bk = bk.float()
-    bv = bv.float()
-
     b, n, h, r = aq.shape
     assert n == 1, "n must be 1 when using tpa_decode_torch"
     d = bq.shape[-1]
@@ -64,7 +56,7 @@ def tpa_decode_torch(
     o = torch.einsum("b h n m, b m h -> b n m h", prob, av)
     o = torch.einsum("b n m h, b m e -> b n h e", o, bv) * scale_v
 
-    return o.to(dtype)
+    return o
 
 
 def tpa_decode_naive_torch(
@@ -96,14 +88,6 @@ def tpa_decode_naive_torch(
     Returns:
         Output tensor of shape (B, N, H, E)
     """
-    dtype = aq.dtype
-    aq = aq.float()
-    ak = ak.float()
-    av = av.float()
-    bq = bq.float()
-    bk = bk.float()
-    bv = bv.float()
-
     b, n, h, r = aq.shape
     assert n == 1, "n must be 1 when using tpa_decode_torch"
     d = bq.shape[-1]
@@ -126,7 +110,7 @@ def tpa_decode_naive_torch(
     prob = F.softmax(score, dim=-1)
     o = torch.einsum("b h n m, b m h e -> b n h e", prob, v)
 
-    return o.to(dtype)
+    return o
 
 
 if __name__ == "__main__":
