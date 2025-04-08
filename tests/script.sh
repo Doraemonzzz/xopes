@@ -105,6 +105,9 @@ folder=lightning_attn/vector_decay/state
 ##### lasr 250407
 folder=lightning_attn/simple_recurrence
 
+##### tpa_decode 250408
+folder=flash_attn/tpa_decode
+
 mkdir -p $folder/log
 
 

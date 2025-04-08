@@ -27,7 +27,7 @@ def _tpa_decode_fwd(
     BQ,  # B N R D
     BK,  # B M D
     BV,  # B M E
-    O,  # B H E
+    O,  # B N H E
     CU_SEQLENS,  # M
     SCALE: tl.constexpr,
     SCALE_Q: tl.constexpr,
@@ -55,7 +55,7 @@ def _tpa_decode_fwd(
     offset_bq = off_b * N * R * D
     offset_bk = off_b * M * D
     offset_bv = off_b * M * E
-    offset_o = off_b * H * E
+    offset_o = off_b * N * H * E
 
     # compute block ptr and mask
     array_h = tl.arange(0, BLOCK_H)
@@ -76,27 +76,26 @@ def _tpa_decode_fwd(
     bk_block_ptr = BK + offset_bk + array_n[:, None] * D + array_d[None, :]  # M D
     bv_block_ptr = BV + offset_bv + array_n[None, :] * E + array_e[:, None]  # E M
 
-    NUM_BLOCKS = tl.cdiv(N, BLOCK)
-    o = tl.zeros([BLOCK_E, H], dtype=tl.float32)
-    m = tl.full([H], -float("inf"), dtype=tl.float32)
-    sse = tl.full([H], 0, dtype=tl.float32)
+    NUM_BLOCKS = tl.cdiv(M, BLOCK)
+    o = tl.zeros([BLOCK_E, BLOCK_H], dtype=tl.float32)
+    m = tl.full([BLOCK_H], -float("inf"), dtype=tl.float32)
+    sse = tl.full([BLOCK_H], 0, dtype=tl.float32)
     c = SCALE * SCALE_Q * SCALE_K
 
     aq = tl.load(aq_block_ptr, mask=mask_r[:, None] & mask_h[None, :])
     bq = tl.load(bq_block_ptr, mask=mask_d[:, None] & mask_r[None, :])
 
     for i in range(NUM_BLOCKS):
-        mask_m = (i * BLOCK + array_n) < N
+        mask_m = (i * BLOCK + array_n) < M
 
         ak = tl.load(ak_block_ptr, mask=mask_m[:, None] & mask_h[None, :])
         av = tl.load(av_block_ptr, mask=mask_m[:, None] & mask_h[None, :])
         bk = tl.load(bk_block_ptr, mask=mask_m[:, None] & mask_d[None, :])
-        bv = tl.load(bv_block_ptr, mask=mask_e[:, None] & mask_m[None, :])
+        bv = tl.load(bv_block_ptr, mask=mask_e[:, None] & mask_m[None, :]) * SCALE_V
 
         # M D, D R -> M R
         score1 = tl.dot(bk, bq).to(aq.dtype)
         # M R, R H -> M H
-        tl.static_print("aaa", score1, aq)
         score2 = tl.dot(score1, aq)
         # M H, M H -> N H
         score3 = score2 * ak * c
@@ -104,7 +103,7 @@ def _tpa_decode_fwd(
         # safe softmax
         # local attention
         # M H -> H
-        mi = tl.max(m, axis=0)
+        mi = tl.max(score3, axis=0)
         m_ = tl.maximum(m, mi)
         # M H -> H
         sse_local = tl.sum(tl.exp(score3 - m_), axis=0)
@@ -122,6 +121,7 @@ def _tpa_decode_fwd(
         av_block_ptr += BLOCK * H
         bk_block_ptr += BLOCK * D
         bv_block_ptr += BLOCK * E
+        m = m_
 
     o_block_ptr = O + offset_o + array_h[None, :] * E + array_e[:, None]  # E H
 
@@ -170,7 +170,7 @@ def tpa_decode_triton(
     if scale is None:
         scale = d**-0.5
     if scale_q is None:
-        scale_q = r
+        scale_q = 1 / r
     if scale_k is None:
         scale_k = 1
     if scale_v is None:
