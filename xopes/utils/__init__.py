@@ -12,6 +12,7 @@ from .utils import (
     is_act_valid,
     is_dim_valid,
     is_op_valid,
+    last_power_of_two,
     max_power_of_2_divisor,
     next_power_of_two,
     pack,

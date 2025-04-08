@@ -1,2 +1,2 @@
 from .tpa_decode_torch import tpa_decode_naive_torch, tpa_decode_torch
-from .tpa_decode_triton import tpa_decode_triton
+from .tpa_decode_triton import tpa_decode_parallel_b_triton

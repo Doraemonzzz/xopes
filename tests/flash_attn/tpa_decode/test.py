@@ -5,7 +5,10 @@ from xopes.ops.flash_attn.tpa.tpa_decode_torch import (
     tpa_decode_naive_torch,
     tpa_decode_torch,
 )
-from xopes.ops.flash_attn.tpa.tpa_decode_triton import tpa_decode_triton
+from xopes.ops.flash_attn.tpa.tpa_decode_triton import (
+    tpa_decode_parallel_b_triton,
+    tpa_decode_parallel_bh_triton,
+)
 from xopes.utils import get_threshold
 
 
@@ -84,7 +87,19 @@ def test_tpa_decode(shape, dtype):
     )
 
     # Triton implementation
-    o_triton = tpa_decode_triton(
+    o_parallel_b_triton = tpa_decode_parallel_b_triton(
+        aq=aq,
+        ak=ak,
+        av=av,
+        bq=bq,
+        bk=bk,
+        bv=bv,
+        scale=scale,
+        scale_q=scale_q,
+        scale_k=scale_k,
+        scale_v=scale_v,
+    )
+    o_parallel_bh_triton = tpa_decode_parallel_bh_triton(
         aq=aq,
         ak=ak,
         av=av,
@@ -112,12 +127,21 @@ def test_tpa_decode(shape, dtype):
     assert torch.allclose(o_torch, o_naive_torch, atol=atol, rtol=rtol)
 
     print(
-        "o diff max (torch vs triton): ",
-        torch.abs(o_torch - o_triton).max().item(),
+        "o diff max (torch vs triton parallel_b): ",
+        torch.abs(o_torch - o_parallel_b_triton).max().item(),
     )
     print(
-        "o diff norm (torch vs triton): ",
-        torch.norm(o_torch - o_triton).item(),
+        "o diff norm (torch vs triton parallel_b): ",
+        torch.norm(o_torch - o_parallel_b_triton).item(),
     )
-    print("aaa", torch.max(o_torch), torch.max(o_triton))
-    assert torch.allclose(o_torch, o_triton, atol=atol, rtol=rtol)
+    assert torch.allclose(o_torch, o_parallel_b_triton, atol=atol, rtol=rtol)
+
+    print(
+        "o diff max (torch vs triton parallel_bh): ",
+        torch.abs(o_torch - o_parallel_bh_triton).max().item(),
+    )
+    print(
+        "o diff norm (torch vs triton parallel_bh): ",
+        torch.norm(o_torch - o_parallel_bh_triton).item(),
+    )
+    assert torch.allclose(o_torch, o_parallel_bh_triton, atol=atol, rtol=rtol)

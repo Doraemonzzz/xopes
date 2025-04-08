@@ -9,7 +9,10 @@ from xopes.ops.flash_attn.tpa.tpa_decode_torch import (
     tpa_decode_naive_torch,
     tpa_decode_torch,
 )
-from xopes.ops.flash_attn.tpa.tpa_decode_triton import tpa_decode_triton
+from xopes.ops.flash_attn.tpa.tpa_decode_triton import (
+    tpa_decode_parallel_b_triton,
+    tpa_decode_parallel_bh_triton,
+)
 from xopes.utils import get_memory
 
 # Default parameters for the benchmark
@@ -24,7 +27,8 @@ dtype_map = {
 
 # Map of implementations to benchmark
 module_map = {
-    "triton": tpa_decode_triton,
+    "triton_b": tpa_decode_parallel_b_triton,
+    "triton_bh": tpa_decode_parallel_bh_triton,
     "torch": tpa_decode_torch,
     "torch_compile": torch.compile(tpa_decode_torch),
     "torch_naive": tpa_decode_naive_torch,
@@ -36,23 +40,31 @@ configs = [
     triton.testing.Benchmark(
         x_names=["m"],
         x_vals=[2**i for i in range(8, 16)],
+        # x_vals=[2**i for i in range(15, 16)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory Usage(MB)",
         line_arg="provider",
         line_vals=[
-            "triton",
+            "triton_b",
+            "triton_bh",
             "torch",
-            "torch_compile",
-            "torch_naive",
-            "torch_naive_compile",
+            # "torch_compile",
+            # "torch_naive",
+            # "torch_naive_compile",
         ],
-        line_names=["tr", "to", "toc", "ton", "tonc"],
+        line_names=[
+            "trb",
+            "trbh",
+            "to",
+        ],
+        # line_names=["trpb", "to", "toc", "ton", "tonc"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
             ("blue", "-"),
             ("green", "-"),
             ("purple", "-"),
+            ("yellow", "-"),
         ],
         plot_name=f"tpa_decode-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-rank{r}-{dtype_name}",
         args={
@@ -72,7 +84,9 @@ configs = [
         "fwd",
     ]
     for dtype_name in ["bf16"]
-    for bench_type in ["speed", "memory"]
+    for bench_type in [
+        "speed",
+    ]
     for b in [8, 32]
     for n in [1]
     for h in [32]

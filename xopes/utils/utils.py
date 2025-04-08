@@ -46,6 +46,10 @@ def next_power_of_two(x):
     return 2 ** (math.ceil(math.log(x, 2)))
 
 
+def last_power_of_two(x):
+    return 2 ** (math.floor(math.log(x, 2)))
+
+
 def pack(tensors, pattern):
     if not isinstance(tensors, list):
         tensors = [tensors]
