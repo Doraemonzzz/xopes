@@ -8,6 +8,7 @@ from xopes.ops.flash_attn.tpa.tpa_decode_torch import (
 from xopes.ops.flash_attn.tpa.tpa_decode_triton import (
     tpa_decode_parallel_b_triton,
     tpa_decode_parallel_bh_triton,
+    tpa_decode_parallel_bn_triton,
 )
 from xopes.utils import get_threshold
 
@@ -15,19 +16,20 @@ from xopes.utils import get_threshold
 def get_params():
     shapes = [
         # standard shapes
-        (2, 1024, 16, 16, 128, 64),
+        (2, 256, 16, 16, 128, 64),
+        (2, 2048, 16, 16, 128, 64),
         # special seqlen
-        (2, 1023, 16, 16, 128, 64),
-        (2, 769, 16, 16, 128, 64),
+        (2, 2049, 16, 16, 128, 64),
+        (2, 2047, 16, 16, 128, 64),
         # special rank
-        (2, 1023, 17, 16, 128, 64),
-        (2, 769, 31, 16, 128, 64),
+        (2, 2049, 17, 16, 128, 64),
+        (2, 2047, 31, 16, 128, 64),
         # special num heads
-        (2, 1023, 17, 31, 128, 64),
-        (2, 769, 31, 17, 128, 64),
+        (2, 2049, 17, 31, 128, 64),
+        (2, 2047, 31, 17, 128, 64),
         # special head dim
-        (2, 1023, 17, 31, 129, 63),
-        (2, 769, 31, 17, 127, 65),
+        (2, 2049, 17, 31, 129, 63),
+        (2, 2047, 31, 17, 127, 65),
     ]
     return shapes
 
@@ -99,7 +101,21 @@ def test_tpa_decode(shape, dtype):
         scale_k=scale_k,
         scale_v=scale_v,
     )
+
     o_parallel_bh_triton = tpa_decode_parallel_bh_triton(
+        aq=aq,
+        ak=ak,
+        av=av,
+        bq=bq,
+        bk=bk,
+        bv=bv,
+        scale=scale,
+        scale_q=scale_q,
+        scale_k=scale_k,
+        scale_v=scale_v,
+    )
+
+    o_parallel_bn_triton = tpa_decode_parallel_bn_triton(
         aq=aq,
         ak=ak,
         av=av,
@@ -145,3 +161,13 @@ def test_tpa_decode(shape, dtype):
         torch.norm(o_torch - o_parallel_bh_triton).item(),
     )
     assert torch.allclose(o_torch, o_parallel_bh_triton, atol=atol, rtol=rtol)
+
+    print(
+        "o diff max (torch vs triton parallel_bn): ",
+        torch.abs(o_torch - o_parallel_bn_triton).max().item(),
+    )
+    print(
+        "o diff norm (torch vs triton parallel_bn): ",
+        torch.norm(o_torch - o_parallel_bn_triton).item(),
+    )
+    assert torch.allclose(o_torch, o_parallel_bn_triton, atol=atol, rtol=rtol)

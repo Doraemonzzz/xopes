@@ -12,6 +12,7 @@ from xopes.ops.flash_attn.tpa.tpa_decode_torch import (
 from xopes.ops.flash_attn.tpa.tpa_decode_triton import (
     tpa_decode_parallel_b_triton,
     tpa_decode_parallel_bh_triton,
+    tpa_decode_parallel_bn_triton,
 )
 from xopes.utils import get_memory
 
@@ -29,6 +30,7 @@ dtype_map = {
 module_map = {
     "triton_b": tpa_decode_parallel_b_triton,
     "triton_bh": tpa_decode_parallel_bh_triton,
+    "triton_bn": tpa_decode_parallel_bn_triton,
     "torch": tpa_decode_torch,
     "torch_compile": torch.compile(tpa_decode_torch),
     "torch_naive": tpa_decode_naive_torch,
@@ -40,24 +42,27 @@ configs = [
     triton.testing.Benchmark(
         x_names=["m"],
         x_vals=[2**i for i in range(8, 16)],
-        # x_vals=[2**i for i in range(15, 16)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)" if bench_type == "speed" else "Memory Usage(MB)",
         line_arg="provider",
         line_vals=[
             "triton_b",
             "triton_bh",
+            "triton_bn",
             "torch",
-            # "torch_compile",
-            # "torch_naive",
-            # "torch_naive_compile",
+            "torch_compile",
+            "torch_naive",
+            "torch_naive_compile",
         ],
         line_names=[
             "trb",
             "trbh",
+            "trbn",
             "to",
+            "toc",
+            "ton",
+            "tonc",
         ],
-        # line_names=["trpb", "to", "toc", "ton", "tonc"],
         styles=[
             ("red", "-"),
             ("orange", "-"),
@@ -65,6 +70,7 @@ configs = [
             ("green", "-"),
             ("purple", "-"),
             ("yellow", "-"),
+            ("cyan", "-"),
         ],
         plot_name=f"tpa_decode-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-rank{r}-{dtype_name}",
         args={
@@ -84,9 +90,7 @@ configs = [
         "fwd",
     ]
     for dtype_name in ["bf16"]
-    for bench_type in [
-        "speed",
-    ]
+    for bench_type in ["speed", "memory"]
     for b in [8, 32]
     for n in [1]
     for h in [32]
@@ -140,11 +144,10 @@ def benchmark(b, n, m, h, r, d, e, dtype, device, mode, provider, bench_type="sp
         return mb
 
 
-if __name__ == "__main__":
-    start_time = time.time()
-    save_path = "stat/tpa_decode"
-    os.makedirs(save_path, exist_ok=True)
-    benchmark.run(save_path=save_path, print_data=True)
-    end_time = time.time()
-    total_time = end_time - start_time
-    print(f"Total time: {total_time} seconds")
+start_time = time.time()
+save_path = "stat/tpa_decode"
+os.makedirs(save_path, exist_ok=True)
+benchmark.run(save_path=save_path, print_data=True)
+end_time = time.time()
+total_time = end_time - start_time
+print(f"Total time: {total_time} seconds, {total_time/60} minutes")
