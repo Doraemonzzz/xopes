@@ -8,6 +8,7 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - gate_linear
 
 # Plan
+- tpa decode 250409
 - recurrence state update
   - [ ] lightning attn
 - lightning attn log decay
