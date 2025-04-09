@@ -4,8 +4,8 @@ import torch
 
 
 def compute_dld_with_cumsum_torch(
-    dld_q: torch.Tensor,  # B N H D
-    dld_k: torch.Tensor,  # B N H D
+    dld_q: torch.Tensor,  # B N H F
+    dld_k: torch.Tensor,  # B N H F
     final_state: Optional[torch.Tensor] = None,  # B H D E
     dfinal_state: Optional[torch.Tensor] = None,  # B H D E
     cu_seqlens: Optional[torch.Tensor] = None,  # M

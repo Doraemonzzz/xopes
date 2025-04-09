@@ -2,6 +2,7 @@ from typing import Optional, Tuple
 
 import torch
 import triton
+from einops import repeat
 
 from xopes.ops.cumsum import chunk_cumsum_decay_fn
 from xopes.ops.lightning_attn.log_decay import compute_dld_with_cumsum_fn
@@ -508,6 +509,7 @@ def lavd_parallel_intra_inter(
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     trans: bool = False,
+    share_x: bool = False,
     MAX_BLOCK_N: int = 256,
     MAX_BLOCK_C: int = 256,
     MAX_BLOCK_E: int = 128,
@@ -553,12 +555,13 @@ def lavd_parallel_intra_inter(
     if use_ldv and ldv_cumsum is None:
         ldv_cumsum = chunk_cumsum_decay_fn(ldv, reverse=reverse, chunk_size=BLOCK_N)
 
-    compute_dld = use_ldv and x is not None
+    compute_dld = use_ldv and ((x is not None) or share_x)
     if compute_dld:
-        dld = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
+        dld = torch.empty((b, n, h, e), dtype=dtype, device=device)
     else:
         dld = None
 
+    share_q = q is None
     share_k = k is None
     share_v = v is None
 
@@ -587,8 +590,10 @@ def lavd_parallel_intra_inter(
         COMPUTE_DLD=compute_dld,
         REVERSE=reverse,
         TRANS=trans,
+        SHARE_Q=share_q,
         SHARE_K=share_k,
         SHARE_V=share_v,
+        SHARE_X=share_x,
         BLOCK_N=BLOCK_N,
     )
 
@@ -716,6 +721,14 @@ def lavd_parallel_fwd(
     else:
         BLOCK_N = 256
 
+    # if XOPES_DEBUG:
+    #     BLOCK_N = 32
+    # else:
+    #     if n <= 512 or USE_CHUNK_LOOP:
+    #         BLOCK_N = min(MAX_BLOCK_N, 128)
+    #     else:
+    #         BLOCK_N = 256
+
     MAX_BLOCK_C = MAX_BLOCK_N
 
     # Step1: Compute states in parallel or chunk loop
@@ -837,11 +850,21 @@ def lavd_parallel_bwd(
     MAX_BLOCK_D = triton.next_power_of_2(d)
     NUM_PARALLEL_BLOCKS = b * h
     USE_CHUNK_LOOP = NUM_PARALLEL_BLOCKS >= SM_COUNT or use_chunk_loop
+    share_k = k is None
+    share_v = v is None
 
     if n <= 512 or USE_CHUNK_LOOP:
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
+    # if XOPES_DEBUG:
+    #     BLOCK_N = 32
+    # else:
+    #     if n <= 512 or USE_CHUNK_LOOP:
+    #         BLOCK_N = min(MAX_BLOCK_N, 128)
+    #     else:
+    #         BLOCK_N = 256
+
     MAX_BLOCK_C = MAX_BLOCK_N
 
     if USE_CHUNK_LOOP:
@@ -897,7 +920,7 @@ def lavd_parallel_bwd(
         x=do,
         cu_seqlens=cu_seqlens,
         reverse=False,
-        trans=True,
+        trans=False,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -982,6 +1005,7 @@ def lavd_parallel_bwd(
         cu_seqlens=cu_seqlens,
         reverse=True,
         trans=True,
+        share_x=share_k,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -1004,6 +1028,7 @@ def lavd_parallel_bwd(
         cu_seqlens=cu_seqlens,
         reverse=True,
         trans=False,
+        share_x=share_v,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -1030,6 +1055,10 @@ def lavd_parallel_bwd(
     else:
         dldk = None
 
+    if share_k:
+        dldk += dk * (-torch.exp(ldk))
+        dk = None
+
     if ldv is not None and use_ldv and ldv.requires_grad:
         dldv = compute_dld_with_cumsum_fn(
             dld_q=dldv_o,  # B N H E
@@ -1041,6 +1070,10 @@ def lavd_parallel_bwd(
         )
     else:
         dldv = None
+
+    if share_v:
+        dldv += dv * (-torch.exp(ldv))
+        dv = None
 
     return (
         dq,
@@ -1094,6 +1127,7 @@ class LavdParallelFunction(torch.autograd.Function):
         ctx.save_for_backward(
             q, k, v, ldk, ldv, ldk_cumsum, ldv_cumsum, initial_state, cu_seqlens, states
         )
+
         ctx.use_chunk_loop = use_chunk_loop
         ctx.use_ldk = use_ldk
         ctx.use_ldv = use_ldv
@@ -1118,6 +1152,7 @@ class LavdParallelFunction(torch.autograd.Function):
             cu_seqlens,
             states,
         ) = ctx.saved_tensors
+
         use_chunk_loop = ctx.use_chunk_loop
         use_ldk = ctx.use_ldk
         use_ldv = ctx.use_ldv

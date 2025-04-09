@@ -178,7 +178,7 @@ def lavd_recurrence_fwd(
     share_k = k is None
     share_v = v is None
     use_initial_state = initial_state is not None
-    final_state = torch.empty((b, h, d, e), dtype=torch.float32, device=q.device)
+    final_state = torch.empty((b, h, d, e), dtype=q.dtype, device=q.device)
     BLOCK_D = triton.next_power_of_2(d)
     BLOCK_E = triton.next_power_of_2(e)
 

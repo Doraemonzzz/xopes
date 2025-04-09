@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
-from xopes.utils import generate_configs, prod
+from xopes.utils import contiguous, generate_configs, prod
 
 
 @triton.autotune(
@@ -76,6 +76,7 @@ def _chunk_cumsum_decay(
     tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_o_block)
 
 
+@contiguous
 def chunk_cumsum_decay_triton(
     x: torch.Tensor,
     reverse: bool = False,

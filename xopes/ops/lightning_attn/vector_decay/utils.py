@@ -9,8 +9,8 @@ from xopes.utils import generate_configs
         {
             "num_warps": [4, 8, 16, 32],
             "BLOCK_C": [16, 128],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
+            "BLOCK_D": [64, 128],
+            "BLOCK_E": [64, 128],
         }
     ),
     key=[
@@ -237,8 +237,8 @@ def _lavd_parallel_state_parallel(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
+            "BLOCK_D": [64, 128],
+            "BLOCK_E": [64, 128],
         }
     ),
     key=[
@@ -772,8 +772,8 @@ def _lavd_parallel_state_parallel_reduce(
         {
             "num_warps": [4, 8, 16, 32],
             "BLOCK_C": [16, 128],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
+            "BLOCK_D": [64, 128],
+            "BLOCK_E": [64, 128],
         }
     ),
     key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
@@ -951,10 +951,10 @@ def _lavd_parallel_intra(
 
         log_decay_v_sub = tl.load(
             ldv_sub_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
-        )
+        ).to(tl.float32)
         log_decay_v_start = tl.load(
             ldv_start_block_ptr, mask=mask_ldv_start & mask_e[None, :], other=0.0
-        )
+        ).to(tl.float32)
         v_decay_sub = tl.exp(log_decay_v_sub - log_decay_v_start)
 
     o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
@@ -1215,8 +1215,8 @@ def _lavd_parallel_intra(
         {
             "num_warps": [4, 8, 16, 32],
             "BLOCK_C": [16, 128],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
+            "BLOCK_D": [64, 128],
+            "BLOCK_E": [64, 128],
         }
     ),
     key=[
@@ -1382,8 +1382,9 @@ def _lavd_parallel_inter(
         {
             "num_warps": [4, 8, 16, 32],
             "BLOCK_C": [16, 128],
-            "BLOCK_D": [128],
-            "BLOCK_E": [128],
+            # "BLOCK_C": [16],
+            "BLOCK_D": [64, 128],
+            "BLOCK_E": [64, 128],
         }
     ),
     key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
@@ -1416,8 +1417,10 @@ def _lavd_parallel_intra_inter(
     COMPUTE_DLD: tl.constexpr,
     REVERSE: tl.constexpr,
     TRANS: tl.constexpr,
+    SHARE_Q: tl.constexpr,
     SHARE_K: tl.constexpr,
     SHARE_V: tl.constexpr,
+    SHARE_X: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
@@ -1458,9 +1461,24 @@ def _lavd_parallel_intra_inter(
     mask_n = (offset_block_n + array_n) < N
     mask_e = (offset_block_e + array_e) < E
 
+    if SHARE_Q:
+        q_start = LOG_DECAY_K
+    else:
+        q_start = Q
+
+    if SHARE_K:
+        k_start = LOG_DECAY_K
+    else:
+        k_start = K
+
+    if SHARE_V:
+        v_start = LOG_DECAY_V
+    else:
+        v_start = V
+
     # compute block ptr
     q_block_ptr = (
-        Q
+        q_start
         + offset_qk
         + offset_block_qk
         + (offset_block_c + array_c[:, None]) * H * D
@@ -1572,10 +1590,10 @@ def _lavd_parallel_intra_inter(
 
         log_decay_v_sub = tl.load(
             ldv_sub_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
-        )
+        ).to(tl.float32)
         log_decay_v_start = tl.load(
             ldv_start_block_ptr, mask=mask_ldv_start & mask_e[None, :], other=0.0
-        )
+        ).to(tl.float32)
         v_decay_sub = tl.exp(log_decay_v_sub - log_decay_v_start)
 
         ##### for inter
@@ -1583,19 +1601,9 @@ def _lavd_parallel_intra_inter(
 
         ldv_inter = tl.load(
             ldv_inter_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
-        )
+        ).to(tl.float32)
 
     o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
-
-    if SHARE_K:
-        k_start = LOG_DECAY_K
-    else:
-        k_start = K
-
-    if SHARE_V:
-        v_start = LOG_DECAY_V
-    else:
-        v_start = V
 
     v_block_ptr = (
         v_start
@@ -1667,7 +1675,7 @@ def _lavd_parallel_intra_inter(
             stride_elem = 1
 
         q_trans_elem_block_ptr = (
-            Q
+            q_start
             + offset_qk
             + offset_block_qk
             + array_kv_elem[None, :] * H * D
@@ -1758,6 +1766,8 @@ def _lavd_parallel_intra_inter(
                 mask=mask_elem_c[None, :] & mask_d[:, None],
                 other=0.0,
             )
+            if SHARE_Q:
+                q_trans_elem = 1 - tl.exp(q_trans_elem)
             # BLOCK_D 1, BLOCK_D BLOCK_E -> 1 BLOCK_E
             o_sub_intra = tl.sum(q_trans_elem * state_sub_intra, axis=0, keep_dims=True)
             if REVERSE:
@@ -1792,63 +1802,78 @@ def _lavd_parallel_intra_inter(
                 ldv_elem_block_ptr += stride_elem * H * E
         ##### end sub intra part
 
-        ##### start sub inter part
-        q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
+        if BLOCK_N > BLOCK_C:
+            ##### start sub inter part
+            q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
 
-        k_trans_block_ptr = (
-            k_start
-            + offset_qk
-            + offset_block_qk
-            + array_kv[None, :] * H * D
-            + (i * BLOCK_D + array_d)[:, None]
-        )
+            if SHARE_Q:
+                q = 1 - tl.exp(q)
 
-        k_trans = tl.load(
-            k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
-        )
+            k_trans_block_ptr = (
+                k_start
+                + offset_qk
+                + offset_block_qk
+                + array_kv[None, :] * H * D
+                + (i * BLOCK_D + array_d)[:, None]
+            )
 
-        if SHARE_K:
-            k_trans = 1 - tl.exp(k_trans)
+            k_trans = tl.load(
+                k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
+            )
 
-        if USE_DECAY_K:
-            log_decay_k_trans_sum = tl.load(
-                ldk_trans_sum_block_ptr, mask=ld_sum_mask & mask_d[:, None]
-            ).to(tl.float32)
+            if SHARE_K:
+                k_trans = 1 - tl.exp(k_trans)
 
-            log_decay_k_trans = tl.load(
-                ldk_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
-            ).to(tl.float32)
-            log_decay_k_trans = log_decay_k_trans_sum - log_decay_k_trans
-            k_trans_decay = tl.exp(log_decay_k_trans)
-            k_trans = (k_trans * k_trans_decay).to(k_trans.dtype)
+            if USE_DECAY_K:
+                log_decay_k_trans_sum = tl.load(
+                    ldk_trans_sum_block_ptr, mask=ld_sum_mask & mask_d[:, None]
+                ).to(tl.float32)
+
+                log_decay_k_trans = tl.load(
+                    ldk_trans_block_ptr,
+                    mask=mask_kv[None, :] & mask_d[:, None],
+                    other=0.0,
+                ).to(tl.float32)
+                log_decay_k_trans = log_decay_k_trans_sum - log_decay_k_trans
+                k_trans_decay = tl.exp(log_decay_k_trans)
+                k_trans = (k_trans * k_trans_decay).to(k_trans.dtype)
+
+                # sub inter decay
+                log_decay_k_sub = tl.load(
+                    ldk_sub_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0
+                ).to(tl.float32)
+                log_decay_k_start = tl.load(
+                    ldk_start_block_ptr,
+                    mask=mask_ldk_start & mask_d[None, :],
+                    other=0.0,
+                ).to(tl.float32)
+                # tl.static_print("log_decay_k_sub", log_decay_k_sub)
+                # tl.static_print("log_decay_k_start", log_decay_k_start)
+                # k_decay_sub = tl.exp(log_decay_k_start)
+                k_decay_sub = tl.exp(log_decay_k_sub - log_decay_k_start)
+                q = (q * k_decay_sub).to(q.dtype)
+
+            state = tl.dot(k_trans, v).to(q.dtype)
+            o_inter = tl.dot(q, state)
 
             # sub inter decay
-            log_decay_k_sub = tl.load(
-                ldk_sub_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0
-            )
-            log_decay_k_start = tl.load(
-                ldk_start_block_ptr, mask=mask_ldk_start & mask_d[None, :], other=0.0
-            )
-            k_decay_sub = tl.exp(log_decay_k_sub - log_decay_k_start)
-            q = (q * k_decay_sub).to(q.dtype)
+            if USE_DECAY_V:
+                o_inter = (o_inter * v_decay_sub).to(o_inter.dtype)
 
-        state = tl.dot(k_trans, v).to(q.dtype)
-        o_inter = tl.dot(q, state)
-
-        # sub inter decay
-        if USE_DECAY_V:
-            o_inter = (o_inter * v_decay_sub).to(o_inter.dtype)
-
-        o += o_inter
-        ##### end sub inter part
+            o += o_inter
+            ##### end sub inter part
 
         ##### start inter part
         q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
+        if SHARE_Q:
+            q = 1 - tl.exp(q)
+
         if USE_DECAY_K:
             ldk_inter = tl.load(
                 ldk_inter_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0
-            )
-            q = (q * tl.exp(ldk_inter)).to(q.dtype)
+            ).to(tl.float32)
+            dk_inter = tl.exp(ldk_inter)
+            q = (q * dk_inter).to(q.dtype)
 
         state_ = tl.load(state_block_ptr, mask=mask_de, other=0.0).to(q.dtype)
 
@@ -1877,8 +1902,13 @@ def _lavd_parallel_intra_inter(
     )
 
     if COMPUTE_DLD:
+        if SHARE_X:
+            x_start = LOG_DECAY_V
+        else:
+            x_start = X
+
         x_block_ptr = (
-            X
+            x_start
             + offset_vo
             + offset_block_vo
             + (offset_block_c + array_c[:, None]) * H * E
@@ -1887,10 +1917,12 @@ def _lavd_parallel_intra_inter(
         x = tl.load(x_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0).to(
             tl.float32
         )
+        if SHARE_X:
+            x = 1 - tl.exp(x)
         # N E
         dld = x * o
 
-        offset_dld = off_b * N * H * E + off_h * N * E
+        offset_dld = off_b * N * H * E + off_h * E
         offset_block_dld = offset_block_n * H * E
         dld_block_ptr = (
             DLOG_DECAY

@@ -287,8 +287,8 @@ def _compute_dld_state(
 
 @contiguous
 def compute_dld_with_cumsum_triton(
-    dld_q: torch.Tensor,  # B N H
-    dld_k: torch.Tensor,  # B N H
+    dld_q: torch.Tensor,  # B N H F
+    dld_k: torch.Tensor,  # B N H F
     final_state: Optional[torch.Tensor] = None,  # B H D E
     dfinal_state: Optional[torch.Tensor] = None,  # B H D E
     cu_seqlens: Optional[torch.Tensor] = None,  # M
