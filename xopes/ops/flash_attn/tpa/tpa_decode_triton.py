@@ -699,7 +699,7 @@ def tpa_decode_parallel_bn_triton(
     if b <= 16:
         BLOCK_M = 512
     else:
-        BLOCK_M = 4096
+        BLOCK_M = 1024
     NUM_BLOCK_M = triton.cdiv(m, BLOCK_M)
 
     def grid(meta):

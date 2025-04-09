@@ -78,6 +78,9 @@ folder=lightning_attention
 ##### flash_attn tpa_decode 250408
 folder=flash_attn/tpa_decode
 
+# ##### general decode 250409
+# folder=decode
+
 
 mkdir -p $folder/log
 
