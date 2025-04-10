@@ -7,11 +7,59 @@
 - land_p: Lightning attention with no decay
 - lasd_pl: Lightning attention with learnable scalar decay
 - lasd3_p: Lightning attention with data-dependent scalar decay
+- lavd_p: Lightning attention with vector decay
 - flash: Flash attention
 - lightning_p: Origin lightning attention parallel version
 - lightning_c: Origin lightning attention chunk loop version
 
 ## A100
+
+## Lavd
+```
+lasd-speed-fwd-batch4-head32-dim128-bf16:
+         n    LASD_P    LAVD_K_P
+0    256.0  0.105952    0.903906
+1    512.0  0.151954    1.812096
+2   1024.0  0.276857    3.573184
+3   2048.0  0.509805    7.177940
+4   4096.0  0.968731   14.205701
+5   8192.0  1.893681   28.543745
+6  16384.0  3.754395   57.177536
+7  32768.0  7.513659  113.492546
+
+lasd-speed-fwd-batch1-head16-dim128-bf16:
+         n    LASD_P   LAVD_K_P
+0    256.0  0.182470   0.306165
+1    512.0  0.188221   0.313143
+2   1024.0  0.181462   0.506407
+3   2048.0  0.191244   1.003623
+4   4096.0  0.203193   2.005624
+5   8192.0  0.361100   4.087552
+6  16384.0  0.662797   8.011382
+7  32768.0  1.271867  15.876357
+
+lasd-speed-bwd-batch4-head32-dim128-bf16:
+         n     LASD_P    LAVD_K_P
+0    256.0   0.547812    3.442780
+1    512.0   0.419833    6.896915
+2   1024.0   0.768914   13.638720
+3   2048.0   1.427155   27.276575
+4   4096.0   2.720578   54.294945
+5   8192.0   5.307867  108.696068
+6  16384.0  10.531890  216.557281
+7  32768.0  20.793329  433.737518
+
+lasd-speed-bwd-batch1-head16-dim128-bf16:
+         n    LASD_P   LAVD_K_P
+0    256.0  0.592537   1.074694
+1    512.0  0.495998   1.051748
+2   1024.0  0.521911   2.140586
+3   2048.0  0.514014   3.924379
+4   4096.0  0.567813   7.988188
+5   8192.0  1.039324  15.940058
+6  16384.0  1.946938  31.905451
+7  32768.0  3.734578  63.389889
+```
 
 ### Large Batch * Number of Heads
 
