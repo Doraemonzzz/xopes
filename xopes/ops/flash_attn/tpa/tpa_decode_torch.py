@@ -114,13 +114,14 @@ def tpa_decode_naive_torch(
 
 
 if __name__ == "__main__":
-    b, n, h, r, d, e = 2, 512, 32, 16, 128, 64
+    b, m, h, r, d, e = 2, 512, 32, 16, 128, 64
+    n = 1
     dtype = torch.bfloat16
     aq = torch.randn((b, n, h, r), dtype=dtype).cuda()
-    ak = torch.randn((b, n, h), dtype=dtype).cuda()
-    av = torch.randn((b, n, h), dtype=dtype).cuda()
+    ak = torch.randn((b, m, h), dtype=dtype).cuda()
+    av = torch.randn((b, m, h), dtype=dtype).cuda()
     bq = torch.randn((b, n, r, d), dtype=dtype).cuda()
-    bk = torch.randn((b, n, d), dtype=dtype).cuda()
-    bv = torch.randn((b, n, e), dtype=dtype).cuda()
+    bk = torch.randn((b, m, d), dtype=dtype).cuda()
+    bv = torch.randn((b, m, e), dtype=dtype).cuda()
     o = tpa_decode_torch(aq, ak, av, bq, bk, bv)
     print(o.shape)

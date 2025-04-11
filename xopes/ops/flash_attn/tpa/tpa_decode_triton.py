@@ -349,7 +349,6 @@ def _tpa_decode_parallel_bn(
 
     cnt = offset_m
     NUM_BLOCKS = tl.cdiv(BLOCK_M, BLOCK)
-    # NUM_BLOCKS = min(tl.cdiv(BLOCK_M, BLOCK), tl.cdiv(M - offset_m, BLOCK))
 
     o = tl.zeros([BLOCK_E, BLOCK_H], dtype=tl.float32)
     m = tl.full([BLOCK_H], -float("inf"), dtype=tl.float32)
