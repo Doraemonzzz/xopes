@@ -101,6 +101,7 @@ folder=lightning_attn/vector_decay
 # folder=lightning_attn/vector_decay/state
 # folder=lightning_attn/vector_decay/inter
 # folder=lightning_attn/vector_decay/intra
+# folder=lightning_attn/vector_decay/recurrence
 
 # ##### lasr 250407
 # folder=lightning_attn/simple_recurrence
@@ -112,7 +113,7 @@ mkdir -p $folder/log
 
 
 export XOPES_DEBUG=True
-# export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0
 export CUDA_VISIBLE_DEVICES=1
 # export TRITON_INTERPRET=1
 export TRITON_F32_DEFAULT=ieee

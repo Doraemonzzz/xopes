@@ -25,6 +25,10 @@ def get_params():
         (2, 270, 8, 64, 32),
         (2, 270, 8, 33, 16),
         (2, 1125, 8, 43, 33),
+        # LARGE D, E
+        (2, 1125, 8, 255, 257),
+        (2, 1025, 8, 255, 257),
+        # (2, 1025, 8, 255, 255),
     ]
     return shapes
 
@@ -179,6 +183,18 @@ def test(
         MAX_BLOCK_D=MAX_BLOCK_D,
         BLOCK_N=BLOCK_N,
     )
+
+    c = 16
+    m = (n + c - 1) // c
+    for i in range(m):
+        start = i * c
+        end = min(start + c, n)
+        print(
+            i,
+            torch.norm(
+                o_inter_torch[:, start:end, :, :] - o_inter_triton[:, start:end, :, :]
+            ).item(),
+        )
 
     # Get thresholds based on dtype
     atol, rtol = get_threshold(dtype)

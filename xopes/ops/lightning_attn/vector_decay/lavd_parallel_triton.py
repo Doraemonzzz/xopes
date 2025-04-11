@@ -600,73 +600,6 @@ def lavd_parallel_intra_inter(
     return o, dld
 
 
-# @contiguous
-# def lavd_parallel_intra_inter(
-#     q: torch.Tensor,
-#     k: Optional[torch.Tensor] = None,
-#     v: Optional[torch.Tensor] = None,
-#     states: Optional[torch.Tensor] = None,
-#     ldk: Optional[torch.Tensor] = None,
-#     ldv: Optional[torch.Tensor] = None,
-#     ldk_cumsum: Optional[torch.Tensor] = None,
-#     ldv_cumsum: Optional[torch.Tensor] = None,
-#     ldk_reverse_cumsum: Optional[torch.Tensor] = None,
-#     ldv_reverse_cumsum: Optional[torch.Tensor] = None,
-#     use_ldk: bool = True,
-#     use_ldv: bool = False,
-#     x: Optional[torch.Tensor] = None,  # use for dldv compute
-#     cu_seqlens: Optional[torch.LongTensor] = None,
-#     reverse: bool = False,
-#     trans: bool = False,
-#     MAX_BLOCK_N: int = 256,
-#     MAX_BLOCK_C: int = 256,
-#     MAX_BLOCK_E: int = 128,
-#     MAX_BLOCK_D: int = 128,
-#     BLOCK_N: int = 256,
-# ):
-#     o = lavd_parallel_intra(
-#         q=q,
-#         k=k,
-#         v=v,
-#         ldk=ldk,
-#         ldv=ldv,
-#         use_ldk=use_ldk,
-#         use_ldv=use_ldv,
-#         cu_seqlens=cu_seqlens,
-#         reverse=reverse,
-#         MAX_BLOCK_N=MAX_BLOCK_N,
-#         MAX_BLOCK_C=MAX_BLOCK_C,
-#         MAX_BLOCK_E=MAX_BLOCK_E,
-#         MAX_BLOCK_D=MAX_BLOCK_D,
-#         BLOCK_N=BLOCK_N,
-#     )
-
-#     o = lavd_parallel_inter(
-#         q=q,
-#         o=o,
-#         states=states,
-#         ldk=ldk,
-#         ldv=ldv,
-#         use_ldk=use_ldk,
-#         use_ldv=use_ldv,
-#         cu_seqlens=cu_seqlens,
-#         reverse=reverse,
-#         trans=trans,
-#         MAX_BLOCK_N=MAX_BLOCK_N,
-#         MAX_BLOCK_C=MAX_BLOCK_C,
-#         MAX_BLOCK_E=MAX_BLOCK_E,
-#         MAX_BLOCK_D=MAX_BLOCK_D,
-#         BLOCK_N=BLOCK_N,
-#     )
-
-#     compute_dld = use_ldv and x is not None
-#     if compute_dld:
-#         dld = x * o
-#     else:
-#         dld = None
-
-#     return o, dld
-
 ########## Fwd start ##########
 @contiguous
 def lavd_parallel_fwd(
@@ -720,14 +653,6 @@ def lavd_parallel_fwd(
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
-
-    # if XOPES_DEBUG:
-    #     BLOCK_N = 32
-    # else:
-    #     if n <= 512 or USE_CHUNK_LOOP:
-    #         BLOCK_N = min(MAX_BLOCK_N, 128)
-    #     else:
-    #         BLOCK_N = 256
 
     MAX_BLOCK_C = MAX_BLOCK_N
 
@@ -857,13 +782,6 @@ def lavd_parallel_bwd(
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
-    # if XOPES_DEBUG:
-    #     BLOCK_N = 32
-    # else:
-    #     if n <= 512 or USE_CHUNK_LOOP:
-    #         BLOCK_N = min(MAX_BLOCK_N, 128)
-    #     else:
-    #         BLOCK_N = 256
 
     MAX_BLOCK_C = MAX_BLOCK_N
 
