@@ -114,7 +114,7 @@ mkdir -p $folder/log
 
 export XOPES_DEBUG=True
 export CUDA_VISIBLE_DEVICES=0
-export CUDA_VISIBLE_DEVICES=1
+# export CUDA_VISIBLE_DEVICES=1
 # export TRITON_INTERPRET=1
 export TRITON_F32_DEFAULT=ieee
 

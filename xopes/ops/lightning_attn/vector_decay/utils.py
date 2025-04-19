@@ -192,7 +192,7 @@ def _lavd_parallel_state_parallel(
 
             k_trans = tl.load(k_trans_block_ptr, mask=mask_k_trans, other=0.0)
             if SHARE_K:
-                k_trans = 1 - tl.exp(k_trans)
+                k_trans = 1 - tl.exp(k_trans.to(tl.float32)).to(k_trans.dtype)
 
             if USE_DECAY_K:
                 log_decay_k_trans = tl.load(
@@ -204,7 +204,7 @@ def _lavd_parallel_state_parallel(
 
             v = tl.load(v_block_ptr, mask=mask_v, other=0.0)
             if SHARE_V:
-                v = 1 - tl.exp(v)
+                v = 1 - tl.exp(v.to(tl.float32)).to(v.dtype)
 
             if USE_DECAY_V:
                 log_decay_v = tl.load(ldv_block_ptr, mask=mask_v, other=0.0).to(
@@ -715,7 +715,7 @@ def _lavd_parallel_state_parallel_reduce(
 
                 k_trans = tl.load(k_trans_block_ptr, mask=mask_k_trans, other=0.0)
                 if SHARE_K:
-                    k_trans = 1 - tl.exp(k_trans)
+                    k_trans = 1 - tl.exp(k_trans.to(tl.float32)).to(k_trans.dtype)
 
                 if USE_DECAY_K:
                     log_decay_k_trans = tl.load(
@@ -727,7 +727,7 @@ def _lavd_parallel_state_parallel_reduce(
 
                 v = tl.load(v_block_ptr, mask=mask_v, other=0.0)
                 if SHARE_V:
-                    v = 1 - tl.exp(v)
+                    v = 1 - tl.exp(v.to(tl.float32)).to(v.dtype)
 
                 if USE_DECAY_V:
                     log_decay_v = tl.load(ldv_block_ptr, mask=mask_v, other=0.0).to(
@@ -907,7 +907,9 @@ def _lavd_parallel_intra(
             )
         else:
             offset_ldk_start = offset_block_c - 1
-            mask_ldk_start = offset_ldk_start >= 0
+            mask_ldk_start = (offset_ldk_start >= 0) & (
+                (offset_block_n + offset_ldk_start) < N
+            )
 
         ldk_start_block_ptr = (
             LOG_DECAY_K_CUMSUM
@@ -941,7 +943,9 @@ def _lavd_parallel_intra(
             )
         else:
             offset_ldv_start = offset_block_c - 1
-            mask_ldv_start = offset_ldv_start >= 0
+            mask_ldv_start = (offset_ldv_start >= 0) & (
+                (offset_block_n + offset_ldv_start) < N
+            )
 
         ldv_start_block_ptr = (
             LOG_DECAY_V_CUMSUM
@@ -982,7 +986,7 @@ def _lavd_parallel_intra(
     v = tl.load(v_block_ptr, mask=mask_kv[:, None] & mask_e[None, :], other=0.0)
 
     if SHARE_V:
-        v = 1 - tl.exp(v)
+        v = 1 - tl.exp(v.to(tl.float32)).to(v.dtype)
 
     if USE_DECAY_V:
         ldv_block_ptr = (
@@ -1098,13 +1102,15 @@ def _lavd_parallel_intra(
                 other=0.0,
             )
             if SHARE_K:
-                k_trans_elem = 1 - tl.exp(k_trans_elem)
+                k_trans_elem = 1 - tl.exp(k_trans_elem.to(tl.float32)).to(
+                    k_trans_elem.dtype
+                )
 
             v_elem = tl.load(
                 v_elem_block_ptr, mask=mask_elem_c[:, None] & mask_e[None, :], other=0.0
             )
             if SHARE_V:
-                v_elem = 1 - tl.exp(v_elem)
+                v_elem = 1 - tl.exp(v_elem.to(tl.float32)).to(v_elem.dtype)
 
             state_sub_intra += k_trans_elem * v_elem
 
@@ -1163,7 +1169,7 @@ def _lavd_parallel_intra(
         )
 
         if SHARE_K:
-            k_trans = 1 - tl.exp(k_trans)
+            k_trans = 1 - tl.exp(k_trans.to(tl.float32)).to(k_trans.dtype)
 
         if USE_DECAY_K:
             log_decay_k_trans_sum = tl.load(
@@ -1202,8 +1208,10 @@ def _lavd_parallel_intra(
 
         q_block_ptr += BLOCK_D
         if USE_DECAY_K:
+            ldk_trans_sum_block_ptr += BLOCK_D
             ldk_trans_block_ptr += BLOCK_D
             ldk_sub_block_ptr += BLOCK_D
+            ldk_start_block_ptr += BLOCK_D
 
     tl.store(
         o_block_ptr,
@@ -1401,8 +1409,6 @@ def _lavd_parallel_intra_inter(
     LOG_DECAY_V,  # B N H E
     LOG_DECAY_K_CUMSUM,  # B N H D
     LOG_DECAY_V_CUMSUM,  # B N H E
-    # LOG_DECAY_K_REVERSE_CUMSUM,  # B N H D
-    # LOG_DECAY_V_REVERSE_CUMSUM,  # B N H E
     X,  # B N H E
     DLOG_DECAY,  # B N H E
     CU_SEQLENS,  # M
@@ -1546,7 +1552,9 @@ def _lavd_parallel_intra_inter(
             )
         else:
             offset_ldk_start = offset_block_c - 1
-            mask_ldk_start = offset_ldk_start >= 0
+            mask_ldk_start = (offset_ldk_start >= 0) & (
+                (offset_block_n + offset_ldk_start) < N
+            )
 
         ldk_start_block_ptr = (
             LOG_DECAY_K_CUMSUM
@@ -1583,7 +1591,9 @@ def _lavd_parallel_intra_inter(
             )
         else:
             offset_ldv_start = offset_block_c - 1
-            mask_ldv_start = offset_ldv_start >= 0
+            mask_ldv_start = (offset_ldv_start >= 0) & (
+                (offset_block_n + offset_ldv_start) < N
+            )
 
         ldv_start_block_ptr = (
             LOG_DECAY_V_CUMSUM
@@ -1621,7 +1631,7 @@ def _lavd_parallel_intra_inter(
     v = tl.load(v_block_ptr, mask=mask_kv[:, None] & mask_e[None, :], other=0.0)
 
     if SHARE_V:
-        v = 1 - tl.exp(v)
+        v = 1 - tl.exp(v.to(tl.float32)).to(v.dtype)
 
     if USE_DECAY_V:
         ldv_block_ptr = (
@@ -1756,13 +1766,15 @@ def _lavd_parallel_intra_inter(
                 other=0.0,
             )
             if SHARE_K:
-                k_trans_elem = 1 - tl.exp(k_trans_elem)
+                k_trans_elem = 1 - tl.exp(k_trans_elem.to(tl.float32)).to(
+                    k_trans_elem.dtype
+                )
 
             v_elem = tl.load(
                 v_elem_block_ptr, mask=mask_elem_c[:, None] & mask_e[None, :], other=0.0
             )
             if SHARE_V:
-                v_elem = 1 - tl.exp(v_elem)
+                v_elem = 1 - tl.exp(v_elem.to(tl.float32)).to(v_elem.dtype)
 
             state_sub_intra += k_trans_elem * v_elem
 
@@ -1772,7 +1784,9 @@ def _lavd_parallel_intra_inter(
                 other=0.0,
             )
             if SHARE_Q:
-                q_trans_elem = 1 - tl.exp(q_trans_elem)
+                q_trans_elem = 1 - tl.exp(q_trans_elem.to(tl.float32)).to(
+                    q_trans_elem.dtype
+                )
             # BLOCK_D 1, BLOCK_D BLOCK_E -> 1 BLOCK_E
             o_sub_intra = tl.sum(q_trans_elem * state_sub_intra, axis=0, keep_dims=True)
             if REVERSE:
@@ -1807,12 +1821,11 @@ def _lavd_parallel_intra_inter(
                 ldv_elem_block_ptr += stride_elem * H * E
         ##### end sub intra part
 
-        # if BLOCK_N > BLOCK_C:
         ##### start sub inter part
         q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
 
         if SHARE_Q:
-            q = 1 - tl.exp(q)
+            q = 1 - tl.exp(q.to(tl.float32)).to(q.dtype)
 
         k_trans_block_ptr = (
             k_start
@@ -1827,7 +1840,7 @@ def _lavd_parallel_intra_inter(
         )
 
         if SHARE_K:
-            k_trans = 1 - tl.exp(k_trans)
+            k_trans = 1 - tl.exp(k_trans.to(tl.float32)).to(k_trans.dtype)
 
         if USE_DECAY_K:
             log_decay_k_trans_sum = tl.load(
@@ -1852,12 +1865,7 @@ def _lavd_parallel_intra_inter(
                 mask=mask_ldk_start & mask_d[None, :],
                 other=0.0,
             ).to(tl.float32)
-            # tl.static_print("log_decay_k_sub", log_decay_k_sub)
-            # tl.static_print("log_decay_k_start", log_decay_k_start)
-            # k_decay_sub = tl.exp(log_decay_k_start)
             k_decay_sub = tl.exp(log_decay_k_sub - log_decay_k_start)
-            # q = (q * k_decay_sub).to(q.dtype)
-
             state = tl.dot(k_trans, v).to(q.dtype)
             o_inter = tl.dot((q * k_decay_sub).to(q.dtype), state)
         else:
@@ -1892,8 +1900,11 @@ def _lavd_parallel_intra_inter(
         q_block_ptr += BLOCK_D
         if USE_DECAY_K:
             ldk_trans_block_ptr += BLOCK_D
-            ldk_sub_block_ptr += BLOCK_D
+            ldk_trans_sum_block_ptr += BLOCK_D
             ldk_inter_block_ptr += BLOCK_D
+            ldk_sub_block_ptr += BLOCK_D
+            ldk_start_block_ptr += BLOCK_D
+
         if TRANS:
             state_block_ptr += BLOCK_D
         else:
@@ -1918,11 +1929,9 @@ def _lavd_parallel_intra_inter(
             + (offset_block_c + array_c[:, None]) * H * E
             + (offset_block_e + array_e[None, :])
         )
-        x = tl.load(x_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0).to(
-            tl.float32
-        )
+        x = tl.load(x_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0)
         if SHARE_X:
-            x = 1 - tl.exp(x)
+            x = 1 - tl.exp(x.to(tl.float32)).to(x.dtype)
         # N E
         dld = x * o
 

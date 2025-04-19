@@ -4,12 +4,6 @@ from functools import lru_cache
 import torch
 import triton
 
-XOPES_DEBUG = eval(os.environ.get("XOPES_DEBUG", default="False"))
-if XOPES_DEBUG:
-    XOPES_DTYPE = "ieee"
-else:
-    XOPES_DTYPE = "tf32"
-
 HEAD_DIM = 128
 
 
@@ -36,4 +30,15 @@ def get_sm_count():
     return info["multiprocessor_count"]
 
 
+@lru_cache(maxsize=None)
+def get_xopes_debug():
+    xopes_debug = eval(os.environ.get("XOPES_DEBUG", default="False"))
+    if xopes_debug:
+        xopes_dtype = "ieee"
+    else:
+        xopes_dtype = "tf32"
+    return xopes_debug, xopes_dtype
+
+
 SM_COUNT = get_sm_count()
+XOPES_DEBUG, XOPES_DTYPE = get_xopes_debug()

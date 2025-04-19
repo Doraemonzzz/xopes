@@ -15,7 +15,7 @@ from xopes.ops.lightning_attn.vector_decay.utils import (
     _lavd_parallel_state_reduce,
 )
 from xopes.utils import contiguous
-from xopes.utils.constant import SM_COUNT
+from xopes.utils.constant import SM_COUNT, XOPES_DEBUG
 
 
 @contiguous
@@ -649,7 +649,7 @@ def lavd_parallel_fwd(
     NUM_PARALLEL_BLOCKS = b * h
     USE_CHUNK_LOOP = NUM_PARALLEL_BLOCKS >= SM_COUNT or use_chunk_loop
 
-    if n <= 512 or USE_CHUNK_LOOP:
+    if n <= 512 or USE_CHUNK_LOOP or XOPES_DEBUG:
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
@@ -778,7 +778,7 @@ def lavd_parallel_bwd(
     share_k = k is None
     share_v = v is None
 
-    if n <= 512 or USE_CHUNK_LOOP:
+    if n <= 512 or USE_CHUNK_LOOP or XOPES_DEBUG:
         BLOCK_N = min(MAX_BLOCK_N, 128)
     else:
         BLOCK_N = 256
