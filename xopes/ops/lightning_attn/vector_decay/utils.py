@@ -776,7 +776,7 @@ def _lavd_parallel_state_parallel_reduce(
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
 )
 @triton.jit
 def _lavd_parallel_intra(
@@ -961,7 +961,7 @@ def _lavd_parallel_intra(
         log_decay_v_start = tl.load(
             ldv_start_block_ptr, mask=mask_ldv_start & mask_e[None, :], other=0.0
         ).to(tl.float32)
-        v_decay_sub = tl.exp(log_decay_v_sub - log_decay_v_start)
+        tl.exp(log_decay_v_sub - log_decay_v_start)
 
     o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
 
@@ -1153,55 +1153,55 @@ def _lavd_parallel_intra(
                 ldv_elem_block_ptr += stride_elem * H * E
         ##### end sub intra part
 
-        ##### start sub inter part
-        q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
+        # ##### start sub inter part
+        # q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
 
-        k_trans_block_ptr = (
-            k_start
-            + offset_qk
-            + offset_block_qk
-            + array_kv[None, :] * H * D
-            + (i * BLOCK_D + array_d)[:, None]
-        )
+        # k_trans_block_ptr = (
+        #     k_start
+        #     + offset_qk
+        #     + offset_block_qk
+        #     + array_kv[None, :] * H * D
+        #     + (i * BLOCK_D + array_d)[:, None]
+        # )
 
-        k_trans = tl.load(
-            k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
-        )
+        # k_trans = tl.load(
+        #     k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
+        # )
 
-        if SHARE_K:
-            k_trans = 1 - tl.exp(k_trans.to(tl.float32)).to(k_trans.dtype)
+        # if SHARE_K:
+        #     k_trans = 1 - tl.exp(k_trans.to(tl.float32)).to(k_trans.dtype)
 
-        if USE_DECAY_K:
-            log_decay_k_trans_sum = tl.load(
-                ldk_trans_sum_block_ptr, mask=ld_sum_mask & mask_d[:, None]
-            ).to(tl.float32)
+        # if USE_DECAY_K:
+        #     log_decay_k_trans_sum = tl.load(
+        #         ldk_trans_sum_block_ptr, mask=ld_sum_mask & mask_d[:, None]
+        #     ).to(tl.float32)
 
-            log_decay_k_trans = tl.load(
-                ldk_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
-            ).to(tl.float32)
-            log_decay_k_trans = log_decay_k_trans_sum - log_decay_k_trans
-            k_trans_decay = tl.exp(log_decay_k_trans)
-            k_trans = (k_trans * k_trans_decay).to(k_trans.dtype)
+        #     log_decay_k_trans = tl.load(
+        #         ldk_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
+        #     ).to(tl.float32)
+        #     log_decay_k_trans = log_decay_k_trans_sum - log_decay_k_trans
+        #     k_trans_decay = tl.exp(log_decay_k_trans)
+        #     k_trans = (k_trans * k_trans_decay).to(k_trans.dtype)
 
-            # sub inter decay
-            log_decay_k_sub = tl.load(
-                ldk_sub_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0
-            )
-            log_decay_k_start = tl.load(
-                ldk_start_block_ptr, mask=mask_ldk_start & mask_d[None, :], other=0.0
-            )
-            k_decay_sub = tl.exp(log_decay_k_sub - log_decay_k_start)
-            q = (q * k_decay_sub).to(q.dtype)
+        #     # sub inter decay
+        #     log_decay_k_sub = tl.load(
+        #         ldk_sub_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0
+        #     ).to(tl.float32)
+        #     log_decay_k_start = tl.load(
+        #         ldk_start_block_ptr, mask=mask_ldk_start & mask_d[None, :], other=0.0
+        #     ).to(tl.float32)
+        #     k_decay_sub = tl.exp(log_decay_k_sub - log_decay_k_start)
+        #     q = (q * k_decay_sub).to(q.dtype)
 
-        state = tl.dot(k_trans, v).to(q.dtype)
-        o_inter = tl.dot(q, state)
+        # state = tl.dot(k_trans, v).to(q.dtype)
+        # o_inter = tl.dot(q, state)
 
-        # sub inter decay
-        if USE_DECAY_V:
-            o_inter = (o_inter * v_decay_sub).to(o_inter.dtype)
+        # # sub inter decay
+        # if USE_DECAY_V:
+        #     o_inter = (o_inter * v_decay_sub).to(o_inter.dtype)
 
-        o += o_inter
-        ##### end sub inter part
+        # o += o_inter
+        # ##### end sub inter part
 
         # !!! important
         tl.debug_barrier()
@@ -1396,7 +1396,7 @@ def _lavd_parallel_inter(
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
 )
 @triton.jit
 def _lavd_parallel_intra_inter(
@@ -1955,12 +1955,14 @@ def _lavd_parallel_intra_inter(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": [16, 128],
+            "BLOCK_C": [
+                16,
+            ],
             "BLOCK_D": [64, 128],
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
 )
 @triton.jit
 def _lavd_parallel_sub_intra(
@@ -2100,7 +2102,9 @@ def _lavd_parallel_sub_intra(
         if USE_DECAY_K:
             ld_qk_block_ptr += BLOCK_D
 
-    v = tl.load(v_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0)
+    v = tl.load(v_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0).to(
+        tl.float32
+    )
     if SHARE_V:
         v = 1 - tl.exp(v.to(tl.float32)).to(v.dtype)
 
@@ -2131,7 +2135,7 @@ def _lavd_parallel_sub_intra(
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
 )
 @triton.jit
 def _lavd_parallel_sub_intra_attn(
@@ -2261,7 +2265,7 @@ def _lavd_parallel_sub_intra_attn(
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
 )
 @triton.jit
 def _lavd_parallel_sub_intra_o(
@@ -2350,14 +2354,16 @@ def _lavd_parallel_sub_intra_o(
 
     a_block_ptr = A + offset_a + array_c[:, None] * BLOCK_C + array_c[None, :]
 
-    a = tl.load(a_block_ptr)
+    a = tl.load(a_block_ptr).to(tl.float32)
 
     if REVERSE:
         mask_a = (array_c[:, None] <= array_c[None, :])[:, :, None]
     else:
         mask_a = (array_c[:, None] >= array_c[None, :])[:, :, None]
 
-    v = tl.load(v_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0)
+    v = tl.load(v_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0).to(
+        tl.float32
+    )
     if SHARE_V:
         v = 1 - tl.exp(v.to(tl.float32)).to(v.dtype)
 

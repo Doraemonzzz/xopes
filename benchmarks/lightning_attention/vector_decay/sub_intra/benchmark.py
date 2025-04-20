@@ -6,9 +6,10 @@ import torch
 import torch.nn.functional as F
 import triton
 
-from xopes.ops.lightning_attn.baseline import chunk_gla_wrapper, flash_attn_wrapper
-from xopes.ops.lightning_attn.vector_decay.lavd_chunk_parallel_triton import (
-    lavd_chunk_parallel_triton,
+from xopes.ops.lightning_attn.vector_decay.lavd_parallel_triton import (
+    lavd_parallel_intra,
+    lavd_parallel_sub_intra,
+    lavd_parallel_sub_intra_sep,
 )
 from xopes.utils import get_memory
 
@@ -21,54 +22,69 @@ dtype_map = {
 }
 
 
-def lavd_dk(q, k, v, ldk, ldv):
-    return lavd_chunk_parallel_triton(q, k, v, ldk=ldk)[0]
+def lavd_sub_intra_dk(q, k, v, ldk, ldv):
+    return lavd_parallel_sub_intra(q, k, v, ldk=ldk)
 
 
-def lavd_dv(q, k, v, ldk, ldv):
-    return lavd_chunk_parallel_triton(q, k, v, ldv=ldv)[0]
+def lavd_sub_intra_sep_dk(q, k, v, ldk, ldv):
+    return lavd_parallel_sub_intra_sep(q, k, v, ldk=ldk)
 
 
-def lavd_dk_dv(q, k, v, ldk, ldv):
-    return lavd_chunk_parallel_triton(q, k, v, ldk=ldk, ldv=ldv)[0]
+def lavd_intra_dk(q, k, v, ldk, ldv):
+    return lavd_parallel_intra(q, k, v, ldk=ldk)
+
+
+def lavd_sub_intra_dk_dv(q, k, v, ldk, ldv):
+    return lavd_parallel_sub_intra(q, k, v, ldk=ldk, ldv=ldv)
+
+
+def lavd_sub_intra_sep_dk_dv(q, k, v, ldk, ldv):
+    return lavd_parallel_sub_intra_sep(q, k, v, ldk=ldk, ldv=ldv)
+
+
+def lavd_intra_dk_dv(q, k, v, ldk, ldv):
+    return lavd_parallel_intra(q, k, v, ldk=ldk, ldv=ldv)
 
 
 module_map = {
-    "lavd_dk": lavd_dk,
-    "lavd_dv": lavd_dv,
-    "lavd_dk_dv": lavd_dk_dv,
-    "flash": flash_attn_wrapper,
-    "gla": chunk_gla_wrapper,
+    "lavd_sub_intra_dk": lavd_sub_intra_dk,
+    "lavd_sub_intra_sep_dk": lavd_sub_intra_sep_dk,
+    "lavd_intra_dk": lavd_intra_dk,
+    "lavd_sub_intra_dk_dv": lavd_sub_intra_dk_dv,
+    "lavd_sub_intra_sep_dk_dv": lavd_sub_intra_sep_dk_dv,
+    "lavd_intra_dk_dv": lavd_intra_dk_dv,
 }
 
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        # x_vals=[2**i for i in range(8, 14)],  # Sequence lengths from 256 to 8192
-        x_vals=[2**i for i in range(8, 9)],
+        x_vals=[2**i for i in range(8, 14)],  # Sequence lengths from 256 to 8192
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            "lavd_dk",
-            # "lavd_dv",
-            # "lavd_dk_dv",
-            "flash",
-            "gla",
+            "lavd_sub_intra_dk",
+            "lavd_sub_intra_sep_dk",
+            "lavd_intra_dk",
+            "lavd_sub_intra_dk_dv",
+            "lavd_sub_intra_sep_dk_dv",
+            "lavd_intra_dk_dv",
         ],
         line_names=[
+            "LAVD_S1_DK",
+            "LAVD_S2_DK",
             "LAVD_DK",
-            # "LAVD_DV",
-            # "LAVD_DK_DV",
-            "Flash",
-            "GLA",
+            "LAVD_S1_DK_DV",
+            "LAVD_S2_DK_DV",
+            "LAVD_DK_DV",
         ],
         styles=[
             ("red", "-"),
-            # ("blue", "-"),
-            # ("green", "-"),
+            ("blue", "-"),
+            ("green", "-"),
             ("orange", "-"),
             ("purple", "-"),
+            ("yellow", "-"),
         ],
         plot_name=f"lavd-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
@@ -126,15 +142,6 @@ def benchmark(
         print(f"Error setting up {provider}: {e}")
         fn = None
 
-    if mode == "bwd":
-        try:
-            o = fn()
-            do = torch.randn_like(o)
-            fn = lambda: o.backward(do, retain_graph=True)
-        except Exception as e:
-            print(f"Error in speed benchmark for {provider}: {e}")
-            fn = None
-
     if bench_type == "speed":
         try:
             ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
@@ -160,7 +167,7 @@ def benchmark(
 
 
 start_time = time.time()
-save_path = "stat/lavd"
+save_path = "stat/lavd/sub_intra"
 os.makedirs(save_path, exist_ok=True)
 benchmark.run(save_path=save_path, print_data=True)
 end_time = time.time()

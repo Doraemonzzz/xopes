@@ -81,6 +81,8 @@ folder=lightning_attention
 # ##### general decode 250409
 # folder=decode
 
+##### vector_decay 250420
+folder=lightning_attention/vector_decay/sub_intra
 
 mkdir -p $folder/log
 
