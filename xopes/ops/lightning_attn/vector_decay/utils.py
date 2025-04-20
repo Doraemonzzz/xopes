@@ -1949,3 +1949,176 @@ def _lavd_parallel_intra_inter(
             dld.to(dld_block_ptr.dtype.element_ty),
             mask=mask_c[:, None] & mask_e[None, :],
         )
+
+
+@triton.autotune(
+    generate_configs(
+        {
+            "num_warps": [4, 8, 16, 32],
+            # "BLOCK_C": [16, 128],
+            "BLOCK_C": [16],
+            "BLOCK_D": [64, 128],
+            "BLOCK_E": [64, 128],
+        }
+    ),
+    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+)
+@triton.jit
+def _lavd_parallel_sub_intra(
+    Q,  # B N H D
+    K,  # B N H D
+    V,  # B N H E
+    O,  # B N H E
+    LOG_DECAY_K,  # B N H D
+    LOG_DECAY_V,  # B N H E
+    LOG_DECAY_K_CUMSUM,  # B N H D
+    LOG_DECAY_V_CUMSUM,  # B N H E
+    CU_SEQLENS,  # M
+    B: tl.constexpr,
+    N: tl.constexpr,
+    H: tl.constexpr,
+    D: tl.constexpr,
+    E: tl.constexpr,
+    USE_DECAY_K: tl.constexpr,
+    USE_DECAY_V: tl.constexpr,
+    USE_CU_SEQLENS: tl.constexpr,
+    USE_PAD: tl.constexpr,
+    REVERSE: tl.constexpr,
+    SHARE_K: tl.constexpr,
+    SHARE_V: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
+):
+    tl.cdiv(N, BLOCK_N)
+    NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
+
+    off_bh = tl.program_id(0)
+    off_b = off_bh // H
+    off_h = off_bh % H
+    off_c = tl.program_id(1)
+    off_block_e = tl.program_id(2)
+
+    # compute offset
+    offset_qk = off_b * N * H * D + off_h * D
+    offset_vo = off_b * N * H * E + off_h * E
+    offset_block_c = off_c * BLOCK_C
+    offset_block_e = off_block_e * BLOCK_E
+
+    array_c = tl.arange(0, BLOCK_C)
+    array_d = tl.arange(0, BLOCK_D)
+    array_e = tl.arange(0, BLOCK_E)
+
+    # compute mask
+    mask_c = (offset_block_c + array_c) < N
+    mask_e = (offset_block_e + array_e) < E
+
+    # compute block ptr
+    q_block_ptr = (
+        Q + offset_qk + (offset_block_c + array_c[:, None]) * H * D + array_d[None, :]
+    )
+
+    if SHARE_K:
+        k_start = LOG_DECAY_K
+    else:
+        k_start = K
+
+    k_block_ptr = (
+        k_start
+        + offset_qk
+        + (offset_block_c + array_c[:, None]) * H * D
+        + array_d[None, :]
+    )
+
+    if USE_DECAY_K:
+        ld_qk_block_ptr = (
+            LOG_DECAY_K_CUMSUM
+            + offset_qk
+            + (offset_block_c + array_c[:, None]) * H * D
+            + array_d[None, :]
+        )
+
+    if SHARE_V:
+        v_start = LOG_DECAY_V
+    else:
+        v_start = V
+
+    if USE_DECAY_V:
+        ldv_block_ptr = (
+            LOG_DECAY_V_CUMSUM
+            + offset_vo
+            + (offset_block_c + array_c[:, None]) * H * E
+            + (offset_block_e + array_e)[None, :]
+        )
+
+    v_block_ptr = (
+        v_start
+        + offset_vo
+        + (offset_block_c + array_c[:, None]) * H * E
+        + (offset_block_e + array_e)[None, :]
+    )
+
+    o_block_ptr = (
+        O
+        + offset_vo
+        + (offset_block_c + array_c[:, None]) * H * E
+        + (offset_block_e + array_e)[None, :]
+    )
+
+    if REVERSE:
+        mask_a = (array_c[:, None] <= array_c[None, :])[:, :, None]
+    else:
+        mask_a = (array_c[:, None] >= array_c[None, :])[:, :, None]
+
+    # attention matrix
+    a = tl.zeros([BLOCK_C, BLOCK_C], dtype=tl.float32)
+    for i in range(NUM_BLOCK_D):
+        mask_d = (i * BLOCK_D + array_d) < D
+
+        q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
+        k = tl.load(k_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
+
+        if SHARE_K:
+            k = 1 - tl.exp(k.to(tl.float32)).to(k.dtype)
+
+        # BLOCK_C BLOCK_D, BLOCK_C BLOCK_D -> BLOCK_C BLOCK_C BLOCK_D
+        score = q[:, None, :] * k[None, :, :]
+
+        if USE_DECAY_K:
+            ld_qk = tl.load(
+                ld_qk_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0
+            ).to(tl.float32)
+            ld_qk_diff = ld_qk[:, None, :] - ld_qk[None, :, :]
+            decay_qk_diff = tl.exp(ld_qk_diff)
+            score *= decay_qk_diff
+
+        score = tl.where(mask_a, score, 0.0)
+        a += tl.sum(score, axis=-1)
+
+        q_block_ptr += BLOCK_D
+        k_block_ptr += BLOCK_D
+        if USE_DECAY_K:
+            ld_qk_block_ptr += BLOCK_D
+
+    v = tl.load(v_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0)
+    if SHARE_V:
+        v = 1 - tl.exp(v.to(tl.float32)).to(v.dtype)
+
+    if not USE_DECAY_V:
+        o = tl.dot(a, v)
+    else:
+        ld_vo = tl.load(
+            ldv_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
+        ).to(tl.float32)
+        ld_vo_diff = ld_vo[:, None, :] - ld_vo[None, :, :]
+        decay_vo_diff = tl.exp(ld_vo_diff)
+        a_ = a[:, :, None] * decay_vo_diff
+        a_ = tl.where(mask_a, a_, 0.0)
+        o = tl.sum(a_ * v[None, :, :], axis=1)
+
+    tl.store(
+        o_block_ptr,
+        o.to(o_block_ptr.dtype.element_ty),
+        mask=mask_c[:, None] & mask_e[None, :],
+    )
