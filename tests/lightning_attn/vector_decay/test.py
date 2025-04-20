@@ -55,6 +55,7 @@ def get_params():
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True, False])
 @pytest.mark.parametrize("use_chunk_loop", [True, False])
+
 # @pytest.mark.parametrize("use_initial_state", [True,])
 # @pytest.mark.parametrize(
 #     "use_ldk",
@@ -70,15 +71,17 @@ def get_params():
 # )
 # @pytest.mark.parametrize(
 #     "share_k",
-#     [False,],
+#     [True,],
 # )
 # @pytest.mark.parametrize(
 #     "share_v",
-#     [False, ],
+#     [True, ],
 # )
 # @pytest.mark.parametrize("use_varlen", [False])
 # @pytest.mark.parametrize("no_dstate", [False])
 # @pytest.mark.parametrize("use_chunk_loop", [False])
+
+
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test(
     shape,

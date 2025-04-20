@@ -102,7 +102,7 @@ folder=lightning_attn/vector_decay
 # folder=lightning_attn/vector_decay/inter
 # folder=lightning_attn/vector_decay/intra
 # folder=lightning_attn/vector_decay/recurrence
-folder=lightning_attn/vector_decay/sub_intra
+# folder=lightning_attn/vector_decay/sub_intra
 
 # ##### lasr 250407
 # folder=lightning_attn/simple_recurrence

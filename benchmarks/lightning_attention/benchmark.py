@@ -90,8 +90,8 @@ configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         # x_vals=[2**i for i in range(8, 16)],
-        # x_vals=[2**i for i in range(8, 11)],
-        x_vals=[2**i for i in range(8, 9)],
+        x_vals=[2**i for i in range(8, 11)],
+        # x_vals=[2**i for i in range(8, 9)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",

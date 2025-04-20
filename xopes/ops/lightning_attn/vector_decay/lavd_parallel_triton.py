@@ -9,7 +9,7 @@ from xopes.ops.lightning_attn.log_decay import compute_dld_with_cumsum_fn
 from xopes.ops.lightning_attn.vector_decay.utils import (
     _lavd_parallel_inter,
     _lavd_parallel_intra,
-    _lavd_parallel_intra_inter,
+    _lavd_parallel_intra_inter_no_loop,
     _lavd_parallel_state_parallel,
     _lavd_parallel_state_parallel_reduce,
     _lavd_parallel_state_reduce,
@@ -784,7 +784,8 @@ def lavd_parallel_intra_inter(
     share_k = k is None
     share_v = v is None
 
-    _lavd_parallel_intra_inter[grid](
+    # _lavd_parallel_intra_inter[grid](
+    _lavd_parallel_intra_inter_no_loop[grid](
         Q=q,
         K=k,
         V=v,
@@ -1127,6 +1128,8 @@ def lavd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
+    print("use_ldk", use_ldk)
+    print("use_ldv", use_ldv)
     dk, dldk_k = lavd_parallel_intra_inter(
         q=v,  # b n h e
         k=do,  # b n h e

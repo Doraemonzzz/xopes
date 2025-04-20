@@ -82,11 +82,11 @@ folder=lightning_attention
 # folder=decode
 
 ##### vector_decay 250420
-folder=lightning_attention/vector_decay/sub_intra
+# folder=lightning_attention/vector_decay/sub_intra
 
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0
-# export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=1
 
 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log
