@@ -5,6 +5,7 @@ import triton
 
 from xopes.ops.lightning_attn.vector_decay.lavd_parallel_triton import (
     lavd_parallel_sub_intra,
+    lavd_parallel_sub_intra_sep,
 )
 from xopes.ops.lightning_attn.vector_decay.torch_utils import lavd_intra_torch
 from xopes.utils import get_threshold
@@ -82,8 +83,6 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
             ldv = F.logsigmoid(
                 torch.randn(b, n, h, e, dtype=dtype, device=device)
             ).requires_grad_()
-
-            # ldv = torch.zeros(b, n, h, e, dtype=dtype, device=device).requires_grad_()
         else:
             ldv = None
 
@@ -93,7 +92,6 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
     BLOCK_C = 16
-    # BLOCK_N = BLOCK_C
 
     # Forward pass with PyTorch reference implementation
     o_torch = lavd_intra_torch(
@@ -125,21 +123,57 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
         BLOCK_N=BLOCK_N,
     )
 
+    o_triton_sep = lavd_parallel_sub_intra_sep(
+        q=q,
+        k=k,
+        v=v,
+        ldk=ldk,
+        ldv=ldv,
+        use_ldk=use_ldk,
+        use_ldv=use_ldv,
+        reverse=reverse,
+        MAX_BLOCK_N=MAX_BLOCK_N,
+        MAX_BLOCK_C=MAX_BLOCK_C,
+        MAX_BLOCK_E=MAX_BLOCK_E,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+        BLOCK_N=BLOCK_N,
+        BLOCK_C=BLOCK_C,
+    )
+
     # Get thresholds based on dtype for numerical comparison
     atol, rtol = get_threshold(dtype)
 
     # Print test configuration and results
     print(f"\nShape: {shape}, E: {e}, reverse: {reverse}, dtype: {dtype}")
-    print("o diff max: ", torch.abs(o_torch - o_triton).max().item())
-    print("o diff norm: ", torch.norm(o_torch - o_triton).item())
+    print(
+        "o diff max (torch parallel Vs triton parallel): ",
+        torch.abs(o_torch - o_triton).max().item(),
+    )
+    print(
+        "o diff norm (torch parallel Vs triton parallel): ",
+        torch.norm(o_torch - o_triton).item(),
+    )
+
+    print(
+        "o diff max (torch parallel Vs triton parallel sep): ",
+        torch.abs(o_torch - o_triton_sep).max().item(),
+    )
+    print(
+        "o diff norm (torch parallel Vs triton parallel sep): ",
+        torch.norm(o_torch - o_triton_sep).item(),
+    )
 
     l = (n + BLOCK_C - 1) // BLOCK_C
     for i in range(l):
         start = i * BLOCK_C
         end = min(start + BLOCK_C, n)
         print(
-            f"block {i} diff norm: {torch.norm(o_torch[:, start:end] - o_triton[:, start:end]).item()}"
+            f"block {i} diff norm (torch parallel Vs triton parallel): {torch.norm(o_torch[:, start:end] - o_triton[:, start:end]).item()}"
+        )
+        print(
+            f"block {i} diff norm (torch parallel Vs triton parallel sep): {torch.norm(o_torch[:, start:end] - o_triton_sep[:, start:end]).item()}"
         )
 
     # Assert that the results are close enough
     assert torch.allclose(o_torch, o_triton, atol=atol, rtol=rtol)
+    assert torch.allclose(o_torch, o_triton_sep, atol=atol, rtol=rtol)
