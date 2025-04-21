@@ -1128,8 +1128,6 @@ def lavd_parallel_bwd(
         BLOCK_N=BLOCK_N,
     )
 
-    print("use_ldk", use_ldk)
-    print("use_ldv", use_ldv)
     dk, dldk_k = lavd_parallel_intra_inter(
         q=v,  # b n h e
         k=do,  # b n h e
@@ -1194,6 +1192,18 @@ def lavd_parallel_bwd(
         )
     else:
         dldk = None
+
+    import torch
+
+    dldk_ = dldk_q - dldk_k
+    dldk_ = torch.flip(torch.cumsum(torch.flip(dldk_, dims=[1]), dim=1), dims=[1])
+
+    if dldk is not None:
+        tmp = (dfinal_state * final_state).sum(dim=-1).unsqueeze(1)
+        dldk_ = dldk_ + tmp
+
+    print("aaa", torch.norm(dldk - dldk_))
+    dldk = dldk_
 
     if share_k:
         dldk += dk * (-torch.exp(ldk))

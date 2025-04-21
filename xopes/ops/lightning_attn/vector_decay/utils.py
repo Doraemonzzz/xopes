@@ -2292,7 +2292,7 @@ def _lavd_parallel_intra_inter_no_loop(
         )
 
         if SHARE_K:
-            k_sub_intra = 1 - tl.exp(k_sub_intra.to(tl.float32))
+            k_sub_intra = 1 - tl.exp(k_sub_intra.to(tl.float32)).to(k_sub_intra.dtype)
 
         # BLOCK_C BLOCK_D, BLOCK_C BLOCK_D -> BLOCK_C BLOCK_C BLOCK_D
         score = q[:, None, :] * k_sub_intra[None, :, :]
@@ -2398,12 +2398,12 @@ def _lavd_parallel_intra_inter_no_loop(
     ##### start sub intra part
     v_sub_intra = tl.load(
         v_sub_intra_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
-    ).to(tl.float32)
+    )
     if SHARE_V:
-        v_sub_intra = 1 - tl.exp(v_sub_intra)
+        v_sub_intra = 1 - tl.exp(v_sub_intra.to(tl.float32)).to(v_sub_intra.dtype)
 
     if not USE_DECAY_V:
-        o += tl.dot(a, v_sub_intra)
+        o += tl.dot(a.to(v_sub_intra.dtype), v_sub_intra)
     else:
         ld_vo_sub_intra = tl.load(
             ldv_sub_intra_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0

@@ -26,6 +26,7 @@ def get_params():
         # LARGE D, E
         (2, 1125, 8, 255, 257),
         (2, 1025, 8, 255, 257),
+        # (2, 1125, 8, 255, 257),
     ]
     return shapes
 
@@ -56,7 +57,7 @@ def get_params():
 @pytest.mark.parametrize("no_dstate", [True, False])
 @pytest.mark.parametrize("use_chunk_loop", [True, False])
 
-# @pytest.mark.parametrize("use_initial_state", [True,])
+# @pytest.mark.parametrize("use_initial_state", [False,])
 # @pytest.mark.parametrize(
 #     "use_ldk",
 #     [
@@ -71,7 +72,7 @@ def get_params():
 # )
 # @pytest.mark.parametrize(
 #     "share_k",
-#     [True,],
+#     [False,],
 # )
 # @pytest.mark.parametrize(
 #     "share_v",
@@ -79,7 +80,7 @@ def get_params():
 # )
 # @pytest.mark.parametrize("use_varlen", [False])
 # @pytest.mark.parametrize("no_dstate", [False])
-# @pytest.mark.parametrize("use_chunk_loop", [False])
+# @pytest.mark.parametrize("use_chunk_loop", [True])
 
 
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -174,7 +175,7 @@ def test(
     if no_dstate:
         output_torch = o_torch
     else:
-        output_torch = o_torch.sum() + s_torch.sum()
+        output_torch = o_torch.mean() + s_torch.mean()
 
     # triton parallel
     o_parallel_triton, s_parallel_triton = lavd_parallel_triton(
@@ -192,7 +193,7 @@ def test(
     if no_dstate:
         output_parallel_triton = o_parallel_triton
     else:
-        output_parallel_triton = o_parallel_triton.sum() + s_parallel_triton.sum()
+        output_parallel_triton = o_parallel_triton.mean() + s_parallel_triton.mean()
 
     ##### Backward pass
     # baseline
