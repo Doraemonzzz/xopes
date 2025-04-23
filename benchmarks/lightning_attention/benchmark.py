@@ -94,8 +94,7 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        # x_vals=[2**i for i in range(8, 16)],
-        x_vals=[2**i for i in range(8, 11)],
+        x_vals=[2**i for i in range(8, 16)],
         # x_vals=[2**i for i in range(8, 9)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
@@ -160,15 +159,15 @@ configs = [
     )
     for bench_type in [
         "speed",
-        # "memory",
+        "memory",
     ]
     for mode in [
         "fwd",
-        # "bwd",
+        "bwd",
     ]
     for dtype_name in ["bf16"]
-    # for b, h, d in [[4, 32, 128]]
     # for b, h, d in [[4, 32, 128], [1, 16, 128]]
+    # for b, h, d in [[4, 32, 128]]
     for b, h, d in [[1, 16, 128]]
 ]
 

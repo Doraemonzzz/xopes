@@ -23,6 +23,8 @@ BLOCK_C_LIST = [BLOCK_C]
         "D",
         "E",
         "USE_CU_SEQLENS",
+        "USE_DECAY_K",
+        "USE_DECAY_V",
     ],
 )
 @triton.jit
@@ -251,6 +253,8 @@ def _lavd_parallel_state_parallel(
         "D",
         "E",
         "USE_CU_SEQLENS",
+        "USE_DECAY_K",
+        "USE_DECAY_V",
     ],
 )
 @triton.jit
@@ -452,6 +456,8 @@ def _lavd_parallel_state_reduce(
         "D",
         "E",
         "USE_CU_SEQLENS",
+        "USE_DECAY_K",
+        "USE_DECAY_V",
     ],
 )
 @triton.jit
@@ -1239,6 +1245,8 @@ def _lavd_parallel_intra(
         "D",
         "E",
         "USE_CU_SEQLENS",
+        "USE_DECAY_K",
+        "USE_DECAY_V",
     ],
 )
 @triton.jit
@@ -2904,7 +2912,6 @@ def _lavd_parallel_sub_intra_o(
     if SHARE_V:
         v = 1 - tl.exp(v.to(tl.float32)).to(v.dtype)
 
-    o = tl.dot(a, v)
     if not USE_DECAY_V:
         o = tl.dot(a, v)
     else:

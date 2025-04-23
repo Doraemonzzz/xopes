@@ -921,10 +921,7 @@ def lavd_parallel_fwd(
     else:
         USE_CHUNK_LOOP = NUM_PARALLEL_BLOCKS >= SM_COUNT or use_chunk_loop
 
-    if n <= 512 or USE_CHUNK_LOOP or XOPES_DEBUG:
-        BLOCK_N = min(MAX_BLOCK_N, 128)
-    else:
-        BLOCK_N = 256
+    BLOCK_N = min(MAX_BLOCK_N, 128)
 
     MAX_BLOCK_C = MAX_BLOCK_N
 
@@ -1056,10 +1053,7 @@ def lavd_parallel_bwd(
     share_k = k is None
     share_v = v is None
 
-    if n <= 512 or USE_CHUNK_LOOP or XOPES_DEBUG:
-        BLOCK_N = min(MAX_BLOCK_N, 128)
-    else:
-        BLOCK_N = 256
+    BLOCK_N = min(MAX_BLOCK_N, 128)
 
     MAX_BLOCK_C = MAX_BLOCK_N
 
@@ -1426,7 +1420,7 @@ def lavd_parallel_triton(
     save_states: bool = True,
     save_ld: bool = True,
     save_a: bool = True,
-    use_chunk_loop: bool = True,
+    use_chunk_loop: bool = False,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
