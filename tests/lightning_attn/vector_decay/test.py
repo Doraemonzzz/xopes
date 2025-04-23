@@ -26,7 +26,6 @@ def get_params():
         # LARGE D, E
         (2, 1125, 8, 255, 257),
         (2, 1025, 8, 255, 257),
-        # (2, 1125, 8, 255, 257),
     ]
     return shapes
 
@@ -67,7 +66,7 @@ def get_params():
 # @pytest.mark.parametrize(
 #     "use_ldv",
 #     [
-#         True,
+#         False,
 #     ],
 # )
 # @pytest.mark.parametrize(
@@ -76,11 +75,11 @@ def get_params():
 # )
 # @pytest.mark.parametrize(
 #     "share_v",
-#     [True, ],
+#     [False, ],
 # )
 # @pytest.mark.parametrize("use_varlen", [False])
-# @pytest.mark.parametrize("no_dstate", [False])
-# @pytest.mark.parametrize("use_chunk_loop", [True])
+# @pytest.mark.parametrize("no_dstate", [True])
+# @pytest.mark.parametrize("use_chunk_loop", [True, False])
 
 
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -280,6 +279,13 @@ def test(
         assert torch.allclose(dk_torch, dk_parallel_triton, atol=atol, rtol=rtol)
 
     if not share_v:
+        # BLOCK_C = 16
+        # l = (n + BLOCK_C - 1) // BLOCK_C
+        # for i in range(l):
+        #     start = i * BLOCK_C
+        #     end = min(start + BLOCK_C, n)
+        #     print(start, end, torch.norm(dv_torch[:, start:end, :, :] - dv_parallel_triton[:, start:end, :, :]))
+
         print(
             "dv diff max (torch parallel Vs triton parallel): ",
             torch.abs(dv_torch - dv_parallel_triton).max().item(),
@@ -322,3 +328,5 @@ def test(
             torch.norm(ds_torch - ds_parallel_triton).item(),
         )
         assert torch.allclose(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)
+
+    # assert False

@@ -3,14 +3,15 @@ import triton.language as tl
 
 from xopes.utils import generate_configs
 
-BLOCK_C = [16]
+BLOCK_C = 16
+BLOCK_C_LIST = [BLOCK_C]
 
 
 @triton.autotune(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": BLOCK_C,
+            "BLOCK_C": BLOCK_C_LIST,
             "BLOCK_D": [64, 128],
             "BLOCK_E": [64, 128],
         }
@@ -439,7 +440,7 @@ def _lavd_parallel_state_reduce(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": BLOCK_C,
+            "BLOCK_C": BLOCK_C_LIST,
             "BLOCK_D": [64, 128],
             "BLOCK_E": [64, 128],
         }
@@ -773,7 +774,7 @@ def _lavd_parallel_state_parallel_reduce(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": BLOCK_C,
+            "BLOCK_C": BLOCK_C_LIST,
             "BLOCK_D": [64, 128],
             "BLOCK_E": [64, 128],
         }
@@ -1226,7 +1227,7 @@ def _lavd_parallel_intra(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": BLOCK_C,
+            "BLOCK_C": BLOCK_C_LIST,
             "BLOCK_D": [64, 128],
             "BLOCK_E": [64, 128],
         }
@@ -1393,7 +1394,7 @@ def _lavd_parallel_inter(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": BLOCK_C,
+            "BLOCK_C": BLOCK_C_LIST,
             "BLOCK_D": [64, 128],
             "BLOCK_E": [64, 128],
         }
@@ -1957,7 +1958,7 @@ def _lavd_parallel_intra_inter(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": BLOCK_C,
+            "BLOCK_C": BLOCK_C_LIST,
             "BLOCK_D": [64, 128],
             "BLOCK_E": [64, 128],
         }
@@ -1970,6 +1971,7 @@ def _lavd_parallel_intra_inter_no_loop(
     K,  # B N H D
     V,  # B N H E
     O,  # B N H E
+    A,  # B H NUM_ATTN_MATRIX BLOCK_C BLOCK_C
     STATES,  # B H L D E if not trans_states, B H L E D if trans_states
     LOG_DECAY_K,  # B N H D
     LOG_DECAY_V,  # B N H E
@@ -1989,7 +1991,8 @@ def _lavd_parallel_intra_inter_no_loop(
     USE_PAD: tl.constexpr,
     COMPUTE_DLD: tl.constexpr,
     REVERSE: tl.constexpr,
-    TRANS: tl.constexpr,
+    TRANS_STATE: tl.constexpr,
+    TRANS_A: tl.constexpr,
     SHARE_Q: tl.constexpr,
     SHARE_K: tl.constexpr,
     SHARE_V: tl.constexpr,
@@ -2225,7 +2228,7 @@ def _lavd_parallel_intra_inter_no_loop(
         v_decay = tl.exp(log_decay_v)
         v = (v * v_decay).to(v.dtype)
 
-    if TRANS:
+    if TRANS_STATE:
         # if trans_states, the states are stored in the shape of B H L E D, the shape we need to load is D E
         state_block_ptr = (
             STATES
@@ -2274,9 +2277,6 @@ def _lavd_parallel_intra_inter_no_loop(
     else:
         mask_a = (array_c[:, None] >= array_c[None, :])[:, :, None]
 
-    # attention matrix
-    a = tl.zeros([BLOCK_C, BLOCK_C], dtype=tl.float32)
-
     for i in range(NUM_BLOCK_D):
         mask_d = (i * BLOCK_D + array_d) < D
         mask_de = mask_d[:, None] & mask_e[None, :]
@@ -2285,34 +2285,6 @@ def _lavd_parallel_intra_inter_no_loop(
 
         if SHARE_Q:
             q = 1 - tl.exp(q.to(tl.float32)).to(q.dtype)
-
-        ##### start sub intra part
-        k_sub_intra = tl.load(
-            k_sub_intra_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0
-        )
-
-        if SHARE_K:
-            k_sub_intra = 1 - tl.exp(k_sub_intra.to(tl.float32)).to(k_sub_intra.dtype)
-
-        # BLOCK_C BLOCK_D, BLOCK_C BLOCK_D -> BLOCK_C BLOCK_C BLOCK_D
-        score = q[:, None, :] * k_sub_intra[None, :, :]
-
-        if USE_DECAY_K:
-            log_decay_k_sub = tl.load(
-                ldk_sub_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0
-            ).to(tl.float32)
-            ld_qk_sub_intra = log_decay_k_sub
-            ld_qk_diff_sub_intra = (
-                ld_qk_sub_intra[:, None, :] - ld_qk_sub_intra[None, :, :]
-            )
-            decay_qk_diff_sub_intra = tl.exp(ld_qk_diff_sub_intra)
-            score *= decay_qk_diff_sub_intra
-
-        score = tl.where(mask_a, score, 0.0)
-        a += tl.sum(score, axis=-1)
-
-        k_sub_intra_block_ptr += BLOCK_D
-        ##### end sub intra part
 
         ##### start sub inter part
         k_trans_block_ptr = (
@@ -2345,6 +2317,9 @@ def _lavd_parallel_intra_inter_no_loop(
             k_trans = (k_trans * k_trans_decay).to(k_trans.dtype)
 
             # sub inter decay
+            log_decay_k_sub = tl.load(
+                ldk_sub_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0
+            ).to(tl.float32)
             log_decay_k_start = tl.load(
                 ldk_start_block_ptr,
                 mask=mask_ldk_start & mask_d[None, :],
@@ -2390,12 +2365,45 @@ def _lavd_parallel_intra_inter_no_loop(
             ldk_sub_block_ptr += BLOCK_D
             ldk_start_block_ptr += BLOCK_D
 
-        if TRANS:
+        if TRANS_STATE:
             state_block_ptr += BLOCK_D
         else:
             state_block_ptr += BLOCK_D * E
 
     ##### start sub intra part
+    NUM_ATTN_MATRIX = tl.cdiv(N, BLOCK_C)
+    NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
+    off_c = off_block_n * NUM_BLOCK_C + off_block_c
+    offset_a = (
+        off_b * H * NUM_ATTN_MATRIX * BLOCK_C * BLOCK_C
+        + off_h * NUM_ATTN_MATRIX * BLOCK_C * BLOCK_C
+        + off_c * BLOCK_C * BLOCK_C
+    )
+    mask_a_start = off_c < NUM_ATTN_MATRIX
+    if TRANS_A:
+        a_block_ptr = A + offset_a + array_c[None, :] * BLOCK_C + array_c[:, None]
+    else:
+        a_block_ptr = A + offset_a + array_c[:, None] * BLOCK_C + array_c[None, :]
+
+    a = tl.load(a_block_ptr, mask=mask_a_start).to(tl.float32)
+
+    v_sub_intra_block_ptr = (
+        v_start
+        + offset_vo
+        + offset_block_vo
+        + (offset_block_c + array_c[:, None]) * H * E
+        + (offset_block_e + array_e)[None, :]
+    )
+
+    if USE_DECAY_V:
+        ldv_sub_intra_block_ptr = (
+            LOG_DECAY_V_CUMSUM
+            + offset_vo
+            + offset_block_vo
+            + (offset_block_c + array_c[:, None]) * H * E
+            + (offset_block_e + array_e)[None, :]
+        )
+
     v_sub_intra = tl.load(
         v_sub_intra_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
     )
@@ -2413,7 +2421,7 @@ def _lavd_parallel_intra_inter_no_loop(
         a_ = a[:, :, None] * decay_vo_diff_sub_intra
         a_ = tl.where(mask_a, a_, 0.0)
         o += tl.sum(a_ * v_sub_intra[None, :, :], axis=1)
-    ##### end sub intra part
+    #### end sub intra part
 
     tl.store(
         o_block_ptr,
@@ -2460,7 +2468,7 @@ def _lavd_parallel_intra_inter_no_loop(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
-            "BLOCK_C": BLOCK_C,
+            "BLOCK_C": BLOCK_C_LIST,
             "BLOCK_D": [64, 128],
             "BLOCK_E": [64, 128],
         }
@@ -2661,6 +2669,7 @@ def _lavd_parallel_sub_intra_attn(
     USE_CU_SEQLENS: tl.constexpr,
     USE_PAD: tl.constexpr,
     REVERSE: tl.constexpr,
+    SHARE_Q: tl.constexpr,
     SHARE_K: tl.constexpr,
     SHARE_V: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -2670,6 +2679,7 @@ def _lavd_parallel_sub_intra_attn(
 ):
     NUM_ATTN_MATRIX = tl.cdiv(N, BLOCK_C)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
+    tl.cdiv(E, BLOCK_E)
 
     off_bh = tl.program_id(0)
     off_b = off_bh // H
@@ -2688,76 +2698,100 @@ def _lavd_parallel_sub_intra_attn(
 
     array_c = tl.arange(0, BLOCK_C)
     array_d = tl.arange(0, BLOCK_D)
-
+    tl.arange(0, BLOCK_E)
     # compute mask
     mask_c = (offset_block_c + array_c) < N
 
     # compute block ptr
-    q_block_ptr = (
-        Q + offset_qk + (offset_block_c + array_c[:, None]) * H * D + array_d[None, :]
-    )
+    if SHARE_Q:
+        q_start = LOG_DECAY_K
+    else:
+        q_start = Q
 
     if SHARE_K:
         k_start = LOG_DECAY_K
     else:
         k_start = K
 
-    k_block_ptr = (
-        k_start
-        + offset_qk
-        + (offset_block_c + array_c[:, None]) * H * D
-        + array_d[None, :]
-    )
-
-    if USE_DECAY_K:
-        ld_qk_block_ptr = (
-            LOG_DECAY_K_CUMSUM
+    for i in range(BLOCK_C):
+        k_block_ptr = (
+            k_start
             + offset_qk
             + (offset_block_c + array_c[:, None]) * H * D
             + array_d[None, :]
         )
 
-    if REVERSE:
-        mask_a = (array_c[:, None] <= array_c[None, :])[:, :, None]
-    else:
-        mask_a = (array_c[:, None] >= array_c[None, :])[:, :, None]
-
-    # attention matrix
-    a = tl.zeros([BLOCK_C, BLOCK_C], dtype=tl.float32)
-    for i in range(NUM_BLOCK_D):
-        mask_d = (i * BLOCK_D + array_d) < D
-
-        q = tl.load(q_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
-        k = tl.load(k_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
-
-        if SHARE_K:
-            k = 1 - tl.exp(k.to(tl.float32)).to(k.dtype)
-
-        # BLOCK_C BLOCK_D, BLOCK_C BLOCK_D -> BLOCK_C BLOCK_C BLOCK_D
-        score = q[:, None, :] * k[None, :, :]
-
+        q_block_ptr = (
+            q_start + offset_qk + (offset_block_c + i) * H * D + array_d[None, :]
+        )
         if USE_DECAY_K:
-            ld_qk = tl.load(
-                ld_qk_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0
-            ).to(tl.float32)
-            ld_qk_diff = ld_qk[:, None, :] - ld_qk[None, :, :]
-            decay_qk_diff = tl.exp(ld_qk_diff)
-            score *= decay_qk_diff
+            ld_q_block_ptr = (
+                LOG_DECAY_K_CUMSUM
+                + offset_qk
+                + (offset_block_c + i) * H * D
+                + array_d[None, :]
+            )
 
-        score = tl.where(mask_a, score, 0.0)
-        a += tl.sum(score, axis=-1)
+            ld_k_block_ptr = (
+                LOG_DECAY_K_CUMSUM
+                + offset_qk
+                + (offset_block_c + array_c[:, None]) * H * D
+                + array_d[None, :]
+            )
 
-        q_block_ptr += BLOCK_D
-        k_block_ptr += BLOCK_D
-        if USE_DECAY_K:
-            ld_qk_block_ptr += BLOCK_D
+        mask_q = (offset_block_c + i) < N
 
-    a_block_ptr = A + offset_a + array_c[:, None] * BLOCK_C + array_c[None, :]
+        a = tl.zeros([BLOCK_C], dtype=tl.float32)
 
-    tl.store(
-        a_block_ptr,
-        a.to(a_block_ptr.dtype.element_ty),
-    )
+        if REVERSE:
+            mask_a = i <= array_c[:, None]
+        else:
+            mask_a = i >= array_c[:, None]
+
+        for j in range(NUM_BLOCK_D):
+            mask_d = (j * BLOCK_D + array_d) < D
+
+            q = tl.load(q_block_ptr, mask=mask_q & mask_d[None, :], other=0.0)
+            if SHARE_Q:
+                q = 1 - tl.exp(q.to(tl.float32)).to(q.dtype)
+
+            k = tl.load(k_block_ptr, mask=mask_c[:, None] & mask_d[None, :], other=0.0)
+            if SHARE_K:
+                k = 1 - tl.exp(k.to(tl.float32)).to(k.dtype)
+
+            # 1 BLOCK_D, BLOCK_C BLOCK_D -> BLOCK_C BLOCK_D
+            score = q * k
+
+            if USE_DECAY_K:
+                ld_q = tl.load(
+                    ld_q_block_ptr, mask=mask_q & mask_d[None, :], other=0.0
+                ).to(tl.float32)
+                ld_k = tl.load(
+                    ld_k_block_ptr,
+                    mask=mask_q & mask_c[:, None] & mask_d[None, :],
+                    other=0.0,
+                ).to(
+                    tl.float32
+                )  # add mask_q is important !!!
+                ld_qk_diff = ld_q - ld_k
+                decay_qk_diff = tl.exp(ld_qk_diff)
+                score *= decay_qk_diff
+
+            score = tl.where(mask_a, score, 0.0)
+            a += tl.sum(score, axis=-1)
+
+            q_block_ptr += BLOCK_D
+            k_block_ptr += BLOCK_D
+            if USE_DECAY_K:
+                ld_q_block_ptr += BLOCK_D
+                ld_k_block_ptr += BLOCK_D
+
+        a_block_ptr = A + offset_a + i * BLOCK_C + array_c
+
+        tl.store(
+            a_block_ptr,
+            a.to(a_block_ptr.dtype.element_ty),
+        )
 
 
 @triton.autotune(
@@ -2870,6 +2904,7 @@ def _lavd_parallel_sub_intra_o(
     if SHARE_V:
         v = 1 - tl.exp(v.to(tl.float32)).to(v.dtype)
 
+    o = tl.dot(a, v)
     if not USE_DECAY_V:
         o = tl.dot(a, v)
     else:

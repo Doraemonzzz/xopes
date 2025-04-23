@@ -59,6 +59,10 @@ def lavd_k_parallel(q, k, v, **kwargs):
     return lavd_parallel_triton(q, k, v, ldk=kwargs["ldk"])[0]
 
 
+def lavd_kv_parallel(q, k, v, **kwargs):
+    return lavd_parallel_triton(q, k, v, ldk=kwargs["ldk"], ldv=kwargs["ldv"])[0]
+
+
 def lasr_recurrence(q, k, v, **kwargs):
     return lasr_recurrence_triton(q, k, v, ld=kwargs["ldk"])[0]
 
@@ -78,6 +82,7 @@ module_map = {
     "lasd_pl": lasd_parallel,
     "lasd3_p": lasd3_parallel,
     "lavd_k_p": lavd_k_parallel,
+    "lavd_kv_p": lavd_kv_parallel,
     "lasr_r": lasr_recurrence,
     "flash": flash_attn_wrapper,
     "lightning_p": lightning_parallel,
@@ -97,11 +102,12 @@ configs = [
         line_arg="provider",
         line_vals=[
             # "lasd_r",
-            "lasd_p",
+            # "lasd_p",
             # "land_p",
             # "lasd_pl",
             # "lasd3_p",
             "lavd_k_p",
+            "lavd_kv_p",
             # "lasr_r",
             # "flash",
             # "lightning_p",
@@ -111,11 +117,12 @@ configs = [
         ],
         line_names=[
             # "LASD_R",
-            "LASD_P",
+            # "LASD_P",
             # "LAND_P",
             # "LASD_PL",
             # "LASD3_P",
             "LAVD_K_P",
+            "LAVD_KV_P",
             # "LASR_R",
             # "Flash",
             # "LP",
@@ -137,6 +144,8 @@ configs = [
             ("gray", "-"),
             ("lime", "-"),
             ("olive", "-"),
+            ("teal", "-"),
+            ("black", "-"),
         ],
         plot_name=f"lasd-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
@@ -158,8 +167,9 @@ configs = [
         # "bwd",
     ]
     for dtype_name in ["bf16"]
-    for b, h, d in [[4, 32, 128]]
+    # for b, h, d in [[4, 32, 128]]
     # for b, h, d in [[4, 32, 128], [1, 16, 128]]
+    for b, h, d in [[1, 16, 128]]
 ]
 
 
@@ -206,7 +216,7 @@ def benchmark(
         )
 
     try:
-        fn = lambda: module(q, k, v, ld=ld, ld3=ld3, ldk=ldk)
+        fn = lambda: module(q, k, v, ld=ld, ld3=ld3, ldk=ldk, ldv=ldv)
     except Exception as e:
         print(f"Error setting up {provider}: {e}")
         fn = None
