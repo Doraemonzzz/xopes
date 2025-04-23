@@ -1,4 +1,4 @@
-from .constant import ACT_SET, HEAD_DIM, SM_COUNT, XOPES_DEBUG, XOPES_DTYPE
+from .constant import ACT_SET, HEAD_DIM, MIN_BLOCK, SM_COUNT, XOPES_DEBUG, XOPES_DTYPE
 from .op_utils import transpose
 from .utils import (
     contiguous,

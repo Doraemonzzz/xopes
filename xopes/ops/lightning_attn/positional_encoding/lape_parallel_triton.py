@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 import torch
 from einops import repeat
 
-from xopes.ops.lightning_attn.scalar_decay import lasd_parallel_triton
+from xopes.ops.lightning_attn.constant_decay import lacd_parallel_triton
 
 
 def lape_parallel_triton(
@@ -13,6 +13,8 @@ def lape_parallel_triton(
     ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
+    save_states: bool = True,
+    use_chunk_loop: bool = False,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -25,7 +27,8 @@ def lape_parallel_triton(
         ld: Logarithmic decay tensor of shape (H,)
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
-        eps: Epsilon for numerical stability
+        save_states: Whether to save the states
+        use_chunk_loop: Whether to use chunk loop
 
     Returns:
         output: Tensor of shape (B, N, H, E)
@@ -36,13 +39,15 @@ def lape_parallel_triton(
     q = repeat(q, "h d -> b n h d", b=b, n=n)
     k = repeat(k, "h d -> b n h d", b=b, n=n)
 
-    return lasd_parallel_triton(
+    return lacd_parallel_triton(
         q=q,
         k=k,
         v=v,
         ld=ld,
         initial_state=initial_state,
         cu_seqlens=cu_seqlens,
+        save_states=save_states,
+        use_chunk_loop=use_chunk_loop,
     )
 
 

@@ -13,11 +13,11 @@ from xopes.ops.lightning_attn.baseline import (
     flash_attn_wrapper,
     lightning_attn_wrapper,
 )
-from xopes.ops.lightning_attn.scalar_data_dependent_decay import lasd3_parallel_triton
-from xopes.ops.lightning_attn.scalar_decay import (
-    lasd_parallel_triton,
-    lasd_recurrence_triton,
+from xopes.ops.lightning_attn.constant_decay import (
+    lacd_parallel_triton,
+    lacd_recurrence_triton,
 )
+from xopes.ops.lightning_attn.scalar_decay import lasd_parallel_triton
 from xopes.ops.lightning_attn.simple_recurrence import lasr_recurrence_triton
 from xopes.ops.lightning_attn.vector_decay import lavd_parallel_triton
 from xopes.utils import get_memory
@@ -39,20 +39,20 @@ def chunk_simple_gla_k(q, k, v, **kwargs):
     return chunk_simple_gla_wrapper(q, k, v, ld3=kwargs["ld3"])[0]
 
 
-def lasd_recurrence(q, k, v, **kwargs):
-    return lasd_recurrence_triton(q, k, v, ld=kwargs["ld"])[0]
+def lacd_recurrence(q, k, v, **kwargs):
+    return lacd_recurrence_triton(q, k, v, ld=kwargs["ld"])[0]
 
 
-def lasd_parallel(q, k, v, **kwargs):
-    return lasd_parallel_triton(q, k, v, ld=kwargs["ld"])[0]
+def lacd_parallel(q, k, v, **kwargs):
+    return lacd_parallel_triton(q, k, v, ld=kwargs["ld"])[0]
 
 
 def land_parallel(q, k, v, **kwargs):
-    return lasd_parallel_triton(q, k, v)[0]
+    return lacd_parallel_triton(q, k, v)[0]
 
 
-def lasd3_parallel(q, k, v, **kwargs):
-    return lasd3_parallel_triton(q, k, v, ld=kwargs["ld3"])[0]
+def lasd_parallel(q, k, v, **kwargs):
+    return lasd_parallel_triton(q, k, v, ld=kwargs["ld3"])[0]
 
 
 def lavd_k_parallel(q, k, v, **kwargs):
@@ -76,11 +76,11 @@ def lightning_chunk_loop(q, k, v, **kwargs):
 
 
 module_map = {
-    "lasd_r": lasd_recurrence,
-    "lasd_p": lasd_parallel,
+    "lacd_r": lacd_recurrence,
+    "lacd_p": lacd_parallel,
     "land_p": land_parallel,
-    "lasd_pl": lasd_parallel,
-    "lasd3_p": lasd3_parallel,
+    "lacd_pl": lacd_parallel,
+    "lasd_p": lasd_parallel,
     "lavd_k_p": lavd_k_parallel,
     "lavd_kv_p": lavd_kv_parallel,
     "lasr_r": lasr_recurrence,
@@ -94,40 +94,40 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        x_vals=[2**i for i in range(8, 16)],
-        # x_vals=[2**i for i in range(8, 9)],
+        # x_vals=[2**i for i in range(8, 16)],
+        x_vals=[2**i for i in range(8, 9)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            # "lasd_r",
-            # "lasd_p",
-            # "land_p",
-            # "lasd_pl",
-            # "lasd3_p",
+            "lacd_r",
+            "lacd_p",
+            "land_p",
+            "lacd_pl",
+            "lasd_p",
             "lavd_k_p",
             "lavd_kv_p",
-            # "lasr_r",
-            # "flash",
-            # "lightning_p",
-            # "lightning_c",
+            "lasr_r",
+            "flash",
+            "lightning_p",
+            "lightning_c",
             "gla_k",
-            # "gla_s_k",
+            "gla_s_k",
         ],
         line_names=[
-            # "LASD_R",
-            # "LASD_P",
-            # "LAND_P",
-            # "LASD_PL",
-            # "LASD3_P",
+            "LACD_R",
+            "LACD_P",
+            "LAND_P",
+            "LACD_PL",
+            "LASD_P",
             "LAVD_K_P",
             "LAVD_KV_P",
-            # "LASR_R",
-            # "Flash",
-            # "LP",
-            # "LC",
+            "LASR_R",
+            "Flash",
+            "LP",
+            "LC",
             "GLA_K",
-            # "GLA_S_K",
+            "GLA_S_K",
         ],
         styles=[
             ("red", "-"),
@@ -159,11 +159,11 @@ configs = [
     )
     for bench_type in [
         "speed",
-        "memory",
+        # "memory",
     ]
     for mode in [
         "fwd",
-        "bwd",
+        # "bwd",
     ]
     for dtype_name in ["bf16"]
     # for b, h, d in [[4, 32, 128], [1, 16, 128]]
@@ -193,7 +193,7 @@ def benchmark(
     q = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     k = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     v = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
-    if provider == "lasd_pl":
+    if provider == "lacd_pl":
         ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device)).requires_grad_()
     else:
         ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device))

@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from einops import repeat
 
-from xopes.ops.lightning_attn.scalar_decay import lasd_torch
+from xopes.ops.lightning_attn.constant_decay import lacd_torch
 
 
 def lape_torch(
@@ -37,7 +37,7 @@ def lape_torch(
     q = repeat(q, "h d -> b n h d", b=b, n=n)
     k = repeat(k, "h d -> b n h d", b=b, n=n)
 
-    return lasd_torch(
+    return lacd_torch(
         q=q,
         k=k,
         v=v,

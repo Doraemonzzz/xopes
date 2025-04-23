@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 import torch
 from einops import repeat
 
-from xopes.ops.lightning_attn.scalar_decay import lasd_recurrence_triton
+from xopes.ops.lightning_attn.constant_decay import lacd_recurrence_triton
 
 
 def lape_recurrence_triton(
@@ -35,7 +35,7 @@ def lape_recurrence_triton(
     q = repeat(q, "h d -> b n h d", b=b, n=n)
     k = repeat(k, "h d -> b n h d", b=b, n=n)
 
-    return lasd_recurrence_triton(
+    return lacd_recurrence_triton(
         q=q,
         k=k,
         v=v,

@@ -19,7 +19,7 @@ from xopes.ops.lightning_attn.vector_decay.utils import (
     _lavd_parallel_sub_intra_o,
 )
 from xopes.utils import contiguous
-from xopes.utils.constant import SM_COUNT, XOPES_DEBUG
+from xopes.utils.constant import MIN_BLOCK, SM_COUNT, XOPES_DEBUG
 
 
 @contiguous
@@ -912,9 +912,9 @@ def lavd_parallel_fwd(
     else:
         e = v.shape[-1]
 
-    MAX_BLOCK_N = triton.next_power_of_2(n)
-    MAX_BLOCK_E = triton.next_power_of_2(e)
-    MAX_BLOCK_D = triton.next_power_of_2(d)
+    MAX_BLOCK_N = max(MIN_BLOCK, triton.next_power_of_2(n))
+    MAX_BLOCK_E = max(MIN_BLOCK, triton.next_power_of_2(e))
+    MAX_BLOCK_D = max(MIN_BLOCK, triton.next_power_of_2(d))
     NUM_PARALLEL_BLOCKS = b * h
     if XOPES_DEBUG:
         USE_CHUNK_LOOP = use_chunk_loop
@@ -1041,9 +1041,9 @@ def lavd_parallel_bwd(
     else:
         e = v.shape[-1]
 
-    MAX_BLOCK_N = triton.next_power_of_2(n)
-    MAX_BLOCK_E = triton.next_power_of_2(e)
-    MAX_BLOCK_D = triton.next_power_of_2(d)
+    MAX_BLOCK_N = max(MIN_BLOCK, triton.next_power_of_2(n))
+    MAX_BLOCK_E = max(MIN_BLOCK, triton.next_power_of_2(e))
+    MAX_BLOCK_D = max(MIN_BLOCK, triton.next_power_of_2(d))
     NUM_PARALLEL_BLOCKS = b * h
     if XOPES_DEBUG:
         USE_CHUNK_LOOP = use_chunk_loop

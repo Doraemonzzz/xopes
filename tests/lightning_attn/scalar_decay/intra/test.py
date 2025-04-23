@@ -29,10 +29,15 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("use_ld", [True, False])
-@pytest.mark.parametrize("reverse", [True, False])
+@pytest.mark.parametrize(
+    "reverse",
+    [
+        True,
+        False,
+    ],
+)
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_lasd_intra(shape, use_ld, reverse, dtype):
+def test_lasd_intra(shape, reverse, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
 
@@ -43,19 +48,20 @@ def test_lasd_intra(shape, use_ld, reverse, dtype):
     k = torch.randn(b, n, h, d, dtype=dtype, device=device)
     v = torch.randn(b, n, h, e, dtype=dtype, device=device)
 
-    ld = None
-    if use_ld:
-        ld = F.logsigmoid(torch.randn(h, device=device))
+    # Generate data-dependent decay factors (one per position)
+    ld = F.logsigmoid(torch.randn(b, n, h, device=device))
 
+    # Set block sizes for Triton kernel
     MAX_BLOCK_N = triton.next_power_of_2(n)
     MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
     BLOCK_N = 64
 
-    # Forward pass
+    # Forward pass with PyTorch reference implementation
     o_torch = lasd_intra_torch(q=q, k=k, v=v, ld=ld, reverse=reverse, BLOCK_N=BLOCK_N)
 
+    # Forward pass with Triton parallel implementation
     o_triton = lasd_parallel_intra(
         q=q,
         k=k,
@@ -69,14 +75,13 @@ def test_lasd_intra(shape, use_ld, reverse, dtype):
         BLOCK_N=BLOCK_N,
     )
 
-    # Get thresholds based on dtype
+    # Get thresholds based on dtype for numerical comparison
     atol, rtol = get_threshold(dtype)
 
-    # Forward check
-    print(
-        f"\nShape: {shape}, E: {e}, use_ld: {use_ld}, reverse: {reverse}, dtype: {dtype}"
-    )
+    # Print test configuration and results
+    print(f"\nShape: {shape}, E: {e}, reverse: {reverse}, dtype: {dtype}")
     print("o diff max: ", torch.abs(o_torch - o_triton).max().item())
     print("o diff norm: ", torch.norm(o_torch - o_triton).item())
 
+    # Assert that the results are close enough
     assert torch.allclose(o_torch, o_triton, atol=atol, rtol=rtol)

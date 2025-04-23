@@ -1,4 +1,4 @@
-# lasd: lightning attention with data-dependent scalar decay
+# lacd: lightning attention scalar decay
 from typing import Optional, Tuple
 
 import torch
@@ -6,23 +6,23 @@ import torch.nn.functional as F
 from einops import repeat
 
 
-def lasd3_torch(
+def lacd_torch(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Apply Lightning Attention with Scalar Decay in Pytorch.
+    Apply Lightning Attention with Constant Decay in Pytorch.
 
     Args:
         q: Query tensor of shape (B, N, H, D)
         k: Key tensor of shape (B, N, H, D)
         v: Value tensor of shape (B, N, H, E)
-        ld: Logarithmic decay tensor of shape (B, N, H)
+        ld: Logarithmic decay tensor of shape (H,)
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
 
@@ -36,7 +36,13 @@ def lasd3_torch(
     q = q.float()
     k = k.float()
     v = v.float()
-    ld = ld.float()
+
+    if ld is not None:
+        if len(ld.shape) == 1:
+            ld = ld.unsqueeze(-1).unsqueeze(-1)
+        ratio = torch.exp(ld)
+    else:
+        ratio = 1.0
 
     if cu_seqlens is None:
         if initial_state is None:
@@ -51,8 +57,6 @@ def lasd3_torch(
             qi = q[:, i]
             ki = k[:, i]
             vi = v[:, i]
-            ldi = ld[:, i].unsqueeze(-1).unsqueeze(-1)
-            ratio = torch.exp(ldi)
             state_ = torch.einsum("b h d, b h e -> b h d e", ki, vi)
             state = ratio * state + state_
             oi = torch.einsum("b h d, b h d e -> b h e", qi, state)
@@ -63,7 +67,6 @@ def lasd3_torch(
         q = q.squeeze(0)
         k = k.squeeze(0)
         v = v.squeeze(0)
-        ld = ld.squeeze(0)
         b = cu_seqlens.shape[0] - 1
 
         if initial_state is None:
@@ -84,15 +87,12 @@ def lasd3_torch(
             q_ = q[start:end]
             k_ = k[start:end]
             v_ = v[start:end]
-            ld_ = ld[start:end]
             state_ = state[i]
             o_array = []
             for j in range(m):
                 qi = q_[j]
                 ki = k_[j]
                 vi = v_[j]
-                ldi = ld_[j].unsqueeze(-1).unsqueeze(-1)
-                ratio = torch.exp(ldi)
                 state__ = torch.einsum("h d, h e -> h d e", ki, vi)
                 state_ = ratio * state_ + state__
                 oi = torch.einsum("h d, h d e -> h e", qi, state_)
@@ -112,5 +112,5 @@ if __name__ == "__main__":
     q = torch.randn(b, n, h, d, device=device, dtype=dtype)
     k = torch.randn(b, n, h, d, device=device, dtype=dtype)
     v = torch.randn(b, n, h, d, device=device, dtype=dtype)
-    ld = F.logsigmoid(torch.randn(b, n, h, device=device))
-    output, state = lasd3_torch(q, k, v, ld)
+    ld = F.logsigmoid(torch.randn(h, device=device))
+    output, state = lacd_torch(q, k, v, ld)

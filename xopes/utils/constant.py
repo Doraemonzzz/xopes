@@ -6,6 +6,7 @@ import triton
 
 HEAD_DIM = 128
 
+MIN_BLOCK = 16
 
 THRESHOLD_DICT = {
     torch.float32: [1e-2, 1e-2],

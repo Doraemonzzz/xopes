@@ -62,19 +62,19 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # ##### gate_linear 250201
 # folder=gate_linear
 
-# ##### lasd 250219
-# folder=lightning_attn/scalar_decay
+# ##### lacd 250219
+folder=lightning_attn/constant_decay
 
-# ##### lasd_part 250224
+# ##### lacd_part 250224
+# folder=lightning_attn/constant_decay/intra
+# folder=lightning_attn/constant_decay/state
+# folder=lightning_attn/constant_decay/inter
+
+# ##### lasd 250303
+# folder=lightning_attn/scalar_decay
 # folder=lightning_attn/scalar_decay/intra
 # folder=lightning_attn/scalar_decay/state
 # folder=lightning_attn/scalar_decay/inter
-
-# ##### lasd3 250303
-# folder=lightning_attn/scalar_data_dependent_decay
-# folder=lightning_attn/scalar_data_dependent_decay/intra
-# folder=lightning_attn/scalar_data_dependent_decay/state
-# folder=lightning_attn/scalar_data_dependent_decay/inter
 
 # ##### chunk_cumsum 250305
 # folder=cumsum/chunk_cumsum
@@ -96,8 +96,8 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=cumsum/chunk_cumsum_decay
 # folder=cumsum/cumsum
 
-##### lavd 250122, 250403
-folder=lightning_attn/vector_decay
+# ##### lavd 250122, 250403
+# folder=lightning_attn/vector_decay
 # folder=lightning_attn/vector_decay/state
 # folder=lightning_attn/vector_decay/inter
 # folder=lightning_attn/vector_decay/intra

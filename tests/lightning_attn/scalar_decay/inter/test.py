@@ -30,11 +30,10 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("use_ld", [True, False])
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("trans", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_lasd_inter(shape, use_ld, use_initial_state, trans, dtype):
+def test_lasd_inter(shape, use_initial_state, trans, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
 
@@ -44,10 +43,7 @@ def test_lasd_inter(shape, use_ld, use_initial_state, trans, dtype):
     q = torch.randn(b, n, h, d, dtype=dtype, device=device)
     k = torch.randn(b, n, h, d, dtype=dtype, device=device)
     v = torch.randn(b, n, h, e, dtype=dtype, device=device)
-
-    ld = None
-    if use_ld:
-        ld = F.logsigmoid(torch.randn(h, device=device))
+    ld = F.logsigmoid(torch.randn(b, n, h, device=device))
 
     initial_state = None
     if use_initial_state:
@@ -76,6 +72,8 @@ def test_lasd_inter(shape, use_ld, use_initial_state, trans, dtype):
         k=k,
         v=v,
         ld=ld,
+        cu_seqlens=None,
+        reverse=False,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -93,6 +91,7 @@ def test_lasd_inter(shape, use_ld, use_initial_state, trans, dtype):
         initial_state=initial_state,
         ld=ld,
         cu_seqlens=None,
+        reverse=False,
         MAX_BLOCK_N=MAX_BLOCK_N,
         MAX_BLOCK_C=MAX_BLOCK_C,
         MAX_BLOCK_E=MAX_BLOCK_E,
@@ -124,7 +123,9 @@ def test_lasd_inter(shape, use_ld, use_initial_state, trans, dtype):
     atol, rtol = get_threshold(dtype)
 
     # Check forward pass results
-    print(f"\nShape: {shape}, E: {e}, use_ld: {use_ld}, trans: {trans}, dtype: {dtype}")
+    print(
+        f"\nShape: {shape}, E: {e}, use_initial_state: {use_initial_state}, trans: {trans}, dtype: {dtype}"
+    )
     print("o diff max: ", torch.abs(o_inter_torch - o_inter_triton).max().item())
     print("o diff norm: ", torch.norm(o_inter_torch - o_inter_triton).item())
     assert torch.allclose(o_inter_torch, o_inter_triton, atol=atol, rtol=rtol)

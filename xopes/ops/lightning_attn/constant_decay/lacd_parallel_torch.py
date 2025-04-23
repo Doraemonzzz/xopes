@@ -1,11 +1,11 @@
-# lasd: lightning attention scalar decay
+# lacd: lightning attention scalar decay
 from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 
 
-def lasd_parallel_torch(
+def lacd_parallel_torch(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -15,7 +15,7 @@ def lasd_parallel_torch(
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Apply Lightning Attention with Scalar Decay in Pytorch.
+    Apply Lightning Attention with Constant Decay in Pytorch.
 
     Args:
         q: Query tensor of shape (B, N, H, D)
@@ -59,4 +59,4 @@ if __name__ == "__main__":
     k = torch.randn(b, n, h, d, device=device, dtype=dtype)
     v = torch.randn(b, n, h, d, device=device, dtype=dtype)
     ld = F.logsigmoid(torch.randn(h, device=device))
-    output, state = lasd_torch(q, k, v, ld)
+    output, state = lacd_torch(q, k, v, ld)
