@@ -4,6 +4,11 @@ import triton.language as tl
 from xopes.utils import generate_configs
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -13,7 +18,7 @@ from xopes.utils import generate_configs
             "BLOCK_E": [128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "MAX_BLOCK_N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
 )
 @triton.jit
 def _lacd_parallel_state_parallel(
@@ -35,6 +40,7 @@ def _lacd_parallel_state_parallel(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
@@ -162,6 +168,11 @@ def _lacd_parallel_state_parallel(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -170,7 +181,7 @@ def _lacd_parallel_state_parallel(
             "BLOCK_E": [128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "MAX_BLOCK_N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
 )
 @triton.jit
 def _lacd_parallel_state_reduce(
@@ -190,6 +201,7 @@ def _lacd_parallel_state_reduce(
     BLOCK_N: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
 
@@ -300,6 +312,11 @@ def _lacd_parallel_state_reduce(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -309,7 +326,7 @@ def _lacd_parallel_state_reduce(
             "BLOCK_E": [128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "MAX_BLOCK_N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
 )
 @triton.jit
 def _lacd_parallel_state_parallel_reduce(
@@ -333,6 +350,7 @@ def _lacd_parallel_state_parallel_reduce(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
@@ -543,6 +561,11 @@ def _lacd_parallel_state_parallel_reduce(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -552,7 +575,7 @@ def _lacd_parallel_state_parallel_reduce(
             "BLOCK_E": [128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "MAX_BLOCK_N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
 )
 @triton.jit
 def _lacd_parallel_intra(
@@ -574,6 +597,7 @@ def _lacd_parallel_intra(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
@@ -693,6 +717,11 @@ def _lacd_parallel_intra(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -702,7 +731,7 @@ def _lacd_parallel_intra(
             "BLOCK_E": [128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "MAX_BLOCK_N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
 )
 @triton.jit
 def _lacd_parallel_inter(
@@ -724,6 +753,7 @@ def _lacd_parallel_inter(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
@@ -835,13 +865,18 @@ def _lacd_parallel_inter(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
             "num_warps": [4, 8, 16, 32],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
+    key=["B", "MAX_BLOCK_N", "H", "D", "E", "USE_CU_SEQLENS", "USE_LOG_DECAY"],
 )
 @triton.jit
 def _lacd_parallel_intra_inter(
@@ -869,6 +904,7 @@ def _lacd_parallel_intra_inter(
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
     NUM_BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)

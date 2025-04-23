@@ -7,6 +7,11 @@ BLOCK_C = 16
 BLOCK_C_LIST = [BLOCK_C]
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -18,7 +23,7 @@ BLOCK_C_LIST = [BLOCK_C]
     ),
     key=[
         "B",
-        "N",
+        "MAX_BLOCK_N",
         "H",
         "D",
         "E",
@@ -53,6 +58,7 @@ def _lavd_parallel_state_parallel(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
@@ -238,6 +244,11 @@ def _lavd_parallel_state_parallel(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -248,7 +259,7 @@ def _lavd_parallel_state_parallel(
     ),
     key=[
         "B",
-        "N",
+        "MAX_BLOCK_N",
         "H",
         "D",
         "E",
@@ -280,6 +291,7 @@ def _lavd_parallel_state_reduce(
     BLOCK_N: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
 
@@ -440,6 +452,11 @@ def _lavd_parallel_state_reduce(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -451,7 +468,7 @@ def _lavd_parallel_state_reduce(
     ),
     key=[
         "B",
-        "N",
+        "MAX_BLOCK_N",
         "H",
         "D",
         "E",
@@ -488,6 +505,7 @@ def _lavd_parallel_state_parallel_reduce(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_C = tl.cdiv(BLOCK_N, BLOCK_C)
@@ -776,6 +794,11 @@ def _lavd_parallel_state_parallel_reduce(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -785,7 +808,16 @@ def _lavd_parallel_state_parallel_reduce(
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
+    key=[
+        "B",
+        "MAX_BLOCK_N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+        "USE_DECAY_K",
+        "USE_DECAY_V",
+    ],
 )
 @triton.jit
 def _lavd_parallel_intra(
@@ -814,6 +846,7 @@ def _lavd_parallel_intra(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
@@ -1229,6 +1262,11 @@ def _lavd_parallel_intra(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -1240,7 +1278,7 @@ def _lavd_parallel_intra(
     ),
     key=[
         "B",
-        "N",
+        "MAX_BLOCK_N",
         "H",
         "D",
         "E",
@@ -1271,6 +1309,7 @@ def _lavd_parallel_inter(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
@@ -1398,6 +1437,11 @@ def _lavd_parallel_inter(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -1407,7 +1451,16 @@ def _lavd_parallel_inter(
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
+    key=[
+        "B",
+        "MAX_BLOCK_N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+        "USE_DECAY_K",
+        "USE_DECAY_V",
+    ],
 )
 @triton.jit
 def _lavd_parallel_intra_inter(
@@ -1443,6 +1496,7 @@ def _lavd_parallel_intra_inter(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
@@ -1962,6 +2016,11 @@ def _lavd_parallel_intra_inter(
         )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -1971,7 +2030,16 @@ def _lavd_parallel_intra_inter(
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
+    key=[
+        "B",
+        "MAX_BLOCK_N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+        "USE_DECAY_K",
+        "USE_DECAY_V",
+    ],
 )
 @triton.jit
 def _lavd_parallel_intra_inter_no_loop(
@@ -2009,6 +2077,7 @@ def _lavd_parallel_intra_inter_no_loop(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
@@ -2472,6 +2541,11 @@ def _lavd_parallel_intra_inter_no_loop(
         )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -2481,7 +2555,16 @@ def _lavd_parallel_intra_inter_no_loop(
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
+    key=[
+        "B",
+        "MAX_BLOCK_N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+        "USE_DECAY_K",
+        "USE_DECAY_V",
+    ],
 )
 @triton.jit
 def _lavd_parallel_sub_intra(
@@ -2510,6 +2593,7 @@ def _lavd_parallel_sub_intra(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
@@ -2646,6 +2730,11 @@ def _lavd_parallel_sub_intra(
     )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -2654,7 +2743,16 @@ def _lavd_parallel_sub_intra(
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
+    key=[
+        "B",
+        "MAX_BLOCK_N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+        "USE_DECAY_K",
+        "USE_DECAY_V",
+    ],
 )
 @triton.jit
 def _lavd_parallel_sub_intra_attn(
@@ -2684,6 +2782,7 @@ def _lavd_parallel_sub_intra_attn(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_ATTN_MATRIX = tl.cdiv(N, BLOCK_C)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
@@ -2802,6 +2901,11 @@ def _lavd_parallel_sub_intra_attn(
         )
 
 
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
 @triton.autotune(
     generate_configs(
         {
@@ -2810,7 +2914,16 @@ def _lavd_parallel_sub_intra_attn(
             "BLOCK_E": [64, 128],
         }
     ),
-    key=["B", "N", "H", "D", "E", "USE_CU_SEQLENS", "USE_DECAY_K", "USE_DECAY_V"],
+    key=[
+        "B",
+        "MAX_BLOCK_N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+        "USE_DECAY_K",
+        "USE_DECAY_V",
+    ],
 )
 @triton.jit
 def _lavd_parallel_sub_intra_o(
@@ -2840,6 +2953,7 @@ def _lavd_parallel_sub_intra_o(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_ATTN_MATRIX = tl.cdiv(N, BLOCK_C)
     tl.cdiv(D, BLOCK_D)
