@@ -94,7 +94,7 @@ def test_dld_with_cumsum(shape, use_final_state, use_varlen, sum_option, dtype):
 
     c = 64
     m = (n + c - 1) // c
-    print("aaa", dld_torch.shape, dld_triton.shape)
+
     for i in range(m):
         start = i * c
         end = min(start + c, n)

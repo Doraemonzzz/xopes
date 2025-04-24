@@ -997,14 +997,6 @@ def _lavd_parallel_intra(
             + (offset_block_e + array_e[None, :])
         )
 
-        log_decay_v_sub = tl.load(
-            ldv_sub_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
-        ).to(tl.float32)
-        log_decay_v_start = tl.load(
-            ldv_start_block_ptr, mask=mask_ldv_start & mask_e[None, :], other=0.0
-        ).to(tl.float32)
-        tl.exp(log_decay_v_sub - log_decay_v_start)
-
     o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
 
     if SHARE_K:
@@ -1055,6 +1047,14 @@ def _lavd_parallel_intra(
         log_decay_v = log_decay_v_sum - log_decay_v
         v_decay = tl.exp(log_decay_v)
         v = (v * v_decay).to(v.dtype)
+
+        log_decay_v_sub = tl.load(
+            ldv_sub_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
+        ).to(tl.float32)
+        log_decay_v_start = tl.load(
+            ldv_start_block_ptr, mask=mask_ldv_start & mask_e[None, :], other=0.0
+        ).to(tl.float32)
+        v_decay_sub = tl.exp(log_decay_v_sub - log_decay_v_start)
 
     for i in range(NUM_BLOCK_D):
         mask_d = (i * BLOCK_D + array_d) < D

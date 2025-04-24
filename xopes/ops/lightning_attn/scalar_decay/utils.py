@@ -469,10 +469,10 @@ def _lasd_parallel_state_parallel_reduce(
         ld_sum_block_ptr = (
             LOG_DECAY_CUMSUM + offset_ld + offset_block_ld + offset_ld_sum
         )
-        log_decay_sum = tl.load(ld_sum_block_ptr)
+        log_decay_sum = tl.load(ld_sum_block_ptr).to(tl.float32)
 
         ##### update global state
-        block_decay = tl.exp(log_decay_sum.to(tl.float32))
+        block_decay = tl.exp(log_decay_sum)
         state *= block_decay
 
         ##### compute local state
@@ -495,7 +495,7 @@ def _lasd_parallel_state_parallel_reduce(
         for j in range(NUM_BLOCK_C):
             array = offset_block_n + array_c
             mask_c = array < N
-            log_decay = tl.load(ld_block_ptr, mask=mask_c, other=0.0)
+            log_decay = tl.load(ld_block_ptr, mask=mask_c, other=0.0).to(tl.float32)
             log_k_decay = log_decay_sum - log_decay
 
             if cnt < N:
@@ -506,7 +506,7 @@ def _lasd_parallel_state_parallel_reduce(
                     v_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
                 )
 
-                k_decay = tl.exp(log_k_decay.to(tl.float32))
+                k_decay = tl.exp(log_k_decay)
                 k_trans = (k_trans * k_decay[None, :]).to(k_trans.dtype)
                 state += tl.dot(k_trans, v)
 

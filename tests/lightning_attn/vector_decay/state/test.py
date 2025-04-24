@@ -155,7 +155,7 @@ def test(
         torch.norm(local_states_ref - local_states[:, :, :-1]).item(),
     )
     assert torch.allclose(
-        local_states_ref, local_states[:, :, :-1], atol=atol, rtol=rtol
+        local_states_ref.to(dtype), local_states[:, :, :-1], atol=atol, rtol=rtol
     )
 
     global_states = lavd_parallel_state_reduce(

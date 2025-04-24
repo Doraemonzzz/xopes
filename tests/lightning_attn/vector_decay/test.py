@@ -252,12 +252,19 @@ def test(
         assert torch.allclose(dk_torch, dk_parallel_triton, atol=atol, rtol=rtol)
 
     if not share_v:
-        # BLOCK_C = 16
-        # l = (n + BLOCK_C - 1) // BLOCK_C
-        # for i in range(l):
-        #     start = i * BLOCK_C
-        #     end = min(start + BLOCK_C, n)
-        #     print(start, end, torch.norm(dv_torch[:, start:end, :, :] - dv_parallel_triton[:, start:end, :, :]))
+        BLOCK_C = 16
+        l = (n + BLOCK_C - 1) // BLOCK_C
+        for i in range(l):
+            start = i * BLOCK_C
+            end = min(start + BLOCK_C, n)
+            print(
+                start,
+                end,
+                torch.norm(
+                    dv_torch[:, start:end, :, :]
+                    - dv_parallel_triton[:, start:end, :, :]
+                ),
+            )
 
         print(
             "dv diff max (torch parallel Vs triton parallel): ",
@@ -301,5 +308,3 @@ def test(
             torch.norm(ds_torch - ds_parallel_triton).item(),
         )
         assert torch.allclose(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)
-
-    # assert False

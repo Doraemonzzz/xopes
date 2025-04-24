@@ -161,7 +161,7 @@ def test_lasd(shape, use_initial_state, use_varlen, no_dstate, use_chunk_loop, d
         "o diff norm (torch vs parallel triton): ",
         torch.norm(o_torch - o_parallel_triton).item(),
     )
-    # assert torch.allclose(o_torch, o_parallel_triton, atol=atol, rtol=rtol)
+    assert torch.allclose(o_torch, o_parallel_triton, atol=atol, rtol=rtol)
 
     print(
         "state diff max (torch vs triton): ",

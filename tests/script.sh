@@ -97,7 +97,7 @@ folder=lightning_attn/constant_decay
 # folder=cumsum/cumsum
 
 # ##### lavd 250122, 250403
-# folder=lightning_attn/vector_decay
+folder=lightning_attn/vector_decay
 # folder=lightning_attn/vector_decay/state
 # folder=lightning_attn/vector_decay/inter
 # folder=lightning_attn/vector_decay/intra
