@@ -145,7 +145,7 @@ configs = [
             ("teal", "-"),
             ("black", "-"),
         ],
-        plot_name=f"lasd-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
+        plot_name=f"la-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
             "b": b,
             "h": h,

@@ -65,7 +65,10 @@ configs = [
         },
     )
     for reverse in [False, True]
-    for bench_type in ["speed", "memory"]
+    for bench_type in [
+        "speed",
+        # "memory"
+    ]
     for dtype_name in [
         "bf16",
     ]

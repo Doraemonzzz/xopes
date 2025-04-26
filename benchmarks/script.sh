@@ -84,6 +84,9 @@ folder=lightning_attention
 ##### vector_decay 250420
 # folder=lightning_attention/vector_decay/sub_intra
 
+# ##### state 250425
+# folder=lightning_attention/state
+
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0

@@ -20,6 +20,13 @@ try:
 except:
     lightning_attn_func = lambda x: None
 
+try:
+    from fla.ops.common.chunk_h import chunk_fwd_h
+except:
+    chunk_fwd_h = lambda x: None
+
+from xopes.ops.cumsum import chunk_cumsum_decay_fn
+
 
 def flash_attn_wrapper(q, k, v, **kwargs):
     o = flash_attn_func(
@@ -66,4 +73,26 @@ def lightning_attn_wrapper(q, k, v, **kwargs):
         variant=kwargs["variant"],
     )
     o = rearrange(o, "b h n d -> b n h d")
+    return o
+
+
+def state_fla_wrapper(k, v, ldk=None, ldv=None, chunk_size=128, **kwargs):
+    if ldk is not None:
+        ldk = chunk_cumsum_decay_fn(k, chunk_size=chunk_size, **kwargs)
+    if ldv is not None:
+        ldv = chunk_cumsum_decay_fn(v, chunk_size=chunk_size, **kwargs)
+
+    o = chunk_fwd_h(
+        k=k,
+        v=v,
+        g=None,
+        gk=ldk,
+        gv=ldv,
+        h0=None,
+        output_final_state=True,
+        chunk_size=chunk_size,
+        states_in_fp32=False,
+        head_first=False,
+    )
+
     return o

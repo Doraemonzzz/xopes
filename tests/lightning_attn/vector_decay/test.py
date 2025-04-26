@@ -10,6 +10,18 @@ from xopes.ops.lightning_attn.vector_decay import (  # noqa
 from xopes.utils import get_threshold
 
 
+def print_diff(o1, o2, n, BLOCK_C=16):
+    l = (n + BLOCK_C - 1) // BLOCK_C
+    for i in range(l):
+        start = i * BLOCK_C
+        end = min(start + BLOCK_C, n)
+        print(
+            start,
+            end,
+            torch.norm(o1[:, start:end, :, :] - o2[:, start:end, :, :]).item(),
+        )
+
+
 def get_params():
     shapes = [
         # standard shape
@@ -100,6 +112,7 @@ def test(
             ldk = F.logsigmoid(
                 torch.randn(b, n, h, d, dtype=dtype, device=device)
             ).requires_grad_()
+            ldk = torch.zeros_like(ldk).requires_grad_()
         else:
             ldk = None
 
@@ -216,6 +229,7 @@ def test(
         "o diff norm (torch parallel Vs triton parallel): ",
         torch.norm(o_torch - o_parallel_triton).item(),
     )
+    print_diff(o_torch, o_parallel_triton, n)
     assert torch.allclose(o_torch, o_parallel_triton, atol=atol, rtol=rtol)
 
     print(
@@ -238,6 +252,7 @@ def test(
         "dq diff norm (torch parallel Vs triton parallel): ",
         torch.norm(dq_torch - dq_parallel_triton).item(),
     )
+    print_diff(dq_torch, dq_parallel_triton, n)
     assert torch.allclose(dq_torch, dq_parallel_triton, atol=atol, rtol=rtol)
 
     if not share_k:
@@ -249,23 +264,10 @@ def test(
             "dk diff norm (torch parallel Vs triton parallel): ",
             torch.norm(dk_torch - dk_parallel_triton).item(),
         )
+        print_diff(dk_torch, dk_parallel_triton, n)
         assert torch.allclose(dk_torch, dk_parallel_triton, atol=atol, rtol=rtol)
 
     if not share_v:
-        BLOCK_C = 16
-        l = (n + BLOCK_C - 1) // BLOCK_C
-        for i in range(l):
-            start = i * BLOCK_C
-            end = min(start + BLOCK_C, n)
-            print(
-                start,
-                end,
-                torch.norm(
-                    dv_torch[:, start:end, :, :]
-                    - dv_parallel_triton[:, start:end, :, :]
-                ),
-            )
-
         print(
             "dv diff max (torch parallel Vs triton parallel): ",
             torch.abs(dv_torch - dv_parallel_triton).max().item(),
@@ -274,6 +276,7 @@ def test(
             "dv diff norm (torch parallel Vs triton parallel): ",
             torch.norm(dv_torch - dv_parallel_triton).item(),
         )
+        print_diff(dv_torch, dv_parallel_triton, n)
         assert torch.allclose(dv_torch, dv_parallel_triton, atol=atol, rtol=rtol)
 
     if use_ldk:
@@ -285,6 +288,7 @@ def test(
             "dldk diff norm (torch parallel Vs triton parallel): ",
             torch.norm(dldk_torch - dldk_parallel_triton).item(),
         )
+        print_diff(dldk_torch, dldk_parallel_triton, n)
         assert torch.allclose(dldk_torch, dldk_parallel_triton, atol=atol, rtol=rtol)
 
     if use_ldv:
@@ -296,6 +300,7 @@ def test(
             "dldv diff norm (torch parallel Vs triton parallel): ",
             torch.norm(dldv_torch - dldv_parallel_triton).item(),
         )
+        print_diff(dldv_torch, dldv_parallel_triton, n)
         assert torch.allclose(dldv_torch, dldv_parallel_triton, atol=atol, rtol=rtol)
 
     if use_initial_state:
@@ -307,4 +312,5 @@ def test(
             "ds diff norm (torch parallel Vs triton parallel): ",
             torch.norm(ds_torch - ds_parallel_triton).item(),
         )
+        print_diff(ds_torch, ds_parallel_triton, n)
         assert torch.allclose(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)

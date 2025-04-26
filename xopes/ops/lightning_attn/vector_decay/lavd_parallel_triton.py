@@ -864,6 +864,7 @@ def lavd_parallel_intra_inter(
         SHARE_V=share_v,
         SHARE_X=share_x,
         BLOCK_N=BLOCK_N,
+        BLOCK_C_=BLOCK_C,
     )
 
     return o, dld, a
