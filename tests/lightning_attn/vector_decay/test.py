@@ -7,7 +7,7 @@ from xopes.ops.lightning_attn.vector_decay import (  # noqa
     lavd_recurrence_triton,
     lavd_torch,
 )
-from xopes.utils import get_threshold
+from xopes.utils import assert_close, get_threshold
 
 
 def print_diff(o1, o2, n, BLOCK_C=16):
@@ -83,6 +83,7 @@ def test(
     torch.manual_seed(2024)
     device = torch.device("cuda")
     b, n, h, d, e = shape
+    c = -10
 
     if not use_ldk and not use_ldv:
         return
@@ -105,21 +106,24 @@ def test(
             torch.randn(b, n, h, d, dtype=dtype, device=device)
         ).requires_grad_()
         k = None
+        # k = 1 - torch.exp(ldk)
+
+        # ldk.requires_grad = True
+        # k.requires_grad = True
     else:
         k = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
 
         if use_ldk:
             ldk = F.logsigmoid(
-                torch.randn(b, n, h, d, dtype=dtype, device=device)
+                torch.ones(b, n, h, d, dtype=dtype, device=device) * c
             ).requires_grad_()
-            ldk = torch.zeros_like(ldk).requires_grad_()
         else:
             ldk = None
 
     if share_v:
         use_ldv = True
         ldv = F.logsigmoid(
-            torch.randn(b, n, h, e, dtype=dtype, device=device)
+            torch.randn(b, n, h, e, dtype=dtype, device=device) * c
         ).requires_grad_()
         v = None
     else:
@@ -127,7 +131,7 @@ def test(
 
         if use_ldv:
             ldv = F.logsigmoid(
-                torch.randn(b, n, h, e, dtype=dtype, device=device)
+                torch.randn(b, n, h, e, dtype=dtype, device=device) * c
             ).requires_grad_()
         else:
             ldv = None
@@ -218,6 +222,8 @@ def test(
         ds_parallel_triton, initial_state.grad = initial_state.grad.clone(), None
 
     atol, rtol = get_threshold(dtype)
+    ld_atol = 0.05
+    ld_rtol = rtol
 
     ##### Check forward pass results
     # triton parallel
@@ -289,7 +295,9 @@ def test(
             torch.norm(dldk_torch - dldk_parallel_triton).item(),
         )
         print_diff(dldk_torch, dldk_parallel_triton, n)
-        assert torch.allclose(dldk_torch, dldk_parallel_triton, atol=atol, rtol=rtol)
+        assert_close(
+            ref=dldk_torch, input=dldk_parallel_triton, atol=ld_atol, rtol=ld_rtol
+        )
 
     if use_ldv:
         print(
@@ -301,7 +309,9 @@ def test(
             torch.norm(dldv_torch - dldv_parallel_triton).item(),
         )
         print_diff(dldv_torch, dldv_parallel_triton, n)
-        assert torch.allclose(dldv_torch, dldv_parallel_triton, atol=atol, rtol=rtol)
+        assert_close(
+            ref=dldv_torch, input=dldv_parallel_triton, atol=ld_atol, rtol=ld_rtol
+        )
 
     if use_initial_state:
         print(

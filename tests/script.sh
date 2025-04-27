@@ -63,7 +63,7 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=gate_linear
 
 # ##### lacd 250219
-folder=lightning_attn/constant_decay
+# folder=lightning_attn/constant_decay
 
 # ##### lacd_part 250224
 # folder=lightning_attn/constant_decay/intra

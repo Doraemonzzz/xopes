@@ -100,7 +100,6 @@ def chunk_cumsum_decay_triton(
     BLOCK_C = triton.next_power_of_2(chunk_size)
 
     # allocate output
-    dtype = torch.float32 if x.dtype == torch.float32 else torch.float16
     o = torch.empty_like(x, dtype=torch.float32)
 
     def grid(meta):
