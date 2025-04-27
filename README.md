@@ -7,9 +7,14 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 - act
 - gate_linear
 
+# Todo
+- flce large batch bug.
+- lightning attn with element-wise decay.
+
 # Plan
 - lightning attn vector decay
   - [x] 250419
+  - [x] 250427 finish fast implementation
 - tpa decode 250409
 - recurrence state update
   - [ ] lightning attn

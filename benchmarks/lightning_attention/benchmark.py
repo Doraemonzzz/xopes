@@ -158,15 +158,15 @@ configs = [
     )
     for bench_type in [
         "speed",
-        # "memory",
+        "memory",
     ]
     for mode in [
         "fwd",
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    # for b, h, d in [[4, 32, 128], [1, 16, 128]]
-    for b, h, d in [[4, 32, 128]]
+    for b, h, d in [[4, 32, 128], [1, 16, 128]]
+    # for b, h, d in [[4, 32, 128]]
     # for b, h, d in [[1, 16, 128]]
 ]
 
