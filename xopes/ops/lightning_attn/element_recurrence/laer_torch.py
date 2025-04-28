@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 import torch
 
 
-def lasr_torch(
+def laer_torch(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -13,7 +13,7 @@ def lasr_torch(
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Apply Lightning Attention with Simple Recurrence.
+    Apply Lightning Attention with Element-wise Recurrence.
 
     Args:
         q: Query tensor of shape (B, N, D)
@@ -63,5 +63,5 @@ if __name__ == "__main__":
     k = torch.randn((b, n, d), dtype=dtype).cuda()
     v = torch.randn((b, n, d), dtype=dtype).cuda()
     ld = F.logsigmoid(torch.randn((b, n, d), dtype=dtype).cuda())
-    o = lasr_torch(q, k, v, ld)
+    o = laer_torch(q, k, v, ld)
     print(o.shape)

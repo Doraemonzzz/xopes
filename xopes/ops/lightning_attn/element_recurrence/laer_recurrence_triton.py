@@ -27,7 +27,7 @@ from xopes.utils import contiguous, generate_configs
     ],
 )
 @triton.jit
-def _lasr_recurrence_fwd(
+def _laer_recurrence_fwd(
     Q,  # B N D
     K,  # B N D
     V,  # B N D
@@ -104,7 +104,7 @@ def _lasr_recurrence_fwd(
     )
 
 
-def lasr_recurrence_fwd(
+def laer_recurrence_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -134,7 +134,7 @@ def lasr_recurrence_fwd(
             triton.cdiv(d, meta["BLOCK_D"]),
         )
 
-    _lasr_recurrence_fwd[grid](
+    _laer_recurrence_fwd[grid](
         Q=q,
         K=k,
         V=v,
@@ -159,7 +159,7 @@ def lasr_recurrence_fwd(
     key=["B", "D", "USE_INITIAL_STATE", "USE_CU_SEQLENS"],
 )
 @triton.jit
-def _lasr_recurrence_bwd_dq(
+def _laer_recurrence_bwd_dq(
     Q,  # B N D
     K,  # B N D
     V,  # B N D
@@ -247,7 +247,7 @@ def _lasr_recurrence_bwd_dq(
     key=["B", "D", "USE_INITIAL_STATE", "USE_CU_SEQLENS"],
 )
 @triton.jit
-def _lasr_recurrence_bwd_dk_dv(
+def _laer_recurrence_bwd_dk_dv(
     Q,  # B N D
     K,  # B N D
     V,  # B N D
@@ -345,7 +345,7 @@ def _lasr_recurrence_bwd_dk_dv(
     )
 
 
-def lasr_recurrence_bwd(
+def laer_recurrence_bwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -379,7 +379,7 @@ def lasr_recurrence_bwd(
             triton.cdiv(d, meta["BLOCK_D"]),
         )
 
-    _lasr_recurrence_bwd_dq[grid](
+    _laer_recurrence_bwd_dq[grid](
         Q=q,
         K=k,
         V=v,
@@ -402,7 +402,7 @@ def lasr_recurrence_bwd(
         MAX_BLOCK_D=MAX_BLOCK_D,
     )
 
-    _lasr_recurrence_bwd_dk_dv[grid](
+    _laer_recurrence_bwd_dk_dv[grid](
         Q=q,
         K=k,
         V=v,
@@ -439,7 +439,7 @@ def lasr_recurrence_bwd(
     return dq, dk, dv, dld, dinitial_state
 
 
-class LasrRecurrenceFunction(torch.autograd.Function):
+class LaerRecurrenceFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(
@@ -452,7 +452,7 @@ class LasrRecurrenceFunction(torch.autograd.Function):
         cu_seqlens=None,
     ):
         # Forward computation
-        output, final_state = lasr_recurrence_fwd(
+        output, final_state = laer_recurrence_fwd(
             q=q,
             k=k,
             v=v,
@@ -471,7 +471,7 @@ class LasrRecurrenceFunction(torch.autograd.Function):
     def backward(ctx, do, dfinal_state):
         q, k, v, ld, initial_state, final_state, cu_seqlens = ctx.saved_tensors
 
-        dq, dk, dv, dld, dinitial_state = lasr_recurrence_bwd(
+        dq, dk, dv, dld, dinitial_state = laer_recurrence_bwd(
             q=q,
             k=k,
             v=v,
@@ -493,7 +493,7 @@ class LasrRecurrenceFunction(torch.autograd.Function):
         )
 
 
-def lasr_recurrence_triton(
+def laer_recurrence_triton(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -503,7 +503,7 @@ def lasr_recurrence_triton(
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Apply Lightning Attention with Simple Recurrence.
+    Apply Lightning Attention with Element-wise Recurrence.
 
     Args:
         q: Query tensor of shape (B, N, D)
@@ -527,7 +527,7 @@ def lasr_recurrence_triton(
         if len(initial_state.shape) == 1:
             initial_state = repeat(initial_state, "d -> b d", b=b).contiguous()
 
-    return LasrRecurrenceFunction.apply(
+    return LaerRecurrenceFunction.apply(
         q,
         k,
         v,
@@ -548,6 +548,6 @@ if __name__ == "__main__":
     v = torch.randn(b, n, d, device=device, dtype=dtype).requires_grad_(True)
     ld = F.logsigmoid(torch.randn(b, n, d, device=device))
     initial_state = torch.randn(b, d, device=device, dtype=dtype).requires_grad_(True)
-    output, final_state = lasr_recurrence_triton(q, k, v, ld, initial_state)
+    output, final_state = laer_recurrence_triton(q, k, v, ld, initial_state)
     loss = output.sum() + final_state.sum()
     loss.backward()

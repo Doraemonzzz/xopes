@@ -2,11 +2,11 @@ from typing import Optional, Tuple
 
 import torch
 
-from .lasr_recurrence_triton import lasr_recurrence_triton
-from .lasr_torch import lasr_torch
+from .laer_recurrence_triton import laer_recurrence_triton
+from .laer_torch import laer_torch
 
 
-def lasr_fn(
+def laer_fn(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -15,6 +15,6 @@ def lasr_fn(
     cu_seqlens: Optional[torch.LongTensor] = None,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    return lasr_recurrence_triton(
+    return laer_recurrence_triton(
         q=q, k=k, v=v, ld=ld, initial_state=initial_state, cu_seqlens=cu_seqlens
     )
