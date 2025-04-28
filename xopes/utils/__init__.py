@@ -1,6 +1,6 @@
 from .constant import ACT_SET, HEAD_DIM, MIN_BLOCK, SM_COUNT, XOPES_DEBUG, XOPES_DTYPE
 from .op_utils import safe_exp, transpose
-from .test_utils import assert_close
+from .test_utils import assert_close, print_diff
 from .utils import (
     contiguous,
     filter_configs,

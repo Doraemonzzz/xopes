@@ -71,7 +71,7 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=lightning_attn/constant_decay/inter
 
 # ##### lasd 250303
-# folder=lightning_attn/scalar_decay
+folder=lightning_attn/scalar_decay
 # folder=lightning_attn/scalar_decay/intra
 # folder=lightning_attn/scalar_decay/state
 # folder=lightning_attn/scalar_decay/inter
@@ -97,7 +97,7 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=cumsum/cumsum
 
 # ##### lavd 250122, 250403
-folder=lightning_attn/vector_decay
+# folder=lightning_attn/vector_decay
 # folder=lightning_attn/vector_decay/state
 # folder=lightning_attn/vector_decay/inter
 # folder=lightning_attn/vector_decay/intra

@@ -1,3 +1,4 @@
+import torch
 
 
 def get_abs_err(x, y):
@@ -21,3 +22,15 @@ def assert_close(ref, input, atol, rtol):
     assert (
         False
     ), f"abs_atol: {abs_atol} > atol: {atol} and error_rate: {error_rate} > rtol: {rtol}"
+
+
+def print_diff(o1, o2, n, BLOCK_C=16):
+    l = (n + BLOCK_C - 1) // BLOCK_C
+    for i in range(l):
+        start = i * BLOCK_C
+        end = min(start + BLOCK_C, n)
+        print(
+            start,
+            end,
+            torch.norm(o1[:, start:end, :, :] - o2[:, start:end, :, :]).item(),
+        )

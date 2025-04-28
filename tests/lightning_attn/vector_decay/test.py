@@ -7,19 +7,7 @@ from xopes.ops.lightning_attn.vector_decay import (  # noqa
     lavd_recurrence_triton,
     lavd_torch,
 )
-from xopes.utils import assert_close, get_threshold
-
-
-def print_diff(o1, o2, n, BLOCK_C=16):
-    l = (n + BLOCK_C - 1) // BLOCK_C
-    for i in range(l):
-        start = i * BLOCK_C
-        end = min(start + BLOCK_C, n)
-        print(
-            start,
-            end,
-            torch.norm(o1[:, start:end, :, :] - o2[:, start:end, :, :]).item(),
-        )
+from xopes.utils import assert_close, get_threshold, print_diff
 
 
 def get_params():
@@ -106,10 +94,6 @@ def test(
             torch.randn(b, n, h, d, dtype=dtype, device=device)
         ).requires_grad_()
         k = None
-        # k = 1 - torch.exp(ldk)
-
-        # ldk.requires_grad = True
-        # k.requires_grad = True
     else:
         k = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
 

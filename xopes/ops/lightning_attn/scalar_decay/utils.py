@@ -942,18 +942,21 @@ def _lasd_parallel_intra_inter(
             + (offset_block_e + array_e)[None, :]
         )
 
-    mask_e = (offset_block_e + array_e) < E
-    mask_c = (offset_block_n + offset_block_c + array_c) < N
-
-    o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
-
     array_n = tl.arange(0, BLOCK_N)
     array_kv = array_n
+
+    mask_e = (offset_block_e + array_e) < E
+    mask_c = (offset_block_n + offset_block_c + array_c) < N
+    mask_kv = (offset_block_n + array_kv) < N
+
+    o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
 
     ldq_block_ptr = (
         LOG_DECAY + offset_ld + offset_block_ld + (offset_block_c + array_c) * H
     )
     ldq = tl.load(ldq_block_ptr, mask=mask_c, other=0.0).to(tl.float32)
+    ldk_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array_kv * H
+    ldk = tl.load(ldk_block_ptr, mask=mask_kv, other=0.0).to(tl.float32)
 
     if REVERSE:
         stride = -1
@@ -975,9 +978,18 @@ def _lasd_parallel_intra_inter(
         + array_kv[:, None] * H * E
         + (offset_block_e + array_e)[None, :]
     )
-    mask_kv = (offset_block_n + array_kv) < N
     v = tl.load(v_block_ptr, mask=mask_kv[:, None] & mask_e[None, :], other=0.0)
-    ldk_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array_kv * H
+
+    if REVERSE:
+        mask_qk = (offset_block_c + array_c)[:, None] <= array_kv[None, :]
+    else:
+        mask_qk = (offset_block_c + array_c)[:, None] >= array_kv[None, :]
+    mask_qk_ = mask_c[:, None] and mask_kv[None, :]
+    mask_qk = mask_qk and mask_qk_
+
+    log_decay = (ldq[:, None] - ldk[None, :]) * stride
+    log_decay = tl.where(mask_qk, log_decay, float("-inf"))
+    decay = tl.exp(log_decay)
 
     for i in range(NUM_BLOCK_D):
         mask_d = (array_d + i * BLOCK_D) < D
@@ -995,12 +1007,8 @@ def _lasd_parallel_intra_inter(
         k_trans = tl.load(
             k_trans_block_ptr, mask=mask_kv[None, :] & mask_d[:, None], other=0.0
         )
-        ldk = tl.load(ldk_block_ptr, mask=mask_kv, other=0).to(tl.float32)
 
         score = tl.dot(q, k_trans)
-
-        log_decay = (ldq[:, None] - ldk[None, :]) * stride
-        decay = tl.exp(tl.where(log_decay <= 0, log_decay, float("-inf")))
         score *= decay
         o += tl.dot(score.to(v.dtype), v)
         ##### intra end #####

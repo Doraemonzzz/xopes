@@ -103,14 +103,14 @@ configs = [
             # "lacd_p",
             # "land_p",
             # "lacd_pl",
-            # "lasd_p",
-            "lavd_k_p",
-            "lavd_kv_p",
+            "lasd_p",
+            # "lavd_k_p",
+            # "lavd_kv_p",
             # "lasr_r",
             # "flash",
             # "lightning_p",
             # "lightning_c",
-            "gla_k",
+            # "gla_k",
             # "gla_s_k",
         ],
         line_names=[
@@ -118,14 +118,14 @@ configs = [
             # "LACD_P",
             # "LAND_P",
             # "LACD_PL",
-            # "LASD_P",
-            "LAVD_K_P",
-            "LAVD_KV_P",
+            "LASD_P",
+            # "LAVD_K_P",
+            # "LAVD_KV_P",
             # "LASR_R",
             # "Flash",
             # "LP",
             # "LC",
-            "GLA_K",
+            # "GLA_K",
             # "GLA_S_K",
         ],
         styles=[
@@ -158,15 +158,15 @@ configs = [
     )
     for bench_type in [
         "speed",
-        "memory",
+        # "memory",
     ]
     for mode in [
         "fwd",
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    for b, h, d in [[4, 32, 128], [1, 16, 128]]
-    # for b, h, d in [[4, 32, 128]]
+    # for b, h, d in [[4, 32, 128], [1, 16, 128]]
+    for b, h, d in [[4, 32, 128]]
     # for b, h, d in [[1, 16, 128]]
 ]
 
