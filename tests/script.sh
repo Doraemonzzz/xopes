@@ -71,7 +71,7 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=lightning_attn/constant_decay/inter
 
 # ##### lasd 250303
-folder=lightning_attn/scalar_decay
+# folder=lightning_attn/scalar_decay
 # folder=lightning_attn/scalar_decay/intra
 # folder=lightning_attn/scalar_decay/state
 # folder=lightning_attn/scalar_decay/inter
@@ -104,8 +104,9 @@ folder=lightning_attn/scalar_decay
 # folder=lightning_attn/vector_decay/recurrence
 # folder=lightning_attn/vector_decay/sub_intra
 
-# ##### lasr 250407
-# folder=lightning_attn/simple_recurrence
+# ##### laer 250407
+# folder=lightning_attn/element_recurrence
+folder=lightning_attn/element_recurrence/state
 
 # ##### tpa_decode 250408
 # folder=flash_attn/tpa_decode

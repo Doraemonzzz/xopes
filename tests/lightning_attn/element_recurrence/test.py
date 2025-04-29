@@ -2,9 +2,9 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from xopes.ops.lightning_attn.simple_recurrence import (
-    lasr_recurrence_triton,
-    lasr_torch,
+from xopes.ops.lightning_attn.element_recurrence import (
+    laer_recurrence_triton,
+    laer_torch,
 )
 from xopes.utils import get_threshold
 
@@ -33,12 +33,12 @@ def get_params():
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True, False])
+@pytest.mark.parametrize("c", [-10, 1, 10])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_lasr(shape, use_initial_state, use_varlen, no_dstate, dtype):
+def test_lasr(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     b, n, d = shape
-    c = 1
 
     if use_varlen:
         b = 1
@@ -54,9 +54,12 @@ def test_lasr(shape, use_initial_state, use_varlen, no_dstate, dtype):
     k = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
     v = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
     ld = F.logsigmoid(
-        torch.randn((b, n, d), dtype=dtype, device=device)
+        torch.randn((b, n, d), dtype=dtype, device=device) * c
     ).requires_grad_()
-    do = torch.randn((), dtype=dtype, device=device)
+    if no_dstate:
+        do = torch.randn((b, n, d), dtype=dtype, device=device)
+    else:
+        do = torch.randn((), dtype=dtype, device=device)
 
     if use_initial_state:
         initial_state = torch.randn((b, d), dtype=dtype, device=device).requires_grad_()
@@ -65,7 +68,7 @@ def test_lasr(shape, use_initial_state, use_varlen, no_dstate, dtype):
 
     ##### Forward pass
     # Baseline implementation
-    o_torch, s_torch = lasr_torch(
+    o_torch, s_torch = laer_torch(
         q=q,
         k=k,
         v=v,
@@ -74,12 +77,12 @@ def test_lasr(shape, use_initial_state, use_varlen, no_dstate, dtype):
         cu_seqlens=cu_seqlens,
     )
     if no_dstate:
-        output_torch = o_torch.sum()
+        output_torch = o_torch
     else:
-        output_torch = o_torch.sum() + s_torch.sum() * c
+        output_torch = o_torch.mean() + s_torch.mean()
 
     # Triton recurrence implementation
-    o_triton, s_triton = lasr_recurrence_triton(
+    o_triton, s_triton = laer_recurrence_triton(
         q=q,
         k=k,
         v=v,
@@ -88,9 +91,9 @@ def test_lasr(shape, use_initial_state, use_varlen, no_dstate, dtype):
         cu_seqlens=cu_seqlens,
     )
     if no_dstate:
-        output_triton = o_triton.sum()
+        output_triton = o_triton
     else:
-        output_triton = o_triton.sum() + s_triton.sum() * c
+        output_triton = o_triton.mean() + s_triton.mean()
 
     ##### Backward pass
     # Baseline implementation

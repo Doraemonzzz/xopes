@@ -24,13 +24,22 @@ def assert_close(ref, input, atol, rtol):
     ), f"abs_atol: {abs_atol} > atol: {atol} and error_rate: {error_rate} > rtol: {rtol}"
 
 
-def print_diff(o1, o2, n, BLOCK_C=16):
-    l = (n + BLOCK_C - 1) // BLOCK_C
+def print_diff(o1, o2, n, BLOCK=16):
+    l = (n + BLOCK - 1) // BLOCK
     for i in range(l):
-        start = i * BLOCK_C
-        end = min(start + BLOCK_C, n)
+        start = i * BLOCK
+        end = min(start + BLOCK, n)
         print(
             start,
             end,
-            torch.norm(o1[:, start:end, :, :] - o2[:, start:end, :, :]).item(),
+            torch.norm(
+                o1[
+                    :,
+                    start:end,
+                ]
+                - o2[
+                    :,
+                    start:end,
+                ]
+            ).item(),
         )

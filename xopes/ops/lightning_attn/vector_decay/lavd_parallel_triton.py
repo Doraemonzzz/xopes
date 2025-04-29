@@ -833,7 +833,6 @@ def lavd_parallel_intra_inter(
         )
 
     _lavd_parallel_intra_inter_no_loop[grid](
-        # _lavd_parallel_intra_inter_no_loop_v1[grid](
         Q=q,
         K=k,
         V=v,
