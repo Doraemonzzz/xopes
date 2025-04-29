@@ -104,56 +104,6 @@ def _laer_recurrence_fwd(
     )
 
 
-def laer_recurrence_fwd(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    ld: torch.Tensor,
-    initial_state: Optional[torch.Tensor] = None,
-    cu_seqlens: Optional[torch.LongTensor] = None,
-):
-    b, n, d = q.shape
-    dtype = q.dtype
-    device = q.device
-    use_cu_seqlens = cu_seqlens is not None
-    if use_cu_seqlens:
-        b = cu_seqlens.shape[0] - 1
-
-    use_initial_state = initial_state is not None
-    final_state = torch.empty((b, d), dtype=dtype, device=device)
-    MAX_BLOCK_D = triton.next_power_of_2(d)
-
-    if use_cu_seqlens:
-        o = torch.empty((1, n, d), dtype=dtype, device=device)
-    else:
-        o = torch.empty((b, n, d), dtype=dtype, device=device)
-
-    def grid(meta):
-        return (
-            b,
-            triton.cdiv(d, meta["BLOCK_D"]),
-        )
-
-    _laer_recurrence_fwd[grid](
-        Q=q,
-        K=k,
-        V=v,
-        STATE=initial_state,
-        CU_SEQLENS=cu_seqlens,
-        O=o,
-        FINAL_STATE=final_state,
-        LOG_DECAY=ld,
-        B=b,
-        N=n,
-        D=d,
-        USE_CU_SEQLENS=use_cu_seqlens,
-        USE_INITIAL_STATE=use_initial_state,
-        MAX_BLOCK_D=MAX_BLOCK_D,
-    )
-
-    return o, final_state
-
-
 @triton.autotune(
     generate_configs({"num_warps": [4, 8, 16, 32], "BLOCK_D": [128, 256]}),
     key=["B", "D", "USE_INITIAL_STATE", "USE_CU_SEQLENS"],
@@ -343,6 +293,56 @@ def _laer_recurrence_bwd_dk_dv(
         dstate.to(dinitial_state_block_ptr.dtype.element_ty),
         mask=mask_d,
     )
+
+
+def laer_recurrence_fwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    ld: torch.Tensor,
+    initial_state: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+):
+    b, n, d = q.shape
+    dtype = q.dtype
+    device = q.device
+    use_cu_seqlens = cu_seqlens is not None
+    if use_cu_seqlens:
+        b = cu_seqlens.shape[0] - 1
+
+    use_initial_state = initial_state is not None
+    final_state = torch.empty((b, d), dtype=dtype, device=device)
+    MAX_BLOCK_D = triton.next_power_of_2(d)
+
+    if use_cu_seqlens:
+        o = torch.empty((1, n, d), dtype=dtype, device=device)
+    else:
+        o = torch.empty((b, n, d), dtype=dtype, device=device)
+
+    def grid(meta):
+        return (
+            b,
+            triton.cdiv(d, meta["BLOCK_D"]),
+        )
+
+    _laer_recurrence_fwd[grid](
+        Q=q,
+        K=k,
+        V=v,
+        STATE=initial_state,
+        CU_SEQLENS=cu_seqlens,
+        O=o,
+        FINAL_STATE=final_state,
+        LOG_DECAY=ld,
+        B=b,
+        N=n,
+        D=d,
+        USE_CU_SEQLENS=use_cu_seqlens,
+        USE_INITIAL_STATE=use_initial_state,
+        MAX_BLOCK_D=MAX_BLOCK_D,
+    )
+
+    return o, final_state
 
 
 def laer_recurrence_bwd(

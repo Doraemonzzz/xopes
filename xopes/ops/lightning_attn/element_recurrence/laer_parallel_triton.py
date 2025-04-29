@@ -2,12 +2,16 @@ from typing import Optional, Tuple
 
 import torch
 import triton
+from einops import repeat
 
 from xopes.ops.lightning_attn.element_recurrence.utils import (
+    _laer_parallel_intra_inter_bwd,
     _laer_parallel_intra_inter_fwd,
     _laer_parallel_state_parallel,
 )
 from xopes.utils import contiguous
+
+BLOCK_N = 32
 
 
 @contiguous
@@ -15,10 +19,8 @@ def laer_parallel_state_parallel(
     k: torch.Tensor,
     v: torch.Tensor,
     ld: torch.Tensor,
-    # ld_cumsum: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
-    compute_ld_cumsum: bool = True,
     BLOCK_N: int = 256,
 ):
     b, n, d = k.shape
@@ -116,6 +118,78 @@ def laer_parallel_intra_inter_fwd(
     return o, states
 
 
+@contiguous
+def laer_parallel_intra_inter_bwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    do: torch.Tensor,
+    states: torch.Tensor,
+    dstates: torch.Tensor,
+    ld: torch.Tensor,
+    initial_state: Optional[torch.Tensor] = None,
+    dfinal_state: Optional[torch.Tensor] = None,
+    ld_reverse_cumsum: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    BLOCK_N: int = 256,
+):
+    b, n, d = q.shape
+
+    use_cu_seqlens = cu_seqlens is not None
+    if use_cu_seqlens:
+        b = cu_seqlens.shape[0] - 1
+
+    NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
+    use_pad = n % BLOCK_N != 0
+    use_initial_state = initial_state is not None
+    use_dfinal_state = dfinal_state is not None
+
+    if use_cu_seqlens:
+        dq = torch.empty((1, n, d), dtype=q.dtype, device=q.device)
+        dk = torch.empty((1, n, d), dtype=k.dtype, device=k.device)
+        dv = torch.empty((1, n, d), dtype=v.dtype, device=v.device)
+        dld = torch.empty((1, n, d), dtype=ld.dtype, device=ld.device)
+    else:
+        dq = torch.empty((b, n, d), dtype=q.dtype, device=q.device)
+        dk = torch.empty((b, n, d), dtype=k.dtype, device=k.device)
+        dv = torch.empty((b, n, d), dtype=v.dtype, device=v.device)
+        dld = torch.empty((b, n, d), dtype=ld.dtype, device=ld.device)
+
+    def grid(meta):
+        return (
+            b,
+            triton.cdiv(d, meta["BLOCK_D"]),
+        )
+
+    _laer_parallel_intra_inter_bwd[grid](
+        Q=q,
+        K=k,
+        V=v,
+        DO=do,
+        DQ=dq,
+        DK=dk,
+        DV=dv,
+        DLD=dld,
+        STATE=initial_state,
+        DSTATE=dfinal_state,
+        STATES=states,
+        DSTATES=dstates,
+        LOG_DECAY=ld,
+        LOG_DECAY_REVERSE_CUMSUM=ld_reverse_cumsum,
+        CU_SEQLENS=cu_seqlens,
+        B=b,
+        N=n,
+        D=d,
+        USE_CU_SEQLENS=use_cu_seqlens,
+        USE_INITIAL_STATE=use_initial_state,
+        USE_DFINAL_STATE=use_dfinal_state,
+        BLOCK_N=BLOCK_N,
+        NUM_BLOCK_N=NUM_BLOCK_N,
+    )
+
+    return dq, dk, dv, dld, dstates
+
+
 ########## Fwd start ##########
 @contiguous
 def laer_parallel_fwd(
@@ -147,8 +221,6 @@ def laer_parallel_fwd(
     """
     b, n, d = q.shape
 
-    BLOCK_N = 128
-
     # Step1: Compute states in parallel or chunk loop
     states, ld_cumsum = laer_parallel_state_parallel(
         k=k,
@@ -156,7 +228,6 @@ def laer_parallel_fwd(
         ld=ld,
         cu_seqlens=cu_seqlens,
         reverse=reverse,
-        compute_ld_cumsum=True,
         BLOCK_N=BLOCK_N,
     )
 
@@ -176,86 +247,75 @@ def laer_parallel_fwd(
     return o, states
 
 
-# @contiguous
-# def laer_parallel_bwd(
-#     q: torch.Tensor,
-#     k: torch.Tensor,
-#     v: torch.Tensor,
-#     do: torch.Tensor,
-#     ld: Optional[torch.Tensor] = None,
-#     initial_state: Optional[torch.Tensor] = None,
-#     dfinal_state: Optional[torch.Tensor] = None,
-#     cu_seqlens: Optional[torch.LongTensor] = None,
-#     states: Optional[torch.Tensor] = None,
-#     ld_cumsum: Optional[torch.Tensor] = None,
-# ):
-#     """
-#     Backward pass for Lightning Attention with Data-Dependent Scalar Decay in parallel mode.
+@contiguous
+def laer_parallel_bwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    do: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
+    initial_state: Optional[torch.Tensor] = None,
+    dfinal_state: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    states: Optional[torch.Tensor] = None,
+):
+    """
+    Backward pass for Lightning Attention with Data-Dependent Scalar Decay in parallel mode.
 
-#     Args:
-#         q: Query tensor of shape (B, N, D)
-#         k: Key tensor of shape (B, N, D)
-#         v: Value tensor of shape (B, N, D)
-#         do: Gradient of output tensor of shape (B, N, D)
-#         ld: Log decay tensor of shape (B, N, D) - data dependent decay factors
-#         initial_state: Initial state tensor of shape (B, D)
-#         dfinal_state: Gradient of final state tensor
-#         cu_seqlens: Cumulative sequence lengths for variable length sequences
-#         states: Cached states from forward pass (optional)
-#         ld_cumsum: Cached ld_cumsum from forward pass (optional)
+    Args:
+        q: Query tensor of shape (B, N, D)
+        k: Key tensor of shape (B, N, D)
+        v: Value tensor of shape (B, N, D)
+        do: Gradient of output tensor of shape (B, N, D)
+        ld: Log decay tensor of shape (B, N, D) - data dependent decay factors
+        initial_state: Initial state tensor of shape (B, D)
+        dfinal_state: Gradient of final state tensor
+        cu_seqlens: Cumulative sequence lengths for variable length sequences
+        states: Cached states from forward pass (optional)
+        ld_cumsum: Cached ld_cumsum from forward pass (optional)
 
-#     Returns:
-#         dq: Gradient of query tensor
-#         dk: Gradient of key tensor
-#         dv: Gradient of value tensor
-#         dld: Gradient of log decay tensor
-#         dinitial_state: Gradient of initial state tensor
-#     """
-#     b, n, d = q.shape
+    Returns:
+        dq: Gradient of query tensor
+        dk: Gradient of key tensor
+        dv: Gradient of value tensor
+        dld: Gradient of log decay tensor
+        dinitial_state: Gradient of initial state tensor
+    """
+    b, n, d = q.shape
 
-#     BLOCK_N = 128
+    # Compute dstates for dk and dv
+    dstates, ld_reverse_cumsum = laer_parallel_state_parallel(
+        k=q,  # b n d
+        v=do,  # b n d
+        ld=ld,  # b n d
+        cu_seqlens=cu_seqlens,
+        reverse=True,
+        BLOCK_N=BLOCK_N,
+    )
 
-#     # Recompute states if not provided
-#     dq = states * do
+    dq, dk, dv, dld, dstates = laer_parallel_intra_inter_bwd(
+        q=q,  # b n d
+        k=k,  # b n d
+        v=v,  # b n d
+        do=do,  # b n d
+        states=states,  # b n d
+        dstates=dstates,  # b n d
+        ld=ld,
+        ld_reverse_cumsum=ld_reverse_cumsum,
+        initial_state=initial_state,
+        dfinal_state=dfinal_state,
+        cu_seqlens=cu_seqlens,
+        BLOCK_N=BLOCK_N,
+    )
 
-#     ld_reverse_cumsum = chunk_cumsum_decay_fn(ld, reverse=True, chunk_size=BLOCK_N)
+    # Compute gradient for initial state if needed
+    need_dfinal_state = (
+        dfinal_state is not None
+        and initial_state is not None
+        and initial_state.requires_grad
+    )
 
-#     # Compute dstates for dk and dv
-#     dstates = laer_parallel_state_parallel(
-#         k=q,  # b n d
-#         v=do,  # b n d
-#         ld=ld, # b n d
-#         ld_cumsum=ld_reverse_cumsum,
-#         cu_seqlens=cu_seqlens,
-#         reverse=True,
-#         compute_ld_cumsum=True,
-#         BLOCK_N=BLOCK_N,
-#     )
-
-#     # TODO
-#     dk, dv, dld = laer_parallel_intra_inter_bwd(
-#         q=v,  # b n d
-#         k=do,  # b n d
-#         v=q,  # b n d
-#         states=dstates,  # b n d
-#         ld=ld,
-#         ld_cumsum=ld_cumsum,
-#         ld_reverse_cumsum=ld_reverse_cumsum,
-#         x=k,  # b n d
-#         final_state=dfinal_state,  # b d
-#         cu_seqlens=cu_seqlens,
-#         reverse=True,
-#         BLOCK_N=BLOCK_N,
-#     )
-
-#     # Compute gradient for initial state if needed
-#     need_dfinal_state = (
-#         dfinal_state is not None
-#         and initial_state is not None
-#         and initial_state.requires_grad
-#     )
-
-#     return dq, dk, dv, dld, dstates[:,-1] if need_dfinal_state else None
+    return dq, dk, dv, dld, dstates[:, -1] if need_dfinal_state else None
 
 
 class LaerParallelFunction(torch.autograd.Function):
@@ -289,33 +349,32 @@ class LaerParallelFunction(torch.autograd.Function):
 
         return output, final_state
 
-    # @staticmethod
-    # @contiguous
-    # def backward(ctx, do, dfinal_state):
-    #     q, k, v, ld, initial_state, cu_seqlens, states, ld_cumsum = ctx.saved_tensors
-    #     dq, dk, dv, dld, dinitial_state = laer_parallel_bwd(
-    #         q=q,
-    #         k=k,
-    #         v=v,
-    #         do=do,
-    #         ld=ld,
-    #         initial_state=initial_state,
-    #         dfinal_state=dfinal_state,
-    #         cu_seqlens=cu_seqlens,
-    #         states=states,
-    #         ld_cumsum=ld_cumsum,
-    #     )
+    @staticmethod
+    @contiguous
+    def backward(ctx, do, dfinal_state):
+        q, k, v, ld, initial_state, cu_seqlens, states = ctx.saved_tensors
+        dq, dk, dv, dld, dinitial_state = laer_parallel_bwd(
+            q=q,
+            k=k,
+            v=v,
+            do=do,
+            ld=ld,
+            initial_state=initial_state,
+            dfinal_state=dfinal_state,
+            cu_seqlens=cu_seqlens,
+            states=states,
+        )
 
-    #     return (
-    #         dq,
-    #         dk,
-    #         dv,
-    #         dld,
-    #         dinitial_state,
-    #         None,
-    #         None,
-    #         None,
-    #     )
+        return (
+            dq,
+            dk,
+            dv,
+            dld,
+            dinitial_state,
+            None,
+            None,
+            None,
+        )
 
 
 def laer_parallel_triton(
@@ -379,4 +438,4 @@ if __name__ == "__main__":
     initial_state = torch.randn(b, d, device=device, dtype=dtype).requires_grad_(True)
     output, final_state = laer_parallel_triton(q, k, v, ld, initial_state)
     loss = output.sum() + final_state.sum()
-    # loss.backward()
+    loss.backward()
