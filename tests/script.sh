@@ -105,8 +105,8 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=lightning_attn/vector_decay/sub_intra
 
 # ##### laer 250407
-# folder=lightning_attn/element_recurrence
-folder=lightning_attn/element_recurrence/state
+folder=lightning_attn/element_recurrence
+# folder=lightning_attn/element_recurrence/state
 
 # ##### tpa_decode 250408
 # folder=flash_attn/tpa_decode

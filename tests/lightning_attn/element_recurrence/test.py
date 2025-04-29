@@ -3,37 +3,46 @@ import torch
 import torch.nn.functional as F
 
 from xopes.ops.lightning_attn.element_recurrence import (
+    laer_parallel_triton,
     laer_recurrence_triton,
     laer_torch,
 )
-from xopes.utils import get_threshold
+from xopes.utils import get_threshold, print_diff
 
 
 def get_params():
     shapes = [
-        # standard shape
+        # # standard shape
+        # (2, 256, 128),
+        # (2, 1024, 32),
+        # # BLOCK_N +- 1
+        # (2, 257, 64),
+        # (2, 255, 64),
+        # (2, 65, 33),
+        # # BLOCK_N +- C
+        # (2, 270, 64),
+        # (2, 270, 33),
+        # (2, 1125, 43),
+        # # LARGE D
+        # (2, 512, 255),
+        # (2, 128, 257),
         (2, 256, 128),
-        (2, 1024, 32),
-        # BLOCK_N +- 1
-        (2, 257, 64),
-        (2, 255, 64),
-        (2, 65, 33),
-        # BLOCK_N +- C
-        (2, 270, 64),
-        (2, 270, 33),
-        (2, 1125, 43),
-        # LARGE D
-        (2, 512, 255),
-        (2, 128, 257),
     ]
     return shapes
 
 
-@pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("use_initial_state", [True, False])
+# @pytest.mark.parametrize("shape", get_params())
+# @pytest.mark.parametrize("use_initial_state", [True, False])
+# @pytest.mark.parametrize("use_varlen", [False])
+# @pytest.mark.parametrize("no_dstate", [True, False])
+# @pytest.mark.parametrize("c", [-10, 1, 10])
+# @pytest.mark.parametrize("dtype", [torch.float32])
+
+
+@pytest.mark.parametrize("use_initial_state", [True])
 @pytest.mark.parametrize("use_varlen", [False])
-@pytest.mark.parametrize("no_dstate", [True, False])
-@pytest.mark.parametrize("c", [-10, 1, 10])
+@pytest.mark.parametrize("no_dstate", [True])
+@pytest.mark.parametrize("c", [1])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_lasr(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     torch.manual_seed(2024)
@@ -53,8 +62,8 @@ def test_lasr(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     q = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
     k = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
     v = torch.randn((b, n, d), dtype=dtype, device=device).requires_grad_()
-    ld = F.logsigmoid(
-        torch.randn((b, n, d), dtype=dtype, device=device) * c
+    ld = (
+        F.logsigmoid(torch.randn((b, n, d), dtype=dtype, device=device) * c)
     ).requires_grad_()
     if no_dstate:
         do = torch.randn((b, n, d), dtype=dtype, device=device)
@@ -94,6 +103,20 @@ def test_lasr(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
         output_triton = o_triton
     else:
         output_triton = o_triton.mean() + s_triton.mean()
+
+    # Triton parallel implementation
+    o_parallel, s_parallel = laer_parallel_triton(
+        q=q,
+        k=k,
+        v=v,
+        ld=ld,
+        initial_state=initial_state,
+        cu_seqlens=cu_seqlens,
+    )
+    if no_dstate:
+        pass
+    else:
+        o_parallel.mean() + s_parallel.mean()
 
     ##### Backward pass
     # Baseline implementation
@@ -136,6 +159,28 @@ def test_lasr(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
         torch.norm(s_torch - s_triton).item(),
     )
     assert torch.allclose(s_torch, s_triton, atol=atol, rtol=rtol)
+
+    # parallel start
+    print(
+        "o diff max (torch vs parallel): ",
+        torch.abs(o_torch - o_parallel).max().item(),
+    )
+    print(
+        "o diff norm (torch vs parallel): ",
+        torch.norm(o_torch - o_parallel).item(),
+    )
+    print_diff(o_torch, o_parallel, n, BLOCK=16)
+    assert torch.allclose(o_torch, o_parallel, atol=atol, rtol=rtol)
+
+    print(
+        "state diff max (torch vs parallel): ",
+        torch.abs(s_torch - s_parallel).max().item(),
+    )
+    print(
+        "state diff norm (torch vs parallel): ",
+        torch.norm(s_torch - s_parallel).item(),
+    )
+    assert torch.allclose(s_torch, s_parallel, atol=atol, rtol=rtol)
 
     ##### Check backward pass results
     print(

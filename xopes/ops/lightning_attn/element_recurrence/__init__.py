@@ -2,6 +2,7 @@ from typing import Optional, Tuple
 
 import torch
 
+from .laer_parallel_triton import laer_parallel_triton
 from .laer_recurrence_triton import laer_recurrence_triton
 from .laer_torch import laer_torch
 
