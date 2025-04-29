@@ -17,8 +17,11 @@ from xopes.ops.lightning_attn.constant_decay import (
     lacd_parallel_triton,
     lacd_recurrence_triton,
 )
+from xopes.ops.lightning_attn.element_recurrence import (
+    laer_parallel_triton,
+    laer_recurrence_triton,
+)
 from xopes.ops.lightning_attn.scalar_decay import lasd_parallel_triton
-from xopes.ops.lightning_attn.simple_recurrence import lasr_recurrence_triton
 from xopes.ops.lightning_attn.vector_decay import lavd_parallel_triton
 from xopes.utils import get_memory
 
@@ -63,8 +66,12 @@ def lavd_kv_parallel(q, k, v, **kwargs):
     return lavd_parallel_triton(q, k, v, ldk=kwargs["ldk"], ldv=kwargs["ldv"])[0]
 
 
-def lasr_recurrence(q, k, v, **kwargs):
-    return lasr_recurrence_triton(q, k, v, ld=kwargs["ldk"])[0]
+def laer_recurrence(q, k, v, **kwargs):
+    return laer_recurrence_triton(q, k, v, ld=kwargs["ldk"])[0]
+
+
+def laer_parallel(q, k, v, **kwargs):
+    return laer_parallel_triton(q, k, v, ld=kwargs["ldk"])[0]
 
 
 def lightning_parallel(q, k, v, **kwargs):
@@ -83,7 +90,8 @@ module_map = {
     "lasd_p": lasd_parallel,
     "lavd_k_p": lavd_k_parallel,
     "lavd_kv_p": lavd_kv_parallel,
-    "lasr_r": lasr_recurrence,
+    "laer_r": laer_recurrence,
+    "laer_p": laer_parallel,
     "flash": flash_attn_wrapper,
     "lightning_p": lightning_parallel,
     "lightning_c": lightning_chunk_loop,
@@ -95,6 +103,7 @@ configs = [
     triton.testing.Benchmark(
         x_names=["n"],
         x_vals=[2**i for i in range(8, 16)],
+        # x_vals=[2**i for i in range(10, 11)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -103,10 +112,11 @@ configs = [
             # "lacd_p",
             # "land_p",
             # "lacd_pl",
-            "lasd_p",
+            # "lasd_p",
             # "lavd_k_p",
             # "lavd_kv_p",
-            # "lasr_r",
+            "laer_r",
+            "laer_p",
             # "flash",
             # "lightning_p",
             # "lightning_c",
@@ -118,10 +128,11 @@ configs = [
             # "LACD_P",
             # "LAND_P",
             # "LACD_PL",
-            "LASD_P",
+            # "LASD_P",
             # "LAVD_K_P",
             # "LAVD_KV_P",
-            # "LASR_R",
+            "LAER_R",
+            "LAER_P",
             # "Flash",
             # "LP",
             # "LC",
@@ -158,15 +169,15 @@ configs = [
     )
     for bench_type in [
         "speed",
-        # "memory",
+        "memory",
     ]
     for mode in [
         "fwd",
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    # for b, h, d in [[4, 32, 128], [1, 16, 128]]
-    for b, h, d in [[4, 32, 128]]
+    for b, h, d in [[4, 32, 128], [1, 16, 128]]
+    # for b, h, d in [[4, 32, 128]]
     # for b, h, d in [[1, 16, 128]]
 ]
 
@@ -188,7 +199,10 @@ def benchmark(
     warmup = 25
     rep = 100
 
-    shape = (b, n, h, d)
+    if "laer" not in provider:
+        shape = (b, n, h, d)
+    else:
+        shape = (b, n, h * d)
     q = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     k = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     v = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
@@ -199,12 +213,8 @@ def benchmark(
     ld3 = F.logsigmoid(
         torch.randn((b, n, h), dtype=dtype, device=device)
     ).requires_grad_()
-    ldk = F.logsigmoid(
-        torch.randn((b, n, h, d), dtype=dtype, device=device)
-    ).requires_grad_()
-    ldv = F.logsigmoid(
-        torch.randn((b, n, h, d), dtype=dtype, device=device)
-    ).requires_grad_()
+    ldk = F.logsigmoid(torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
+    ldv = F.logsigmoid(torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
 
     module = module_map[provider]
 

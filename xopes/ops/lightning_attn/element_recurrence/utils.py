@@ -191,7 +191,7 @@ def _laer_parallel_intra_inter_fwd(
 
         offset_n = min((i + 1) * BLOCK_N, N) - 1
         state_block_ptr = STATES + offset_b + offset_n * D + array_d
-        state = tl.load(state_block_ptr, mask=mask_d, other=0.0)
+        state = tl.load(state_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
 
         q_block_ptr += BLOCK_N * D
         o_block_ptr += BLOCK_N * D

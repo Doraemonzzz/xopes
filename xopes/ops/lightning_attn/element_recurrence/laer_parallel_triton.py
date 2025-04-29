@@ -11,7 +11,7 @@ from xopes.ops.lightning_attn.element_recurrence.utils import (
 )
 from xopes.utils import contiguous
 
-BLOCK_N = 32
+BLOCK_N = 16
 
 
 @contiguous
