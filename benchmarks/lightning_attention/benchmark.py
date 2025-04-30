@@ -9,6 +9,7 @@ from einops import rearrange
 
 from xopes.ops.lightning_attn.baseline import (
     chunk_gla_wrapper,
+    chunk_hgrn_fla_wrapper,
     chunk_simple_gla_wrapper,
     flash_attn_wrapper,
     lightning_attn_wrapper,
@@ -82,6 +83,10 @@ def lightning_chunk_loop(q, k, v, **kwargs):
     return lightning_attn_wrapper(q, k, v, ld=kwargs["ld"], variant="chunk_loop")
 
 
+def chunk_hgrn_fla(q, k, v, **kwargs):
+    return chunk_hgrn_fla_wrapper(q, k, v, ldk=kwargs["ldk"])[0]
+
+
 module_map = {
     "lacd_r": lacd_recurrence,
     "lacd_p": lacd_parallel,
@@ -97,13 +102,14 @@ module_map = {
     "lightning_c": lightning_chunk_loop,
     "gla_k": chunk_gla_k,
     "gla_s_k": chunk_simple_gla_k,
+    "fla_laer": chunk_hgrn_fla,
 }
 
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        x_vals=[2**i for i in range(8, 16)],
-        # x_vals=[2**i for i in range(10, 11)],
+        # x_vals=[2**i for i in range(8, 16)],
+        x_vals=[2**i for i in range(10, 11)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -122,6 +128,7 @@ configs = [
             # "lightning_c",
             # "gla_k",
             # "gla_s_k",
+            "fla_laer",
         ],
         line_names=[
             # "LACD_R",
@@ -138,6 +145,7 @@ configs = [
             # "LC",
             # "GLA_K",
             # "GLA_S_K",
+            "FLA_LAER",
         ],
         styles=[
             ("red", "-"),
@@ -169,15 +177,15 @@ configs = [
     )
     for bench_type in [
         "speed",
-        "memory",
+        # "memory",
     ]
     for mode in [
         "fwd",
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    for b, h, d in [[4, 32, 128], [1, 16, 128]]
-    # for b, h, d in [[4, 32, 128]]
+    # for b, h, d in [[4, 32, 128], [1, 16, 128]]
+    for b, h, d in [[4, 32, 128]]
     # for b, h, d in [[1, 16, 128]]
 ]
 

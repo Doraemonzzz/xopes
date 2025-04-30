@@ -25,6 +25,11 @@ try:
 except:
     chunk_fwd_h = lambda x: None
 
+try:
+    from fla.ops.hgrn import chunk_hgrn
+except:
+    chunk_hgrn = lambda x: None
+
 from xopes.ops.cumsum import chunk_cumsum_decay_fn
 
 
@@ -96,3 +101,16 @@ def state_fla_wrapper(k, v, ldk=None, ldv=None, chunk_size=128, **kwargs):
     )
 
     return o
+
+
+def chunk_hgrn_fla_wrapper(q, k, v, **kwargs):
+    ld = kwargs["ldk"]
+    x = k * v
+    o, state = chunk_hgrn(
+        x=x,
+        g=ld,
+        output_final_state=True,
+    )
+    o = q * o
+
+    return o, state
