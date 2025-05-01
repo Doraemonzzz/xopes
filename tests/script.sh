@@ -54,7 +54,7 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=act
 
 # ##### lce 250119
-# folder=linear_cross_entropy
+folder=linear_cross_entropy
 
 ##### cumsum 250129
 # folder=cumsum/cumsum
@@ -105,7 +105,7 @@ folder=normalize/normalize_fuse_gate # 250301 add
 # folder=lightning_attn/vector_decay/sub_intra
 
 # ##### laer 250407
-folder=lightning_attn/element_recurrence
+# folder=lightning_attn/element_recurrence
 # folder=lightning_attn/element_recurrence/state
 
 # ##### tpa_decode 250408

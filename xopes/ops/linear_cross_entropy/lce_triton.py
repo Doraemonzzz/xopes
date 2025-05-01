@@ -31,7 +31,7 @@ def _ce_fwd_parallel(
     G: tl.constexpr,
     BLOCK_V: tl.constexpr,
 ):
-    off_b = tl.program_id(0)
+    off_b = tl.program_id(0).to(tl.int64)  # !!! important
     off_g = tl.program_id(1)
     # compute offset
     offset_z = off_b * V + off_g * BLOCK_V
@@ -167,7 +167,7 @@ def _ce_bwd(
     BLOCK_V: tl.constexpr,
 ):
     tl.cdiv(V, BLOCK_V)
-    off_b = tl.program_id(0)
+    off_b = tl.program_id(0).to(tl.int64)
     off_g = tl.program_id(1)
     # compute offset
     offset_z = off_b * V
@@ -318,6 +318,8 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
         num_chunks = min(8, triton.cdiv(v, d))
         chunk_size = triton.next_power_of_2(triton.cdiv(b, num_chunks))
         num_chunks = triton.cdiv(b, chunk_size)
+        # TODO: tune the parameters
+        MAX_BLOCK_SIZE = 8192
 
         if reduction == "mean":
             n = y.ne(ignore_index).sum()  # avoid all IGNORE_INDEX
@@ -325,7 +327,6 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
                 n == 0, 1, n
             )  # hack for torch.compile since it does not support item
         else:
-            # n = 1
             n = torch.tensor(1, device=x.device)
 
         for i in range(num_chunks):
@@ -340,8 +341,6 @@ class LinearCrossEntropyTriton(torch.autograd.Function):
             ##### start compute loss and gradients #####
             c, v = zi.shape
 
-            # TODO: tune the parameters
-            MAX_BLOCK_SIZE = 8192
             BLOCK_V = min(triton.next_power_of_2(v), MAX_BLOCK_SIZE)
             g = triton.cdiv(v, BLOCK_V)
             BLOCK_G = triton.next_power_of_2(g)

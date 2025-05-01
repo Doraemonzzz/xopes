@@ -9,7 +9,12 @@ from xopes.utils import get_threshold
 
 
 def get_params():
-    shapes = [(512, 1024, 2048), (1024, 2048, 4096), (12288, 1024, 50257)]
+    shapes = [
+        (512, 1024, 2048),
+        (1024, 2048, 4096),
+        (12288, 1024, 50257),
+        (40, 8129, 50432),
+    ]
     return shapes
 
 

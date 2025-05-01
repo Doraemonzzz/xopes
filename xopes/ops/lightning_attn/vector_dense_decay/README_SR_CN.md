@@ -2,7 +2,7 @@
 
 ## Forward
 
-给定输入$\mathbf Q\in \mathbb R^{n\times d}, \mathbf K\in \mathbb R^{n\times d}, \mathbf V\in \mathbb R^{n\times e}$，初起始state $\mathbf s_0$，以及Decay $\Lambda \in \mathbb R^{n\times d}, \mathbf A\in \mathbb R^{n\times d},\mathbf B \in \mathbb R^{n\times e}$，我们执行如下递归：
+给定输入$\mathbf Q\in \mathbb R^{n\times d}, \mathbf K\in \mathbb R^{n\times d}, \mathbf V\in \mathbb R^{n\times e}$，初始state $\mathbf s_0$，以及Decay $\Lambda \in \mathbb R^{n\times d}, \mathbf A\in \mathbb R^{n\times d},\mathbf B \in \mathbb R^{n\times e}$，我们执行如下递归：
 $$
 \begin{aligned}
 \mathbf s_0 &\in \mathbb R^{d\times e}, \\
@@ -72,7 +72,7 @@ $$
 $$
 \begin{aligned}
 \mathbf M_j^{i+1}
-& = (\mathbf I + \mathbf a_{i+1} \mathbf b_{i+1}^\top)\mathbf M_j^{i+1}  \\
+& = (\mathrm{diag}(\lambda_{i+1}) + \mathbf a_{i+1} \mathbf b_{i+1}^\top)\mathbf M_j^{i+1}  \\
 & = (\mathrm{diag}(\lambda_{i+1})+ \mathbf a_{i+1} \mathbf b_{i+1}^\top)
 \left(
 \mathrm{diag}(\gamma_i/\gamma_j) + \sum_{k=j+1}^i \mathrm{diag}(\gamma_i/\gamma_k) \mathbf a_k \mathbf u_k^\top
@@ -98,6 +98,7 @@ $$
 $$
 
 
+
 ### $\sum_{s=j+1}^i \mathbf M_{s}^i \mathbf k_s \mathbf v_s^\top $
 
 根据之前的推导，猜测：
@@ -120,7 +121,7 @@ $$
 假设当$i$时结论成立，那么$i+1$时：
 $$
 \begin{aligned}
-\sum_{s=j+1}^{i+1} \mathbf M_{s}^i \mathbf k_s \mathbf v_s^\top
+\sum_{s=j+1}^{i+1} \mathbf M_{s}^{i+1} \mathbf k_s \mathbf v_s^\top
 &=(\mathrm{diag}(\lambda_{i+1}) + \mathbf a_{i+1}\mathbf b_{i+1}^\top)\sum_{s=j+1}^{i} \mathbf M_{s}^i \mathbf k_s \mathbf v_s^\top
 + \mathbf k_{i+1} \mathbf v_{i+1}^\top \\
 &= \mathrm{diag}(\lambda_{i+1})\sum_{t=j+1}^i  \mathrm{diag}(\gamma_i/\gamma_t)
@@ -165,6 +166,7 @@ $$
 $$
 
 
+
 ### 递推
 
 将之前的公式带入可得：
@@ -202,8 +204,8 @@ $$
 
 \mathbf O_i &=  \mathbf {\bar Q}_i \mathbf S_i    + [ [\bar{\mathbf Q}_i \bar{\mathbf K}_i^\top] \odot \mathbf M ]
 {\mathbf V}_i + [ [\bar{\mathbf Q}_i \bar{\mathbf A}_i^\top] \odot \mathbf M ]
-\left[{\mathbf V}_i + \mathbf U_{i} \mathbf S_i  \right],  \\
-\mathbf S_i  &=  \mathbf \Lambda_{i+1} \mathbf S_i + \mathbf {\tilde K}_{i+1} \mathbf V_{i+1}+ \mathbf {\tilde A}_{i+1}\mathbf P_{i+1}
+\left[{\mathbf V}_i + \mathbf P_{i} \mathbf S_i  \right],  \\
+\mathbf S_{i+1}  &=  \mathbf \Lambda_{i+1} \mathbf S_i + \mathbf {\tilde K}_{i+1} \mathbf V_{i+1}+ \mathbf {\tilde A}_{i+1}\mathbf P_{i+1}
 + \mathbf {\tilde A}_{i+1 }\mathbf U_{i+1} \mathbf S_i. \\
 
 \end{aligned}
@@ -223,7 +225,7 @@ $$
 
 \end{aligned}
 $$
-写成chunk形式即为：
+写成chunk形式即为：(todo)
 $$
 \begin{aligned}
 \mathbf {\bar A}_i &= \mathbf A_i \odot \Lambda_i,  \\
@@ -242,6 +244,7 @@ $$
 &=\mathbf V_i -  (\mathbf I-\mathrm{tril}(\mathbf {\bar A}_i \mathbf{\tilde B}_i^\top, -1) )^{-1} \mathbf V_i.
 \end{aligned}
 $$
+
 
 
 ## Backward

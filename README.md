@@ -10,8 +10,12 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 # Todo
 - flce large batch bug.
 - lightning attn with element-wise decay.
+- update readme.
+
 
 # Plan
+- lightning attn with element-wise recurrence
+  - [x] 250430
 - lightning attn vector decay
   - [x] 250419
   - [x] 250427 finish fast implementation
@@ -61,7 +65,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
   - [ ] document
 - lce
   - [x] 250120
-  - [ ] clear kernel
+  - [x] clear kernel
+  - [x] 250501 fix index bug
 - lcse
 - ce
   - [x] 250107
