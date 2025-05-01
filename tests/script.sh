@@ -71,7 +71,7 @@ folder=linear_cross_entropy
 # folder=lightning_attn/constant_decay/inter
 
 # ##### lasd 250303
-# folder=lightning_attn/scalar_decay
+folder=lightning_attn/scalar_decay
 # folder=lightning_attn/scalar_decay/intra
 # folder=lightning_attn/scalar_decay/state
 # folder=lightning_attn/scalar_decay/inter

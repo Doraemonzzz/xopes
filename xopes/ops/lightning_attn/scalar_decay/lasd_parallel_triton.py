@@ -389,9 +389,12 @@ def lasd_parallel_intra_inter(
     MAX_BLOCK_E: int = 128,
     MAX_BLOCK_D: int = 128,
     BLOCK_N: int = 256,
+    dtype: Optional[torch.dtype] = None,
 ):
     b, n, h, d = q.shape
     e = v.shape[-1]
+    if dtype is None:
+        dtype = q.dtype
 
     use_cu_seqlens = cu_seqlens is not None
     if use_cu_seqlens:
@@ -418,7 +421,7 @@ def lasd_parallel_intra_inter(
 
     if compute_dld:
         NUM_BLOCK_E = triton.cdiv(e, BLOCK_E)
-        dld = torch.empty((b, n, h, NUM_BLOCK_E), dtype=q.dtype, device=q.device)
+        dld = torch.empty((b, n, h, NUM_BLOCK_E), dtype=dtype, device=q.device)
     else:
         NUM_BLOCK_E = 0
         dld = None
@@ -601,6 +604,7 @@ def lasd_parallel_bwd(
     """
     b, n, h, d = q.shape
     e = v.shape[-1]
+    dtype = torch.float32
 
     MAX_BLOCK_N = max(MIN_BLOCK, triton.next_power_of_2(n))
     MAX_BLOCK_E = max(MIN_BLOCK, triton.next_power_of_2(e))
@@ -660,6 +664,7 @@ def lasd_parallel_bwd(
         MAX_BLOCK_E=MAX_BLOCK_E,
         MAX_BLOCK_D=MAX_BLOCK_D,
         BLOCK_N=BLOCK_N,
+        dtype=dtype,
     )
 
     final_state = states[:, :, -1, :, :]
@@ -706,6 +711,7 @@ def lasd_parallel_bwd(
         MAX_BLOCK_E=MAX_BLOCK_E,
         MAX_BLOCK_D=MAX_BLOCK_D,
         BLOCK_N=BLOCK_N,
+        dtype=dtype,
     )
 
     dv, _ = lasd_parallel_intra_inter(

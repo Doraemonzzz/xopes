@@ -31,16 +31,18 @@ def get_params():
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("use_initial_state", [True])
+@pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
-@pytest.mark.parametrize("no_dstate", [True])
-@pytest.mark.parametrize("use_chunk_loop", [True])
+@pytest.mark.parametrize("no_dstate", [True, False])
+@pytest.mark.parametrize("use_chunk_loop", [True, False])
+@pytest.mark.parametrize("c", [-10, 1, 10])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_lasd(shape, use_initial_state, use_varlen, no_dstate, use_chunk_loop, dtype):
+def test_lasd(
+    shape, use_initial_state, use_varlen, no_dstate, use_chunk_loop, c, dtype
+):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     b, n, h, d, e = shape
-    c = -10
 
     if use_varlen:
         b = 1
@@ -58,6 +60,17 @@ def test_lasd(shape, use_initial_state, use_varlen, no_dstate, use_chunk_loop, d
     ld = F.logsigmoid(
         torch.randn((b, n, h), dtype=dtype, device=device) * c
     ).requires_grad_()
+
+    # ld = torch.randn((b, n, h), dtype=dtype, device=device)#.requires_grad_()
+    # ld_list = []
+    # c_list = [-10, 1, 10]
+    # for i in range(n):
+    #     ld_list.append(ld[:, i:i+1, :] * c_list[i % len(c_list)])
+    # # ld = torch.permute(ld, (0, 2, 1))
+    # ld = F.logsigmoid(torch.cat(ld_list, dim=1)).requires_grad_()
+    # import torch
+    # ld = torch.permu
+
     if no_dstate:
         do = torch.randn((b, n, h, e), dtype=dtype, device=device)
     else:
