@@ -14,6 +14,9 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 
 # Plan
+- inverse
+  - [x] 250503 add forward substitution method
+  - [x] 250503 add jacobian method
 - lightning attn with element-wise recurrence
   - [x] 250430
 - lightning attn vector decay

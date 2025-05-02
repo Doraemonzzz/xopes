@@ -111,6 +111,9 @@ folder=lightning_attn/scalar_decay
 # ##### tpa_decode 250408
 # folder=flash_attn/tpa_decode
 
+# ##### inverse 250502
+folder=inverse
+
 mkdir -p $folder/log
 
 
