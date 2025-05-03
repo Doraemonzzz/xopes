@@ -8,6 +8,7 @@ from .base import base_rule_recurrence_torch, base_rule_recurrence_triton
 from .chunk_rnn import chunk_rnn_parallel_fn, chunk_rnn_sequential_fn
 from .cumsum import cumsum_fn
 from .flao import flao_non_causal_fn
+from .flash_attn import forgetting_attn_fn
 from .gate_linear import gate_linear_fn
 from .grpe import (
     grpe_block_recurrence_torch,
