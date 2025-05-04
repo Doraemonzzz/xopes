@@ -87,6 +87,9 @@ folder=lightning_attention
 # ##### state 250425
 # folder=lightning_attention/state
 
+##### inverse 250504
+folder=inverse
+
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0

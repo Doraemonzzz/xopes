@@ -30,3 +30,38 @@ $$
 
 \end{aligned}
 $$
+
+
+### 分块求逆
+
+假设已知$\mathbf A_{ij}^{-1}, j \le i$，那么：
+$$
+\begin{aligned}
+\sum_{j=k}^{i+1} \mathbf A_{i+1,j} \mathbf A^{-1}_{jk} &= \mathbf 0, k < i+1,  \\
+
+\mathbf A_{i+1, k}^{-1} & =-\mathbf A_{i+1, i+1}^{-1} \left( \sum_{j=k}^{i} \mathbf A_{i+1, j} \mathbf A^{-1}_{jk}\right).
+
+\end{aligned}
+$$
+因此：
+$$
+\begin{aligned}
+\mathbf A_{21}^{-1} &= -\mathbf A_{22}^{-1} \mathbf A_{21} \mathbf A_{11}^{-1}, \\
+\mathbf A_{32}^{-1} &=- \mathbf A_{33}^{-1} \mathbf A_{32} \mathbf A_{22}^{-1}, \\
+\mathbf A_{31}^{-1} &=- \mathbf A_{33}^{-1} \left(
+\mathbf A_{31} \mathbf A_{11}^{-1}  +
+\mathbf A_{32} \mathbf A_{21}^{-1} \right), \\
+\mathbf A_{43}^{-1} &= - \mathbf A_{44}^{-1} \mathbf A_{43} \mathbf A_{33}^{-1},  \\
+
+\mathbf A_{42}^{-1} &= - \mathbf A_{44}^{-1}
+\left(
+\mathbf A_{42} \mathbf A_{22}^{-1} + \mathbf A_{43} \mathbf A_{32}^{-1}
+\right), \\
+
+\mathbf A_{41}^{-1} &= - \mathbf A_{44}^{-1}
+\left(
+\mathbf A_{41} \mathbf A_{11}^{-1} + \mathbf A_{42} \mathbf A_{21}^{-1}+ \mathbf A_{43} \mathbf A_{31}^{-1}
+\right).
+
+\end{aligned}
+$$

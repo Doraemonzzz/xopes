@@ -43,7 +43,7 @@ def check_result(
 def test(shape, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
-    m = 6
+    m = 4
 
     # Create a lower triangular matrix
     A_original = construct_lower_triangular_matrix(shape, dtype=dtype, device=device)
@@ -53,7 +53,7 @@ def test(shape, dtype):
     A_inv_fs_naive_triton = inverse_fs_triton(A_original.clone(), op_type=0)
     A_inv_fs_loop_triton = inverse_fs_triton(A_original.clone(), op_type=1)
     A_inv_jac = inverse_jacobian_torch(A_original.clone())
-    A_inv_jac_triton = inverse_jacobian_triton(A_original.clone(), op_type=0)
+    A_inv_jac_triton = inverse_jacobian_triton(A_original.clone())
 
     print(A_original[0, 0, :m, :m])
     print(A_inv_fs[0, 0, :m, :m])
@@ -61,6 +61,9 @@ def test(shape, dtype):
     print(A_inv_fs_loop_triton[0, 0, :m, :m])
     print(A_inv_jac[0, 0, :m, :m])
     print(A_inv_jac_triton[0, 0, :m, :m])
+
+    print(A_original[0, 0, -m:, -m:])
+    print(A_inv_jac_triton[0, 0, -m:, -m:])
 
     # Get tolerance thresholds based on data type
     atol, rtol = get_threshold(dtype)
