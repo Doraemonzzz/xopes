@@ -1,1 +1,2 @@
 from .inverse_jacobian_torch import inverse_jacobian_torch
+from .inverse_jacobian_triton import inverse_jacobian_triton

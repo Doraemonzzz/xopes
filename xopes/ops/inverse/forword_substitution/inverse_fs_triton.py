@@ -46,19 +46,86 @@ def _inverse_fs_naive_triton(
         order=(1, 0),
     )
 
-    a = tl.load(a_block_ptr, boundary_check=(0, 1))
+    a = tl.load(a_block_ptr, boundary_check=(0, 1)).to(tl.float32)
 
     for i in range(N):
         # n 1
         index_i = array_n == i
         # n
         ai = tl.sum(tl.where(index_i[:, None], a, 0), axis=0)
-        aii = tl.load(a_diag_block_ptr)
+        aii = tl.load(a_diag_block_ptr).to(tl.float32)
 
         # compute
         index_i_ = array_n < i
         a_ = tl.where(index_i_[:, None], a, 0)
         ai_ = (index_i - tl.sum(ai[:, None] * a_, axis=0)) / aii
+        a = tl.where(index_i[:, None], ai_, a)
+
+        # update block ptr
+        a_diag_block_ptr += N + 1
+
+    tl.store(a_inv_block_ptr, a.to(A.dtype.element_ty), boundary_check=(0, 1))
+
+
+@triton.autotune(
+    generate_configs(
+        {
+            "num_warps": [2, 4, 8, 16, 32],
+        }
+    ),
+    key=["B", "N"],
+)
+@triton.jit
+def _inverse_fs_loop_triton(
+    A,
+    A_inv,
+    B: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    off_b = tl.program_id(0)
+    offset_b = off_b * N * N
+    array_n = tl.arange(0, BLOCK_N)
+
+    a_block_ptr = tl.make_block_ptr(
+        base=A + offset_b,
+        shape=(N, N),
+        strides=(N, 1),
+        offsets=(0, 0),
+        block_shape=(BLOCK_N, BLOCK_N),
+        order=(1, 0),
+    )
+
+    # A[..., i, i]
+    a_diag_block_ptr = A + offset_b
+
+    a_inv_block_ptr = tl.make_block_ptr(
+        base=A_inv + offset_b,
+        shape=(N, N),
+        strides=(N, 1),
+        offsets=(0, 0),
+        block_shape=(BLOCK_N, BLOCK_N),
+        order=(1, 0),
+    )
+
+    a = tl.load(a_block_ptr, boundary_check=(0, 1)).to(tl.float32)
+
+    for i in range(N):
+        # n 1
+        index_i = array_n == i
+        # n
+        ai = tl.sum(tl.where(index_i[:, None], a, 0), axis=0)
+        aii = tl.load(a_diag_block_ptr).to(tl.float32)
+
+        ai_ = (index_i).to(tl.float32)
+        for j in range(i):
+            # compute
+            index_j = array_n == j
+            aj = tl.sum(tl.where(index_j[:, None], a, 0), axis=0)
+            coef = tl.sum(ai * index_j)
+            ai_ -= coef * aj
+        ai_ /= aii
+
         a = tl.where(index_i[:, None], ai_, a)
 
         # update block ptr
@@ -74,6 +141,7 @@ def inverse_fs_triton(A: torch.Tensor, op_type: int = 0) -> torch.Tensor:
     Args:
         A: lower triangular matrix of shape (*, n, n)
         op_type: 0 for naive, 1 for optimized
+
     Returns:
         A_inv: inverse of A of shape (*, n, n)
     """
@@ -86,6 +154,8 @@ def inverse_fs_triton(A: torch.Tensor, op_type: int = 0) -> torch.Tensor:
 
     if op_type == 0:
         fn = _inverse_fs_naive_triton
+    elif op_type == 1:
+        fn = _inverse_fs_loop_triton
     else:
         raise ValueError(f"op_type {op_type} not supported")
 

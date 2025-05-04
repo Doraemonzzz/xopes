@@ -8,7 +8,7 @@ def construct_lower_triangular_matrix(
     device: torch.device = torch.device("cuda"),
 ) -> torch.Tensor:
     """
-    Construct a lower triangular matrix (I + tril(AA^T, -1))
+    Construct a lower triangular matrix tril(diag(B) * A * A ^ T, 0)
 
     Args:
         shape: the shape of the matrix A: (*, n, d)
@@ -19,7 +19,8 @@ def construct_lower_triangular_matrix(
     x = torch.randn(shape, dtype=dtype, device=device)
     x = F.normalize(x, p=2, dim=-1)
     A = torch.einsum("...id,...jd->...ij", x, x)
-    # since A is l2 norm, (I + tril(AA^T, -1)) = tril(AA^T, 0)
+    B = torch.randn(list(shape[:-1]) + [1], dtype=dtype, device=device)
+    A = B * A
     A = torch.tril(A, diagonal=0)
     return A
 
