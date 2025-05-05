@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 import torch
 
 from .constant_decay import lacd_fn
+from .element_recurrence import laer_fn
 from .positional_encoding import lape_fn
 from .scalar_decay import lasd_fn
 from .vector_decay import lavd_fn
@@ -40,7 +41,7 @@ def lightning_attn_func(
         save_ld: Whether to save log decay for backward
         save_a: Whether to save a for backward
         use_chunk_loop: Whether to use chunk loop
-        decay_type: Decay type, one of "constant", "vector", "scalar", "positional"
+        decay_type: Decay type, one of "constant", "vector", "scalar", "positional", "element"
 
     Returns:
         Output tensor, shape (B, N, H, E)
@@ -55,6 +56,8 @@ def lightning_attn_func(
         fn = lasd_fn
     elif decay_type == "positional":
         fn = lape_fn
+    elif decay_type == "element":
+        fn = laer_fn
     else:
         raise ValueError(f"Invalid decay type: {decay_type}")
 

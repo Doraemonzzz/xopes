@@ -12,7 +12,7 @@ from xopes.utils import assert_close, get_threshold, print_diff
 
 def get_params():
     shapes = [
-        # standard shape
+        # # standard shape
         (2, 256, 128),
         (2, 1024, 32),
         # BLOCK_N +- 1
@@ -36,6 +36,12 @@ def get_params():
 @pytest.mark.parametrize("no_dstate", [True, False])
 @pytest.mark.parametrize("c", [-10, 1, 10])
 @pytest.mark.parametrize("dtype", [torch.float32])
+
+# @pytest.mark.parametrize("use_initial_state", [True, False])
+# @pytest.mark.parametrize("use_varlen", [False])
+# @pytest.mark.parametrize("no_dstate", [True, False])
+# @pytest.mark.parametrize("c", [1])
+# @pytest.mark.parametrize("dtype", [torch.float32])
 def test_lasr(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
@@ -174,7 +180,10 @@ def test_lasr(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
         torch.norm(o_torch - o_parallel).item(),
     )
     print_diff(o_torch, o_parallel, n, BLOCK=BLOCK)
-    assert torch.allclose(o_torch, o_parallel, atol=atol, rtol=rtol)
+    if c == 1:
+        assert torch.allclose(o_torch, o_parallel, atol=atol, rtol=rtol)
+    else:
+        assert_close(ref=o_torch, input=o_parallel, atol=atol, rtol=rtol)
 
     print(
         "state diff max (torch vs parallel): ",
@@ -184,6 +193,7 @@ def test_lasr(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
         "state diff norm (torch vs parallel): ",
         torch.norm(s_torch - s_parallel).item(),
     )
+    print_diff(s_torch, s_parallel, n, BLOCK=BLOCK)
     assert torch.allclose(s_torch, s_parallel, atol=atol, rtol=rtol)
 
     ##### Check backward pass results
@@ -238,7 +248,10 @@ def test_lasr(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
         torch.norm(dq_torch - dq_parallel).item(),
     )
     print_diff(dq_torch, dq_parallel, n, BLOCK=BLOCK)
-    assert torch.allclose(dq_torch, dq_parallel, atol=atol, rtol=rtol * 3)
+    if c == 1:
+        assert torch.allclose(dq_torch, dq_parallel, atol=atol, rtol=rtol * 3)
+    else:
+        assert_close(ref=dq_torch, input=dq_parallel, atol=atol, rtol=rtol * 3)
 
     print(
         "dk diff max (torch vs parallel): ",

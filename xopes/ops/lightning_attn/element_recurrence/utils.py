@@ -12,7 +12,7 @@ from xopes.utils import generate_configs
 @triton.autotune(
     generate_configs(
         {
-            "num_warps": [4, 8, 16, 32],
+            "num_warps": [1, 2, 4, 8, 16, 32],
             "BLOCK_D": [64, 128],
         }
     ),
@@ -99,8 +99,8 @@ def _laer_parallel_state_parallel(
             log_decay_cumsum.to(log_decay_cumsum_block_ptr.dtype.element_ty),
             mask=mask,
         )
-        log_decay_cumsum_block_ptr += stride * D
 
+        log_decay_cumsum_block_ptr += stride * D
         k_block_ptr += stride * D
         v_block_ptr += stride * D
         log_decay_block_ptr += stride * D
@@ -137,6 +137,7 @@ def _laer_parallel_intra_inter_fwd(
     O,  # B N D
     STATE,  # B D
     STATES,  # B N D
+    GLOBAL_STATES,  # B N D
     LOG_DECAY,  # B N D
     LOG_DECAY_CUMSUM,  # B N D
     CU_SEQLENS,  # M
@@ -164,6 +165,9 @@ def _laer_parallel_intra_inter_fwd(
     q_block_ptr = Q + offset_b + array_n[:, None] * D + array_d[None, :]
     o_block_ptr = O + offset_b + array_n[:, None] * D + array_d[None, :]
     states_block_ptr = STATES + offset_b + array_n[:, None] * D + array_d[None, :]
+    global_states_block_ptr = (
+        GLOBAL_STATES + offset_b + array_n[:, None] * D + array_d[None, :]
+    )
 
     if USE_INITIAL_STATE:
         state_block_ptr = STATE + off_b * D + array_d
@@ -175,7 +179,7 @@ def _laer_parallel_intra_inter_fwd(
         mask_n = array_n < N
         mask = mask_n[:, None] & mask_d[None, :]
 
-        current_states = tl.load(states_block_ptr, mask=mask, other=0.0)
+        current_states = tl.load(states_block_ptr, mask=mask, other=0.0).to(tl.float32)
         log_decay = tl.load(ld_block_ptr, mask=mask, other=0.0).to(tl.float32)
         decay = tl.exp(log_decay)
 
@@ -185,17 +189,22 @@ def _laer_parallel_intra_inter_fwd(
         o = q * states
 
         tl.store(
-            states_block_ptr, states.to(states_block_ptr.dtype.element_ty), mask=mask
+            global_states_block_ptr,
+            states.to(global_states_block_ptr.dtype.element_ty),
+            mask=mask,
         )
         tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask)
 
+        # !!! important
+        tl.debug_barrier()
         offset_n = min((i + 1) * BLOCK_N, N) - 1
-        state_block_ptr = STATES + offset_b + offset_n * D + array_d
+        state_block_ptr = GLOBAL_STATES + offset_b + offset_n * D + array_d
         state = tl.load(state_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
 
         q_block_ptr += BLOCK_N * D
         o_block_ptr += BLOCK_N * D
         states_block_ptr += BLOCK_N * D
+        global_states_block_ptr += BLOCK_N * D
         ld_block_ptr += BLOCK_N * D
         array_n += BLOCK_N
 
@@ -234,6 +243,7 @@ def _laer_parallel_intra_inter_bwd(
     STATES,  # B N D
     DSTATE,  # B D
     DSTATES,  # B N D
+    GLOBAL_DSTATES,  # B N D
     LOG_DECAY,  # B N D
     LOG_DECAY_REVERSE_CUMSUM,  # B N D
     CU_SEQLENS,  # M
@@ -270,6 +280,9 @@ def _laer_parallel_intra_inter_bwd(
     dv_block_ptr = DV + offset_b + array_n[:, None] * D + array_d[None, :]
     dld_block_ptr = DLD + offset_b + array_n[:, None] * D + array_d[None, :]
     dstates_block_ptr = DSTATES + offset_b + array_n[:, None] * D + array_d[None, :]
+    global_dstates_block_ptr = (
+        GLOBAL_DSTATES + offset_b + array_n[:, None] * D + array_d[None, :]
+    )
 
     dq_block_ptr = DQ + offset_b + array_n_o_states[:, None] * D + array_d[None, :]
     do_block_ptr = DO + offset_b + array_n_o_states[:, None] * D + array_d[None, :]
@@ -282,6 +295,7 @@ def _laer_parallel_intra_inter_bwd(
         dstate = tl.load(dstate_block_ptr, mask=mask_d, other=0.0)
     else:
         dstate = tl.zeros((BLOCK_D,), dtype=tl.float32)
+        tl.static_print("here", dstate)
 
     for i in range(NUM_BLOCK_N):
         mask_n = (array_n >= 0) & (array_n < N)
@@ -314,14 +328,19 @@ def _laer_parallel_intra_inter_bwd(
         tl.store(dv_block_ptr, dv.to(dv_block_ptr.dtype.element_ty), mask=mask)
         tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty), mask=mask)
         tl.store(
-            dstates_block_ptr, dstates.to(dstates_block_ptr.dtype.element_ty), mask=mask
+            global_dstates_block_ptr,
+            dstates.to(global_dstates_block_ptr.dtype.element_ty),
+            mask=mask,
         )
 
+        # !!! important
+        tl.debug_barrier()
         offset_n = (NUM_BLOCK_N - i - 1) * BLOCK_N
-        dstate_block_ptr = DSTATES + offset_b + offset_n * D + array_d
+        dstate_block_ptr = GLOBAL_DSTATES + offset_b + offset_n * D + array_d
         dstate = tl.load(dstate_block_ptr, mask=mask_d, other=0.0)
 
         dstates_block_ptr -= BLOCK_N * D
+        global_dstates_block_ptr -= BLOCK_N * D
         ld_cumsum_block_ptr -= BLOCK_N * D
         k_block_ptr -= BLOCK_N * D
         v_block_ptr -= BLOCK_N * D
@@ -354,7 +373,7 @@ def _laer_parallel_intra_inter_bwd(
     else:
         s0 = tl.zeros((BLOCK_D,), dtype=tl.float32)
 
-    ds1_block_ptr = DSTATES + offset_b + array_d
+    ds1_block_ptr = GLOBAL_DSTATES + offset_b + array_d
     ds1 = tl.load(ds1_block_ptr, mask=mask_d, other=0.0)
     ld_1_block_ptr = LOG_DECAY + offset_b + array_d
     decay_1 = tl.exp(tl.load(ld_1_block_ptr, mask=mask_d, other=0.0).to(tl.float32))
@@ -366,7 +385,7 @@ def _laer_parallel_intra_inter_bwd(
     # ds0
     dstate *= decay_1
 
-    final_dstates_block_ptr = DSTATES + offset_b + (N - 1) * D + array_d
+    final_dstates_block_ptr = GLOBAL_DSTATES + offset_b + (N - 1) * D + array_d
     tl.store(
         final_dstates_block_ptr,
         dstate.to(final_dstates_block_ptr.dtype.element_ty),

@@ -180,7 +180,6 @@ def _page_flip_additive_recrurrence_fwd(
         state1 = tl.load(
             state1_block_ptr, mask=d_mask[:, None] & e_mask[None, :], other=0.0
         ).to(tl.float32)
-        # tl.device_print("aaa", state0)
     else:
         state0 = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)
         state1 = tl.zeros([BLOCK_D, BLOCK_E], dtype=tl.float32)

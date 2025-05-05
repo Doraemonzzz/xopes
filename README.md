@@ -2,6 +2,9 @@
 
 Xopes: Toolbox for Accelerating Deep Learning Operators.
 
+# Tips
+- When kernel has inplace operation, autotune will cause bug, e.g., `laer_parallel_intra_inter_fwd`.
+
 # Act related kernel
 - lrpe
 - act

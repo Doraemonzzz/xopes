@@ -84,6 +84,7 @@ def laer_parallel_intra_inter_fwd(
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
     use_pad = n % BLOCK_N != 0
     use_initial_state = initial_state is not None
+    global_states = torch.empty_like(states)
 
     if use_cu_seqlens:
         o = torch.empty((1, n, d), dtype=q.dtype, device=q.device)
@@ -103,6 +104,7 @@ def laer_parallel_intra_inter_fwd(
         O=o,
         STATE=initial_state,
         STATES=states,
+        GLOBAL_STATES=global_states,
         LOG_DECAY=ld,
         LOG_DECAY_CUMSUM=ld_cumsum,
         CU_SEQLENS=cu_seqlens,
@@ -115,7 +117,7 @@ def laer_parallel_intra_inter_fwd(
         NUM_BLOCK_N=NUM_BLOCK_N,
     )
 
-    return o, states
+    return o, global_states
 
 
 @contiguous
@@ -154,6 +156,7 @@ def laer_parallel_intra_inter_bwd(
         dk = torch.empty((b, n, d), dtype=k.dtype, device=k.device)
         dv = torch.empty((b, n, d), dtype=v.dtype, device=v.device)
         dld = torch.empty((b, n, d), dtype=ld.dtype, device=ld.device)
+    global_dstates = torch.empty_like(dstates)
 
     def grid(meta):
         return (
@@ -174,6 +177,7 @@ def laer_parallel_intra_inter_bwd(
         DSTATE=dfinal_state,
         STATES=states,
         DSTATES=dstates,
+        GLOBAL_DSTATES=global_dstates,
         LOG_DECAY=ld,
         LOG_DECAY_REVERSE_CUMSUM=ld_reverse_cumsum,
         CU_SEQLENS=cu_seqlens,
@@ -187,7 +191,7 @@ def laer_parallel_intra_inter_bwd(
         NUM_BLOCK_N=NUM_BLOCK_N,
     )
 
-    return dq, dk, dv, dld, dstates
+    return dq, dk, dv, dld, global_dstates
 
 
 ########## Fwd start ##########

@@ -16,6 +16,24 @@ def laer_fn(
     cu_seqlens: Optional[torch.LongTensor] = None,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    return laer_recurrence_triton(
-        q=q, k=k, v=v, ld=ld, initial_state=initial_state, cu_seqlens=cu_seqlens
-    )
+    """
+    Apply Lightning Attention Parallel with Constant Decay in Triton.
+
+    Args:
+        q: Query tensor of shape (B, N, D)
+        k: Key tensor of shape (B, N, D)
+        v: Value tensor of shape (B, N, D)
+        ld: Logarithmic decay tensor of shape (B, N, D)
+        initial_state: Initial state tensor of shape (B, D)
+        cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
+
+    Returns:
+        output: Tensor of shape (B, N, D)
+        state: Tensor of shape (B, D)
+    """
+    if v.shape[1] > 1:
+        fn = laer_parallel_triton
+    else:
+        fn = laer_recurrence_triton
+
+    return fn(q=q, k=k, v=v, ld=ld, initial_state=initial_state, cu_seqlens=cu_seqlens)
