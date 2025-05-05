@@ -13,6 +13,7 @@ from xopes.ops.lightning_attn.baseline import (
     chunk_simple_gla_wrapper,
     flash_attn_wrapper,
     lightning_attn_wrapper,
+    mamba2_wrapper,
 )
 from xopes.ops.lightning_attn.constant_decay import (
     lacd_parallel_triton,
@@ -87,6 +88,16 @@ def chunk_hgrn_fla(q, k, v, **kwargs):
     return chunk_hgrn_fla_wrapper(q, k, v, ldk=kwargs["ldk"])[0]
 
 
+def mamba2(q, k, v, **kwargs):
+    return mamba2_wrapper(
+        x=v,
+        dt=kwargs["dt"],
+        A=kwargs["A"],
+        B=k,
+        C=q,
+    )
+
+
 module_map = {
     "lacd_r": lacd_recurrence,
     "lacd_p": lacd_parallel,
@@ -103,49 +114,53 @@ module_map = {
     "gla_k": chunk_gla_k,
     "gla_s_k": chunk_simple_gla_k,
     "fla_laer": chunk_hgrn_fla,
+    "mamba2": mamba2,
 }
 
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        x_vals=[2**i for i in range(8, 16)],
+        # x_vals=[2**i for i in range(8, 16)],
         # x_vals=[2**i for i in range(10, 11)],
+        x_vals=[2**i for i in range(8, 19)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
             # "lacd_r",
-            # "lacd_p",
+            "lacd_p",
             # "land_p",
             # "lacd_pl",
             # "lasd_p",
-            # "lavd_k_p",
+            "lavd_k_p",
             # "lavd_kv_p",
-            "laer_r",
-            "laer_p",
+            # "laer_r",
+            # "laer_p",
             # "flash",
             # "lightning_p",
             # "lightning_c",
             # "gla_k",
             # "gla_s_k",
-            "fla_laer",
+            # "fla_laer",
+            "mamba2",
         ],
         line_names=[
             # "LACD_R",
-            # "LACD_P",
+            "LACD_P",
             # "LAND_P",
             # "LACD_PL",
             # "LASD_P",
-            # "LAVD_K_P",
+            "LAVD_K_P",
             # "LAVD_KV_P",
-            "LAER_R",
-            "LAER_P",
+            # "LAER_R",
+            # "LAER_P",
             # "Flash",
             # "LP",
             # "LC",
             # "GLA_K",
             # "GLA_S_K",
-            "FLA_LAER",
+            # "FLA_LAER",
+            "MAMBA2",
         ],
         styles=[
             ("red", "-"),
@@ -163,6 +178,7 @@ configs = [
             ("olive", "-"),
             ("teal", "-"),
             ("black", "-"),
+            ("red", "--"),
         ],
         plot_name=f"la-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
@@ -177,7 +193,7 @@ configs = [
     )
     for bench_type in [
         "speed",
-        # "memory",
+        "memory",
     ]
     for mode in [
         "fwd",
@@ -223,6 +239,8 @@ def benchmark(
     ).requires_grad_()
     ldk = F.logsigmoid(torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
     ldv = F.logsigmoid(torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
+    dt = -F.logsigmoid(torch.randn(b, n, h, dtype=dtype, device=device)).requires_grad_()
+    A = torch.randn(h, dtype=dtype, device=device).requires_grad_()
 
     module = module_map[provider]
 
@@ -232,7 +250,7 @@ def benchmark(
         )
 
     try:
-        fn = lambda: module(q, k, v, ld=ld, ld3=ld3, ldk=ldk, ldv=ldv)
+        fn = lambda: module(q, k, v, ld=ld, ld3=ld3, ldk=ldk, ldv=ldv, dt=dt, A=A)
     except Exception as e:
         print(f"Error setting up {provider}: {e}")
         fn = None

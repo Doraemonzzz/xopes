@@ -30,6 +30,11 @@ try:
 except:
     chunk_hgrn = lambda x: None
 
+try:
+    from mamba_ssm.ops.triton.ssd_combined import mamba_chunk_scan_combined
+except:
+    mamba_chunk_scan_combined = lambda x: None
+
 from xopes.ops.cumsum import chunk_cumsum_decay_fn
 
 
@@ -114,3 +119,15 @@ def chunk_hgrn_fla_wrapper(q, k, v, **kwargs):
     o = q * o
 
     return o, state
+
+def mamba2_wrapper(x, dt, A, B, C, **kwargs):
+    o = mamba_chunk_scan_combined(
+        x=x,
+        dt=dt,
+        A=A,
+        B=B,
+        C=C,
+        chunk_size=64,
+    )
+
+    return o
