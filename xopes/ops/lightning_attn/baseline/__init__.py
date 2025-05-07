@@ -120,6 +120,7 @@ def chunk_hgrn_fla_wrapper(q, k, v, **kwargs):
 
     return o, state
 
+
 def mamba2_wrapper(x, dt, A, B, C, **kwargs):
     o = mamba_chunk_scan_combined(
         x=x,

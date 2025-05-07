@@ -120,9 +120,9 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        # x_vals=[2**i for i in range(8, 16)],
+        x_vals=[2**i for i in range(8, 17)],
         # x_vals=[2**i for i in range(10, 11)],
-        x_vals=[2**i for i in range(8, 19)],
+        # x_vals=[2**i for i in range(8, 19)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
@@ -239,7 +239,9 @@ def benchmark(
     ).requires_grad_()
     ldk = F.logsigmoid(torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
     ldv = F.logsigmoid(torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
-    dt = -F.logsigmoid(torch.randn(b, n, h, dtype=dtype, device=device)).requires_grad_()
+    dt = -F.logsigmoid(
+        torch.randn(b, n, h, dtype=dtype, device=device)
+    ).requires_grad_()
     A = torch.randn(h, dtype=dtype, device=device).requires_grad_()
 
     module = module_map[provider]

@@ -370,7 +370,7 @@ $$
 
 \mathbf {dS}_{i}&=
 
- [\bar \Pi_{i+1, c}\Rho_{i+1,c}^\top] \odot \mathbf {dS}_{i+1}+ {\mathbf {\bar Q}}_{i} {\mathbf {d\bar O}}_{i}^\top.
+ [\bar \Pi_{i+1, c} \bar \Rho_{i+1,c}^\top] \odot \mathbf {dS}_{i+1}+ {\mathbf {\bar Q}}_{i} {\mathbf {d\bar O}}_{i}^\top.
 \end{aligned}
 $$
 以及：
