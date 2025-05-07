@@ -17,6 +17,8 @@ Xopes: Toolbox for Accelerating Deep Learning Operators.
 
 
 # Plan
+- mesa
+  - [x] add document.
 - inverse
   - [x] 250503 add forward substitution method
   - [x] 250503 add jacobian method
