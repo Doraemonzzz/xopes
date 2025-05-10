@@ -35,6 +35,11 @@ try:
 except:
     mamba_chunk_scan_combined = lambda x: None
 
+try:
+    from mlstm_kernels.torch.chunkwise.triton_xl_chunk import mlstm_chunkwise__xl_chunk
+except:
+    mlstm_chunkwise__xl_chunk = lambda x: None
+
 from xopes.ops.cumsum import chunk_cumsum_decay_fn
 
 
@@ -129,6 +134,20 @@ def mamba2_wrapper(x, dt, A, B, C, **kwargs):
         B=B,
         C=C,
         chunk_size=64,
+    )
+
+    return o
+
+
+def mlstm_wrapper(q, k, v, **kwargs):
+    o = mlstm_chunkwise__xl_chunk(
+        q=q,
+        k=k,
+        v=v,
+        i=kwargs["i"],
+        f=kwargs["ld3"],
+        return_last_states=False,
+        chunk_size=256,
     )
 
     return o

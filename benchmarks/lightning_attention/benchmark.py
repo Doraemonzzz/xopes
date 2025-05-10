@@ -14,6 +14,7 @@ from xopes.ops.lightning_attn.baseline import (
     flash_attn_wrapper,
     lightning_attn_wrapper,
     mamba2_wrapper,
+    mlstm_wrapper,
 )
 from xopes.ops.lightning_attn.constant_decay import (
     lacd_parallel_triton,
@@ -98,6 +99,10 @@ def mamba2(q, k, v, **kwargs):
     )
 
 
+def mlstm(q, k, v, **kwargs):
+    return mlstm_wrapper(q, k, v, i=kwargs["i"], ld3=kwargs["ld3"])[0]
+
+
 module_map = {
     "lacd_r": lacd_recurrence,
     "lacd_p": lacd_parallel,
@@ -115,52 +120,55 @@ module_map = {
     "gla_s_k": chunk_simple_gla_k,
     "fla_laer": chunk_hgrn_fla,
     "mamba2": mamba2,
+    "mlstm": mlstm,
 }
 
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        x_vals=[2**i for i in range(8, 17)],
-        # x_vals=[2**i for i in range(10, 11)],
+        # x_vals=[2**i for i in range(8, 17)],
+        x_vals=[2**i for i in range(10, 11)],
         # x_vals=[2**i for i in range(8, 19)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            # "lacd_r",
+            "lacd_r",
             "lacd_p",
-            # "land_p",
-            # "lacd_pl",
-            # "lasd_p",
+            "land_p",
+            "lacd_pl",
+            "lasd_p",
             "lavd_k_p",
-            # "lavd_kv_p",
-            # "laer_r",
-            # "laer_p",
-            # "flash",
-            # "lightning_p",
-            # "lightning_c",
-            # "gla_k",
-            # "gla_s_k",
-            # "fla_laer",
+            "lavd_kv_p",
+            "laer_r",
+            "laer_p",
+            "flash",
+            "lightning_p",
+            "lightning_c",
+            "gla_k",
+            "gla_s_k",
+            "fla_laer",
             "mamba2",
+            "mlstm",
         ],
         line_names=[
-            # "LACD_R",
+            "LACD_R",
             "LACD_P",
-            # "LAND_P",
-            # "LACD_PL",
-            # "LASD_P",
+            "LAND_P",
+            "LACD_PL",
+            "LASD_P",
             "LAVD_K_P",
-            # "LAVD_KV_P",
-            # "LAER_R",
-            # "LAER_P",
-            # "Flash",
-            # "LP",
-            # "LC",
-            # "GLA_K",
-            # "GLA_S_K",
-            # "FLA_LAER",
+            "LAVD_KV_P",
+            "LAER_R",
+            "LAER_P",
+            "Flash",
+            "LP",
+            "LC",
+            "GLA_K",
+            "GLA_S_K",
+            "FLA_LAER",
             "MAMBA2",
+            "MLSTM",
         ],
         styles=[
             ("red", "-"),
@@ -179,6 +187,7 @@ configs = [
             ("teal", "-"),
             ("black", "-"),
             ("red", "--"),
+            ("blue", "--"),
         ],
         plot_name=f"la-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
@@ -200,8 +209,8 @@ configs = [
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    # for b, h, d in [[4, 32, 128], [1, 16, 128]]
-    for b, h, d in [[4, 32, 128]]
+    for b, h, d in [[4, 32, 128], [1, 16, 128]]
+    # for b, h, d in [[4, 32, 128]]
     # for b, h, d in [[1, 16, 128]]
 ]
 
@@ -237,6 +246,9 @@ def benchmark(
     ld3 = F.logsigmoid(
         torch.randn((b, n, h), dtype=dtype, device=device)
     ).requires_grad_()
+    i = F.logsigmoid(
+        torch.randn((b, n, h), dtype=dtype, device=device)
+    ).requires_grad_()
     ldk = F.logsigmoid(torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
     ldv = F.logsigmoid(torch.randn(shape, dtype=dtype, device=device)).requires_grad_()
     dt = -F.logsigmoid(
@@ -247,12 +259,14 @@ def benchmark(
     module = module_map[provider]
 
     if provider == "lasr_r":
-        q, k, v, ldk = map(
-            lambda x: rearrange(x, "... h d -> ... (h d)"), (q, k, v, ldk)
-        )
+        q, k, v = map(lambda x: rearrange(x, "... h d -> ... (h d)"), (q, k, v, ld3, i))
+
+    if provider == "mlstm":
+        q, k, v = map(lambda x: rearrange(x, "b n h d -> b h n d"), (q, k, v))
+        i, ld3 = map(lambda x: rearrange(x, "b n h -> b h n"), (i, ld3))
 
     try:
-        fn = lambda: module(q, k, v, ld=ld, ld3=ld3, ldk=ldk, ldv=ldv, dt=dt, A=A)
+        fn = lambda: module(q, k, v, ld=ld, ld3=ld3, ldk=ldk, ldv=ldv, dt=dt, A=A, i=i)
     except Exception as e:
         print(f"Error setting up {provider}: {e}")
         fn = None
