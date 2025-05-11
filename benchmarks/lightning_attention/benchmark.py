@@ -126,9 +126,10 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        # x_vals=[2**i for i in range(8, 17)],
-        x_vals=[2**i for i in range(10, 11)],
-        # x_vals=[2**i for i in range(8, 19)],
+        x_vals=[2**i for i in range(8, 17)],
+        # x_vals=[2**i for i in range(10, 11)],
+        # x_vals=[2**i for i in range(8, 18)],
+        # x_vals=[2**i for i in range(17, 18)],
         xlabel="Sequence Length",
         ylabel="Execution Time(ms)",
         line_arg="provider",
