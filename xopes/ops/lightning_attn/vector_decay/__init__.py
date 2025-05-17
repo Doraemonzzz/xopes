@@ -18,7 +18,7 @@ def lavd_fn(
     save_states: bool = True,
     save_ld: bool = True,
     save_a: bool = True,
-    use_chunk_loop: bool = False,
+    use_chunk_loop: bool = True,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """

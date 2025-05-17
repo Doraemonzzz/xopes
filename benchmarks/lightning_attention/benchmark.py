@@ -10,8 +10,10 @@ from einops import rearrange
 from xopes.ops.lightning_attn.baseline import (
     chunk_gla_wrapper,
     chunk_hgrn_fla_wrapper,
+    chunk_linear_attn_wrapper,
     chunk_simple_gla_wrapper,
     flash_attn_wrapper,
+    lightning_attn_no_decay_wrapper,
     lightning_attn_wrapper,
     mamba2_wrapper,
     mlstm_wrapper,
@@ -43,6 +45,10 @@ def chunk_gla_k(q, k, v, **kwargs):
 
 def chunk_simple_gla_k(q, k, v, **kwargs):
     return chunk_simple_gla_wrapper(q, k, v, ld3=kwargs["ld3"])[0]
+
+
+def chunk_linear_attn(q, k, v, **kwargs):
+    return chunk_linear_attn_wrapper(q, k, v, ldk=kwargs["ldk"])[0]
 
 
 def lacd_recurrence(q, k, v, **kwargs):
@@ -81,8 +87,12 @@ def lightning_parallel(q, k, v, **kwargs):
     return lightning_attn_wrapper(q, k, v, ld=kwargs["ld"], variant="parallel")
 
 
-def lightning_chunk_loop(q, k, v, **kwargs):
-    return lightning_attn_wrapper(q, k, v, ld=kwargs["ld"], variant="chunk_loop")
+def lightning_no_decay_parallel(q, k, v, **kwargs):
+    return lightning_attn_no_decay_wrapper(q, k, v, variant="parallel")
+
+
+def lightning_no_decay_chunk_loop(q, k, v, **kwargs):
+    return lightning_attn_no_decay_wrapper(q, k, v, variant="chunk_loop")
 
 
 def chunk_hgrn_fla(q, k, v, **kwargs):
@@ -115,10 +125,12 @@ module_map = {
     "laer_p": laer_parallel,
     "flash": flash_attn_wrapper,
     "lightning_p": lightning_parallel,
-    "lightning_c": lightning_chunk_loop,
+    "lightning_nd_p": lightning_no_decay_parallel,
+    "lightning_nd_c": lightning_no_decay_chunk_loop,
     "gla_k": chunk_gla_k,
     "gla_s_k": chunk_simple_gla_k,
     "fla_laer": chunk_hgrn_fla,
+    "fla_linear": chunk_linear_attn,
     "mamba2": mamba2,
     "mlstm": mlstm,
 }
@@ -134,42 +146,44 @@ configs = [
         ylabel="Execution Time(ms)",
         line_arg="provider",
         line_vals=[
-            "lacd_r",
-            "lacd_p",
-            "land_p",
-            "lacd_pl",
-            "lasd_p",
-            "lavd_k_p",
-            "lavd_kv_p",
-            "laer_r",
-            "laer_p",
-            "flash",
-            "lightning_p",
-            "lightning_c",
-            "gla_k",
-            "gla_s_k",
-            "fla_laer",
-            "mamba2",
-            "mlstm",
+            # "lacd_r",
+            # "lacd_p",
+            # "land_p",
+            # "lacd_pl",
+            # "lasd_p",
+            # "lavd_k_p",
+            # "lavd_kv_p",
+            # "laer_r",
+            # "laer_p",
+            # "flash",
+            # "lightning_p",
+            # "lightning_c",
+            # "gla_k",
+            # "gla_s_k",
+            # "fla_laer",
+            # "mamba2",
+            # "mlstm",
+            # "fla_linear", # bug
         ],
         line_names=[
-            "LACD_R",
-            "LACD_P",
-            "LAND_P",
-            "LACD_PL",
-            "LASD_P",
-            "LAVD_K_P",
-            "LAVD_KV_P",
-            "LAER_R",
-            "LAER_P",
-            "Flash",
-            "LP",
-            "LC",
-            "GLA_K",
-            "GLA_S_K",
-            "FLA_LAER",
-            "MAMBA2",
-            "MLSTM",
+            # "LACD_R",
+            # "LACD_P",
+            # "LAND_P",
+            # "LACD_PL",
+            # "LASD_P",
+            # "LAVD_K_P",
+            # "LAVD_KV_P",
+            # "LAER_R",
+            # "LAER_P",
+            # "Flash",
+            # "LP",
+            # "LC",
+            # "GLA_K",
+            # "GLA_S_K",
+            # "FLA_LAER",
+            # "MAMBA2",
+            # "MLSTM",
+            # "FLA_LA", # bug
         ],
         styles=[
             ("red", "-"),

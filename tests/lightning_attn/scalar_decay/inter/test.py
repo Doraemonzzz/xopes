@@ -9,7 +9,7 @@ from xopes.ops.lightning_attn.scalar_decay.lasd_parallel_triton import (
     lasd_parallel_state_reduce,
 )
 from xopes.ops.lightning_attn.scalar_decay.torch_utils import lasd_inter_torch
-from xopes.utils import get_threshold
+from xopes.utils import get_threshold, print_diff
 
 
 def get_params():
@@ -25,6 +25,8 @@ def get_params():
         (2, 270, 8, 64, 32),
         (2, 270, 8, 33, 16),
         (2, 1125, 8, 43, 33),
+        # Train shape
+        (8, 2048, 12, 64, 64),
     ]
     return shapes
 
@@ -32,10 +34,12 @@ def get_params():
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("trans", [True, False])
+@pytest.mark.parametrize("c", [10])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_lasd_inter(shape, use_initial_state, trans, dtype):
+def test_lasd_inter(shape, use_initial_state, trans, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
+    scale = 0.01
 
     # Generate input tensors
     b, n, h, d, e = shape
@@ -43,7 +47,7 @@ def test_lasd_inter(shape, use_initial_state, trans, dtype):
     q = torch.randn(b, n, h, d, dtype=dtype, device=device)
     k = torch.randn(b, n, h, d, dtype=dtype, device=device)
     v = torch.randn(b, n, h, e, dtype=dtype, device=device)
-    ld = F.logsigmoid(torch.randn(b, n, h, device=device))
+    ld = F.logsigmoid((1 + scale * torch.randn(b, n, h, device=device)) * c)
 
     initial_state = None
     if use_initial_state:
@@ -54,7 +58,7 @@ def test_lasd_inter(shape, use_initial_state, trans, dtype):
     MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
-    BLOCK_N = 64
+    BLOCK_N = 128
     MAX_BLOCK_C = BLOCK_N
 
     # Compute using reference implementation
@@ -128,4 +132,5 @@ def test_lasd_inter(shape, use_initial_state, trans, dtype):
     )
     print("o diff max: ", torch.abs(o_inter_torch - o_inter_triton).max().item())
     print("o diff norm: ", torch.norm(o_inter_torch - o_inter_triton).item())
+    print_diff(o_inter_torch, o_inter_triton, n)
     assert torch.allclose(o_inter_torch, o_inter_triton, atol=atol, rtol=rtol)

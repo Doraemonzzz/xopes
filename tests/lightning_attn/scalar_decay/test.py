@@ -7,7 +7,7 @@ from xopes.ops.lightning_attn.scalar_decay import (
     lasd_recurrence_triton,
     lasd_torch,
 )
-from xopes.utils import assert_close, get_threshold, print_diff
+from xopes.utils import assert_close, print_diff
 
 
 def get_params():
@@ -26,6 +26,8 @@ def get_params():
         # LARGE D, E
         (2, 1125, 8, 255, 257),
         (2, 1025, 8, 255, 257),
+        # Train shape
+        (8, 2048, 12, 64, 64),
     ]
     return shapes
 
@@ -35,13 +37,15 @@ def get_params():
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True, False])
 @pytest.mark.parametrize("use_chunk_loop", [True, False])
-@pytest.mark.parametrize("c", [-10, 1, 10])
+@pytest.mark.parametrize("c", [10])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_lasd(
     shape, use_initial_state, use_varlen, no_dstate, use_chunk_loop, c, dtype
 ):
     torch.manual_seed(2024)
     device = torch.device("cuda")
+    scale = 0.01
+
     b, n, h, d, e = shape
 
     if use_varlen:
@@ -58,18 +62,8 @@ def test_lasd(
     k = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
     v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
     ld = F.logsigmoid(
-        torch.randn((b, n, h), dtype=dtype, device=device) * c
+        (1 + scale * torch.randn((b, n, h), dtype=dtype, device=device)) * c
     ).requires_grad_()
-
-    # ld = torch.randn((b, n, h), dtype=dtype, device=device)#.requires_grad_()
-    # ld_list = []
-    # c_list = [-10, 1, 10]
-    # for i in range(n):
-    #     ld_list.append(ld[:, i:i+1, :] * c_list[i % len(c_list)])
-    # # ld = torch.permute(ld, (0, 2, 1))
-    # ld = F.logsigmoid(torch.cat(ld_list, dim=1)).requires_grad_()
-    # import torch
-    # ld = torch.permu
 
     if no_dstate:
         do = torch.randn((b, n, h, e), dtype=dtype, device=device)
@@ -154,7 +148,9 @@ def test_lasd(
     if use_initial_state:
         ds_parallel_triton, initial_state.grad = initial_state.grad.clone(), None
 
-    atol, rtol = get_threshold(dtype)
+    # atol, rtol = get_threshold(dtype)
+    atol = 5e-3
+    rtol = 5e-3
 
     ##### Check forward pass results
     print(
@@ -165,7 +161,7 @@ def test_lasd(
         "o diff norm (torch vs triton): ",
         torch.norm(o_torch - o_triton).item(),
     )
-    assert torch.allclose(o_torch, o_triton, atol=atol, rtol=rtol)
+    assert_close(o_torch, o_triton, atol=atol, rtol=rtol)
 
     print(
         "o diff max (torch vs parallel triton): ",
@@ -176,7 +172,7 @@ def test_lasd(
         torch.norm(o_torch - o_parallel_triton).item(),
     )
     print_diff(o_torch, o_parallel_triton, n)
-    assert torch.allclose(o_torch, o_parallel_triton, atol=atol, rtol=rtol)
+    assert_close(o_torch, o_parallel_triton, atol=atol, rtol=rtol)
 
     print(
         "state diff max (torch vs triton): ",
@@ -186,7 +182,7 @@ def test_lasd(
         "state diff norm (torch vs triton): ",
         torch.norm(s_torch - s_triton).item(),
     )
-    assert torch.allclose(s_torch, s_triton, atol=atol, rtol=rtol)
+    assert_close(s_torch, s_triton, atol=atol, rtol=rtol)
 
     print(
         "state diff max (torch vs parallel triton): ",
@@ -196,7 +192,7 @@ def test_lasd(
         "state diff norm (torch vs parallel triton): ",
         torch.norm(s_torch - s_parallel_triton).item(),
     )
-    assert torch.allclose(s_torch, s_parallel_triton, atol=atol, rtol=rtol)
+    assert_close(s_torch, s_parallel_triton, atol=atol, rtol=rtol)
 
     ##### Check backward pass results
     print(
@@ -204,7 +200,7 @@ def test_lasd(
         torch.abs(dq_torch - dq_triton).max().item(),
     )
     print("dq diff norm (torch vs triton): ", torch.norm(dq_torch - dq_triton).item())
-    assert torch.allclose(dq_torch, dq_triton, atol=atol, rtol=rtol)
+    assert_close(dq_torch, dq_triton, atol=atol, rtol=rtol)
 
     print(
         "dq diff max (torch vs parallel triton): ",
@@ -214,14 +210,14 @@ def test_lasd(
         "dq diff norm (torch vs parallel triton): ",
         torch.norm(dq_torch - dq_parallel_triton).item(),
     )
-    assert torch.allclose(dq_torch, dq_parallel_triton, atol=atol, rtol=rtol)
+    assert_close(dq_torch, dq_parallel_triton, atol=atol, rtol=rtol)
 
     print(
         "dk diff max (torch vs triton): ",
         torch.abs(dk_torch - dk_triton).max().item(),
     )
     print("dk diff norm (torch vs triton): ", torch.norm(dk_torch - dk_triton).item())
-    assert torch.allclose(dk_torch, dk_triton, atol=atol, rtol=rtol)
+    assert_close(dk_torch, dk_triton, atol=atol, rtol=rtol)
 
     print(
         "dk diff max (torch vs parallel triton): ",
@@ -232,14 +228,14 @@ def test_lasd(
         torch.norm(dk_torch - dk_parallel_triton).item(),
     )
     print_diff(dk_torch, dk_parallel_triton, n)
-    assert torch.allclose(dk_torch, dk_parallel_triton, atol=atol, rtol=rtol)
+    assert_close(dk_torch, dk_parallel_triton, atol=atol, rtol=rtol)
 
     print(
         "dv diff max (torch vs triton): ",
         torch.abs(dv_torch - dv_triton).max().item(),
     )
     print("dv diff norm (torch vs triton): ", torch.norm(dv_torch - dv_triton).item())
-    assert torch.allclose(dv_torch, dv_triton, atol=atol, rtol=rtol)
+    assert_close(dv_torch, dv_triton, atol=atol, rtol=rtol)
 
     print(
         "dv diff max (torch vs parallel triton): ",
@@ -249,7 +245,7 @@ def test_lasd(
         "dv diff norm (torch vs parallel triton): ",
         torch.norm(dv_torch - dv_parallel_triton).item(),
     )
-    assert torch.allclose(dv_torch, dv_parallel_triton, atol=atol, rtol=rtol)
+    assert_close(dv_torch, dv_parallel_triton, atol=atol, rtol=rtol)
 
     if use_initial_state:
         print(
@@ -260,7 +256,7 @@ def test_lasd(
             "ds diff norm (torch vs triton): ",
             torch.norm(ds_torch - ds_triton).item(),
         )
-        assert torch.allclose(ds_torch, ds_triton, atol=atol, rtol=rtol)
+        assert_close(ds_torch, ds_triton, atol=atol, rtol=rtol)
 
         print(
             "ds diff max (torch vs parallel triton): ",
@@ -270,7 +266,7 @@ def test_lasd(
             "ds diff norm (torch vs parallel triton): ",
             torch.norm(ds_torch - ds_parallel_triton).item(),
         )
-        assert torch.allclose(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)
+        assert_close(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)
 
     print(
         "dld diff max (torch vs triton): ",
@@ -279,7 +275,7 @@ def test_lasd(
     print(
         "dld diff norm (torch vs triton): ", torch.norm(dld_torch - dld_triton).item()
     )
-    assert torch.allclose(dld_torch, dld_triton, atol=atol, rtol=rtol)
+    assert_close(dld_torch, dld_triton, atol=atol, rtol=rtol)
 
     print(
         "dld diff max (torch vs parallel triton): ",

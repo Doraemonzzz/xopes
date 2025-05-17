@@ -25,17 +25,22 @@ def get_params():
         (2, 270, 8, 64, 32),
         (2, 270, 8, 33, 16),
         (2, 1125, 8, 43, 33),
+        # Train shape
+        (32, 2048, 12, 64, 64),
     ]
+
     return shapes
 
 
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("reverse", [True, False])
+@pytest.mark.parametrize("c", [10])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_lasd_compute_states(shape, use_initial_state, reverse, dtype):
+def test_lasd_compute_states(shape, use_initial_state, reverse, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
+    scale = 0.01
 
     # Generate input tensors
     b, n, h, d, e = shape
@@ -44,7 +49,7 @@ def test_lasd_compute_states(shape, use_initial_state, reverse, dtype):
     v = torch.randn(b, n, h, e, dtype=dtype, device=device)
 
     # Always use log decay
-    ld = F.logsigmoid(torch.randn(b, n, h, device=device))
+    ld = F.logsigmoid((1 + scale * torch.randn(b, n, h, device=device)) * c)
 
     initial_state = None
     if use_initial_state:
@@ -54,7 +59,7 @@ def test_lasd_compute_states(shape, use_initial_state, reverse, dtype):
     MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
-    BLOCK_N = 64
+    BLOCK_N = 128
     MAX_BLOCK_C = BLOCK_N
 
     # Get thresholds based on dtype

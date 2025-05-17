@@ -16,6 +16,11 @@ except:
     chunk_simple_gla = lambda x: None
 
 try:
+    from fla.ops.linear_attn import chunk_linear_attn
+except:
+    chunk_linear_attn = lambda x: None
+
+try:
     from lightning_attn.ops import lightning_attn_func
 except:
     lightning_attn_func = lambda x: None
@@ -78,6 +83,17 @@ def chunk_simple_gla_wrapper(q, k, v, **kwargs):
     return o
 
 
+def chunk_linear_attn_wrapper(q, k, v, **kwargs):
+    o = chunk_linear_attn(
+        q,
+        k,
+        v,
+        head_first=False,
+        output_final_state=True,
+    )
+    return o
+
+
 def lightning_attn_wrapper(q, k, v, **kwargs):
     q, k, v = map(lambda x: rearrange(x, "b n h d -> b h n d"), (q, k, v))
     o = lightning_attn_func(
@@ -85,6 +101,18 @@ def lightning_attn_wrapper(q, k, v, **kwargs):
         k,
         v,
         s=-kwargs["ld"],
+        variant=kwargs["variant"],
+    )
+    o = rearrange(o, "b h n d -> b n h d")
+    return o
+
+
+def lightning_attn_no_decay_wrapper(q, k, v, **kwargs):
+    q, k, v = map(lambda x: rearrange(x, "b n h d -> b h n d"), (q, k, v))
+    o = lightning_attn_func(
+        q,
+        k,
+        v,
         variant=kwargs["variant"],
     )
     o = rearrange(o, "b h n d -> b n h d")

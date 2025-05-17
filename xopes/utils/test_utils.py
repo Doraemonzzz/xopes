@@ -15,6 +15,10 @@ def assert_close(ref, input, atol, rtol):
     abs_atol = get_abs_err(ref, input)
     error_rate = get_err_ratio(ref, input)
 
+    print(
+        f"abs_atol: {abs_atol}, atol: {atol} and error_rate: {error_rate}, rtol: {rtol}"
+    )
+
     if abs_atol <= atol:
         return
     if error_rate <= rtol:

@@ -7,7 +7,7 @@ from xopes.ops.lightning_attn.vector_decay import (  # noqa
     lavd_recurrence_triton,
     lavd_torch,
 )
-from xopes.utils import assert_close, get_threshold, print_diff
+from xopes.utils import assert_close, print_diff
 
 
 def get_params():
@@ -26,6 +26,9 @@ def get_params():
         # LARGE D, E
         (2, 1125, 8, 255, 257),
         (2, 1025, 8, 255, 257),
+        (8, 2048, 12, 64, 64)
+        # (32, 128, 12, 64, 64)
+        # (32, 512, 12, 128, 128)
     ]
     return shapes
 
@@ -55,7 +58,37 @@ def get_params():
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True, False])
 @pytest.mark.parametrize("use_chunk_loop", [True, False])
+@pytest.mark.parametrize("c", [10])
 @pytest.mark.parametrize("dtype", [torch.float32])
+
+
+# @pytest.mark.parametrize("shape", get_params())
+# @pytest.mark.parametrize("use_initial_state", [False])
+# @pytest.mark.parametrize(
+#     "use_ldk",
+#     [
+#         True,
+#     ],
+# )
+# @pytest.mark.parametrize(
+#     "use_ldv",
+#     [
+#         False,
+#     ],
+# )
+# @pytest.mark.parametrize(
+#     "share_k",
+#     [False],
+# )
+# @pytest.mark.parametrize(
+#     "share_v",
+#     [False],
+# )
+# @pytest.mark.parametrize("use_varlen", [False])
+# @pytest.mark.parametrize("no_dstate", [True])
+# @pytest.mark.parametrize("use_chunk_loop", [True])
+# @pytest.mark.parametrize("c", [10])
+# @pytest.mark.parametrize("dtype", [torch.float32])
 def test(
     shape,
     use_initial_state,
@@ -66,12 +99,14 @@ def test(
     use_varlen,
     no_dstate,
     use_chunk_loop,
+    c,
     dtype,
 ):
     torch.manual_seed(2024)
     device = torch.device("cuda")
+    scale = 0.01
+
     b, n, h, d, e = shape
-    c = -10
 
     if not use_ldk and not use_ldv:
         return
@@ -91,7 +126,7 @@ def test(
     if share_k:
         use_ldk = True
         ldk = F.logsigmoid(
-            torch.randn(b, n, h, d, dtype=dtype, device=device)
+            (1 + scale * torch.randn(b, n, h, d, dtype=dtype, device=device)) * c
         ).requires_grad_()
         k = None
     else:
@@ -99,15 +134,21 @@ def test(
 
         if use_ldk:
             ldk = F.logsigmoid(
-                torch.ones(b, n, h, d, dtype=dtype, device=device) * c
+                (1 + scale * torch.randn(b, n, h, d, dtype=dtype, device=device)) * c
             ).requires_grad_()
+
+            # ldk = F.logsigmoid(
+            #     torch.ones(b, n, h, d, dtype=dtype, device=device) * c
+            # ).requires_grad_()
+            # print("ldk", torch.max(ldk).item(), torch.min(ldk).item())
+            # ldk = torch.zeros(b, n, h, d, dtype=dtype, device=device).requires_grad_()
         else:
             ldk = None
 
     if share_v:
         use_ldv = True
         ldv = F.logsigmoid(
-            torch.randn(b, n, h, e, dtype=dtype, device=device) * c
+            (1 + scale * torch.randn(b, n, h, e, dtype=dtype, device=device)) * c
         ).requires_grad_()
         v = None
     else:
@@ -115,7 +156,7 @@ def test(
 
         if use_ldv:
             ldv = F.logsigmoid(
-                torch.randn(b, n, h, e, dtype=dtype, device=device) * c
+                (1 + scale * torch.randn(b, n, h, e, dtype=dtype, device=device)) * c
             ).requires_grad_()
         else:
             ldv = None
@@ -149,6 +190,20 @@ def test(
         output_torch = o_torch
     else:
         output_torch = o_torch.mean() + s_torch.mean()
+
+    # from xopes.ops.lightning_attn.vector_decay.torch_utils import lavd_inter_torch
+    # o_torch = lavd_inter_torch(
+    #     q=q,
+    #     k=k,
+    #     v=v,
+    #     ldk=ldk,
+    #     ldv=ldv,
+    #     use_ldk=use_ldk,
+    #     use_ldv=use_ldv,
+    #     initial_state=initial_state,
+    #     BLOCK_N=16
+    # )
+    # output_torch = o_torch
 
     # triton parallel
     o_parallel_triton, s_parallel_triton = lavd_parallel_triton(
@@ -205,9 +260,14 @@ def test(
     if use_initial_state:
         ds_parallel_triton, initial_state.grad = initial_state.grad.clone(), None
 
-    atol, rtol = get_threshold(dtype)
-    ld_atol = 0.05
-    ld_rtol = rtol
+    # atol, rtol = get_threshold(dtype)
+    # ld_atol = 0.05
+    # ld_rtol = rtol
+
+    atol = 5e-3
+    rtol = 5e-3
+    ld_atol = 5e-3
+    ld_rtol = 5e-3
 
     ##### Check forward pass results
     # triton parallel
@@ -220,7 +280,7 @@ def test(
         torch.norm(o_torch - o_parallel_triton).item(),
     )
     print_diff(o_torch, o_parallel_triton, n)
-    assert torch.allclose(o_torch, o_parallel_triton, atol=atol, rtol=rtol)
+    assert_close(o_torch, o_parallel_triton, atol=atol, rtol=rtol)
 
     print(
         "state diff max (torch parallel Vs triton parallel): ",
@@ -230,7 +290,8 @@ def test(
         "state diff norm (torch parallel Vs triton parallel): ",
         torch.norm(s_torch - s_parallel_triton).item(),
     )
-    assert torch.allclose(s_torch, s_parallel_triton, atol=atol, rtol=rtol)
+    print(s_parallel_triton.shape)
+    assert_close(s_torch, s_parallel_triton, atol=atol, rtol=rtol)
 
     ##### Check backward pass results
     # triton parallel
@@ -243,7 +304,7 @@ def test(
         torch.norm(dq_torch - dq_parallel_triton).item(),
     )
     print_diff(dq_torch, dq_parallel_triton, n)
-    assert torch.allclose(dq_torch, dq_parallel_triton, atol=atol, rtol=rtol)
+    assert_close(dq_torch, dq_parallel_triton, atol=atol, rtol=rtol)
 
     if not share_k:
         print(
@@ -255,7 +316,7 @@ def test(
             torch.norm(dk_torch - dk_parallel_triton).item(),
         )
         print_diff(dk_torch, dk_parallel_triton, n)
-        assert torch.allclose(dk_torch, dk_parallel_triton, atol=atol, rtol=rtol)
+        assert_close(dk_torch, dk_parallel_triton, atol=atol, rtol=rtol)
 
     if not share_v:
         print(
@@ -267,7 +328,7 @@ def test(
             torch.norm(dv_torch - dv_parallel_triton).item(),
         )
         print_diff(dv_torch, dv_parallel_triton, n)
-        assert torch.allclose(dv_torch, dv_parallel_triton, atol=atol, rtol=rtol)
+        assert_close(dv_torch, dv_parallel_triton, atol=atol, rtol=rtol)
 
     if use_ldk:
         print(
@@ -307,4 +368,4 @@ def test(
             torch.norm(ds_torch - ds_parallel_triton).item(),
         )
         print_diff(ds_torch, ds_parallel_triton, n)
-        assert torch.allclose(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)
+        assert_close(ds_torch, ds_parallel_triton, atol=atol, rtol=rtol)

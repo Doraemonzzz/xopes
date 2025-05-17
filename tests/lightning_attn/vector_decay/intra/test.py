@@ -26,6 +26,8 @@ def get_params():
         # LARGE D, E
         (2, 1125, 8, 255, 257),
         (2, 1025, 8, 64, 32),
+        # Train shape
+        (8, 2048, 12, 64, 64),
     ]
 
     return shapes
@@ -44,10 +46,14 @@ def get_params():
     ],
 )
 @pytest.mark.parametrize("BLOCK_N", [64])  # 16 for only sub intra, 64 for full test
+@pytest.mark.parametrize("c", [10])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N, dtype):
+def test_lavd_intra(
+    shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N, c, dtype
+):
     torch.manual_seed(2024)
     device = torch.device("cuda")
+    scale = 0.01
 
     # Generate input tensors
     b, n, h, d, e = shape
@@ -57,7 +63,7 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
     if share_k:
         use_ldk = True
         ldk = F.logsigmoid(
-            torch.randn(b, n, h, d, dtype=dtype, device=device)
+            (1 + scale * torch.randn(b, n, h, d, dtype=dtype, device=device)) * c
         ).requires_grad_()
         k = None
     else:
@@ -65,7 +71,7 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
 
         if use_ldk:
             ldk = F.logsigmoid(
-                torch.randn(b, n, h, d, dtype=dtype, device=device)
+                (1 + scale * torch.randn(b, n, h, d, dtype=dtype, device=device)) * c
             ).requires_grad_()
         else:
             ldk = None
@@ -73,7 +79,7 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
     if share_v:
         use_ldv = True
         ldv = F.logsigmoid(
-            torch.randn(b, n, h, e, dtype=dtype, device=device)
+            (1 + scale * torch.randn(b, n, h, e, dtype=dtype, device=device)) * c
         ).requires_grad_()
         v = None
     else:
@@ -81,7 +87,7 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
 
         if use_ldv:
             ldv = F.logsigmoid(
-                torch.randn(b, n, h, e, dtype=dtype, device=device)
+                (1 + scale * torch.randn(b, n, h, e, dtype=dtype, device=device)) * c
             ).requires_grad_()
         else:
             ldv = None
@@ -134,18 +140,10 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
         reverse=reverse,
         BLOCK_N=BLOCK_C,
     )
-    o_torch_sub_inter = o_torch - o_torch_sub_intra
+    o_torch - o_torch_sub_intra
 
     # Get thresholds based on dtype for numerical comparison
     atol, rtol = get_threshold(dtype)
-
-    l = (n + BLOCK_C - 1) // BLOCK_C
-    for i in range(l):
-        start = i * BLOCK_C
-        end = min(start + BLOCK_C, n)
-        print(
-            f"block {i} diff norm: {torch.norm(o_torch_sub_inter[:, start:end] - o_triton[:, start:end]).item()}"
-        )
 
     # Print test configuration and results
     print(f"\nShape: {shape}, E: {e}, reverse: {reverse}, dtype: {dtype}")

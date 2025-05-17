@@ -105,7 +105,7 @@ folder=lightning_attn/scalar_decay
 # folder=lightning_attn/vector_decay/sub_intra
 
 # ##### laer 250407
-folder=lightning_attn/element_recurrence
+# folder=lightning_attn/element_recurrence
 # folder=lightning_attn/element_recurrence/state
 
 # ##### tpa_decode 250408
@@ -117,9 +117,9 @@ folder=lightning_attn/element_recurrence
 mkdir -p $folder/log
 
 
-# export XOPES_DEBUG=True
+export XOPES_DEBUG=True
 export CUDA_VISIBLE_DEVICES=0
-# export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=1
 # export TRITON_INTERPRET=1
 export TRITON_F32_DEFAULT=ieee
 

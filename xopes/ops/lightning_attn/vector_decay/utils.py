@@ -8,7 +8,7 @@ BLOCK_C = 16
 BLOCK_C_LIST = [BLOCK_C]
 if XOPES_DEBUG:
     BLOCK_D_LIST = [16]
-    BLOCK_E_LIST = [16]
+    BLOCK_E_LIST = [32]
 else:
     BLOCK_D_LIST = [64, 128]
     BLOCK_E_LIST = [64, 128]
@@ -642,6 +642,15 @@ def _lavd_parallel_state_parallel_reduce(
                 + offset_ldk_sum
                 + (array_d + offset_block_d)[:, None]
             )
+
+            ldk_trans_block_ptr = (
+                LOG_DECAY_K_CUMSUM
+                + offset_ldk
+                + offset_block_ldk
+                + array_c[None, :] * H * D
+                + (array_d + offset_block_d)[:, None]
+            )
+
             log_decay_k_trans_sum = tl.load(ldk_trans_sum_block_ptr).to(tl.float32)
             state *= tl.exp(log_decay_k_trans_sum)
 
@@ -667,6 +676,15 @@ def _lavd_parallel_state_parallel_reduce(
                 + offset_ldv_sum
                 + (array_e + offset_block_e)[None, :]
             )
+
+            ldv_block_ptr = (
+                LOG_DECAY_V_CUMSUM
+                + offset_ldv
+                + offset_block_ldv
+                + array_c[:, None] * H * E
+                + (array_e + offset_block_e)[None, :]
+            )
+
             log_decay_v_sum = tl.load(ldv_sum_block_ptr).to(tl.float32)
             state *= tl.exp(log_decay_v_sum)
 
@@ -704,40 +722,6 @@ def _lavd_parallel_state_parallel_reduce(
                 + array_c[:, None] * H * E
                 + (array_e + offset_block_e)[None, :]
             )
-
-        if USE_DECAY_K:
-            ldk_trans_block_ptr = (
-                LOG_DECAY_K_CUMSUM
-                + offset_qk
-                + offset_block_qk
-                + array_c[None, :] * H * D
-                + (array_d + offset_block_d)[:, None]
-            )
-            ldk_trans_sum_block_ptr = (
-                LOG_DECAY_K_CUMSUM
-                + offset_qk
-                + offset_block_qk
-                + offset_ldk_sum
-                + (array_d + offset_block_d)[:, None]
-            )
-            log_decay_k_trans_sum = tl.load(ldk_trans_sum_block_ptr).to(tl.float32)
-
-        if USE_DECAY_V:
-            ldv_block_ptr = (
-                LOG_DECAY_V_CUMSUM
-                + offset_vo
-                + offset_block_vo
-                + array_c[:, None] * H * E
-                + (array_e + offset_block_e)[None, :]
-            )
-            ldv_sum_block_ptr = (
-                LOG_DECAY_V_CUMSUM
-                + offset_vo
-                + offset_block_vo
-                + offset_ldv_sum
-                + (array_e + offset_block_e)[None, :]
-            )
-            log_decay_v_sum = tl.load(ldv_sum_block_ptr).to(tl.float32)
 
         for j in range(NUM_BLOCK_C):
             array = offset_block_n + array_c
@@ -853,6 +837,7 @@ def _lavd_parallel_intra(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
 ):
     NUM_BLOCK_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
@@ -1009,7 +994,7 @@ def _lavd_parallel_intra(
         log_decay_v_start = tl.load(
             ldv_start_block_ptr, mask=mask_ldv_start & mask_e[None, :], other=0.0
         ).to(tl.float32)
-        tl.exp(log_decay_v_sub - log_decay_v_start)
+        v_decay_sub = tl.exp(log_decay_v_sub - log_decay_v_start)
 
     o = tl.zeros([BLOCK_C, BLOCK_E], dtype=tl.float32)
 
@@ -1431,15 +1416,13 @@ def _lavd_parallel_inter(
             + (offset_block_c + array_c[:, None]) * H * E
             + (offset_block_e + array_e[None, :])
         )
-        ldv = tl.load(
-            ldv_block_ptr, mask=mask_c[:, None] & mask_e[None, :], other=0.0
-        ).to(tl.float32)
+        ldv = tl.load(ldv_block_ptr, mask=mask_v, other=0.0).to(tl.float32)
         o = (o * tl.exp(ldv)).to(o.dtype)
 
     tl.store(
         o_block_ptr,
         o.to(o_block_ptr.dtype.element_ty),
-        mask=mask_c[:, None] & mask_e[None, :],
+        mask=mask_v,
     )
 
 
@@ -2641,7 +2624,6 @@ def _lavd_parallel_intra_inter_no_loop(
     offset_state = off_bh * (NUM_BLOCK_N + 1) * D * E
     offset_block_state = off_block_n * D * E
 
-    # array_c = tl.arange(0, BLOCK_C)
     array_d = tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
     array_n = tl.arange(0, BLOCK_N)
@@ -2725,7 +2707,6 @@ def _lavd_parallel_intra_inter_no_loop(
         offset_ldv1_sum = offset_ld1 * H * E
         offset_ldv2_sum = offset_ld2 * H * E
 
-        (array_kv < M) & mask_n
         mask_kv2 = (array_kv < (M + BLOCK_C_)) & mask_n
         mask_kv = mask_kv2
         ld1_sum_mask = (offset_ld1 >= 0) & ((offset_block_n + offset_ld1) < N)
@@ -2770,41 +2751,41 @@ def _lavd_parallel_intra_inter_no_loop(
             + array_d[None, :]
         )
 
-        ##### debug
-        if REVERSE:
-            offset_ldq1_start = offset_block_c1 + BLOCK_C_
-            mask_ldq1_start = (offset_ldq1_start < BLOCK_N) & (
-                (offset_block_n + offset_ldq1_start) < N
-            )
-            offset_ldq2_start = offset_block_c2 + BLOCK_C_
-            mask_ldq2_start = (offset_ldq2_start < BLOCK_N) & (
-                (offset_block_n + offset_ldq2_start) < N
-            )
-        else:
-            offset_ldq1_start = offset_block_c1 - 1
-            mask_ldq1_start = (offset_ldq1_start >= 0) & (
-                (offset_block_n + offset_ldq1_start) < N
-            )
-            offset_ldq2_start = offset_block_c2 - 1
-            mask_ldq2_start = (offset_ldq2_start >= 0) & (
-                (offset_block_n + offset_ldq2_start) < N
-            )
+        # ##### debug
+        # if REVERSE:
+        #     offset_ldq1_start = offset_block_c1 + BLOCK_C_
+        #     mask_ldq1_start = (offset_ldq1_start < BLOCK_N) & (
+        #         (offset_block_n + offset_ldq1_start) < N
+        #     )
+        #     offset_ldq2_start = offset_block_c2 + BLOCK_C_
+        #     mask_ldq2_start = (offset_ldq2_start < BLOCK_N) & (
+        #         (offset_block_n + offset_ldq2_start) < N
+        #     )
+        # else:
+        #     offset_ldq1_start = offset_block_c1 - 1
+        #     mask_ldq1_start = (offset_ldq1_start >= 0) & (
+        #         (offset_block_n + offset_ldq1_start) < N
+        #     )
+        #     offset_ldq2_start = offset_block_c2 - 1
+        #     mask_ldq2_start = (offset_ldq2_start >= 0) & (
+        #         (offset_block_n + offset_ldq2_start) < N
+        #     )
 
-        ldq1_start_block_ptr = (
-            LOG_DECAY_K_CUMSUM
-            + offset_qk
-            + offset_block_qk
-            + offset_ldq1_start * H * D
-            + array_d[None, :]
-        )
+        # ldq1_start_block_ptr = (
+        #     LOG_DECAY_K_CUMSUM
+        #     + offset_qk
+        #     + offset_block_qk
+        #     + offset_ldq1_start * H * D
+        #     + array_d[None, :]
+        # )
 
-        ldq2_start_block_ptr = (
-            LOG_DECAY_K_CUMSUM
-            + offset_qk
-            + offset_block_qk
-            + offset_ldq2_start * H * D
-            + array_d[None, :]
-        )
+        # ldq2_start_block_ptr = (
+        #     LOG_DECAY_K_CUMSUM
+        #     + offset_qk
+        #     + offset_block_qk
+        #     + offset_ldq2_start * H * D
+        #     + array_d[None, :]
+        # )
 
         if REVERSE:
             offset_ldq1_start = offset_ld1

@@ -27,6 +27,8 @@ def get_params():
         # LARGE D, E
         (2, 1125, 8, 255, 257),
         (2, 1025, 8, 255, 257),
+        # Train shape
+        (8, 2048, 12, 64, 64),
     ]
 
     return shapes
@@ -45,10 +47,14 @@ def get_params():
     ],
 )
 @pytest.mark.parametrize("BLOCK_N", [64])  # 16 for only sub intra, 64 for full test
+@pytest.mark.parametrize("c", [10])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N, dtype):
+def test_lavd_intra(
+    shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N, c, dtype
+):
     torch.manual_seed(2024)
     device = torch.device("cuda")
+    scale = 0.01
 
     # Generate input tensors
     b, n, h, d, e = shape
@@ -58,7 +64,7 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
     if share_k:
         use_ldk = True
         ldk = F.logsigmoid(
-            torch.randn(b, n, h, d, dtype=dtype, device=device)
+            (1 + scale * torch.randn(b, n, h, d, dtype=dtype, device=device)) * c
         ).requires_grad_()
         k = None
     else:
@@ -66,7 +72,7 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
 
         if use_ldk:
             ldk = F.logsigmoid(
-                torch.randn(b, n, h, d, dtype=dtype, device=device)
+                (1 + scale * torch.randn(b, n, h, d, dtype=dtype, device=device)) * c
             ).requires_grad_()
         else:
             ldk = None
@@ -74,14 +80,14 @@ def test_lavd_intra(shape, use_ldk, use_ldv, share_k, share_v, reverse, BLOCK_N,
     if share_v:
         use_ldv = True
         ldv = F.logsigmoid(
-            torch.randn(b, n, h, e, dtype=dtype, device=device)
+            (1 + scale * torch.randn(b, n, h, e, dtype=dtype, device=device)) * c
         ).requires_grad_()
         v = None
     else:
         v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
         if use_ldv:
             ldv = F.logsigmoid(
-                torch.randn(b, n, h, e, dtype=dtype, device=device)
+                (1 + scale * torch.randn(b, n, h, e, dtype=dtype, device=device)) * c
             ).requires_grad_()
         else:
             ldv = None

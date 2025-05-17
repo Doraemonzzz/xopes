@@ -15,7 +15,7 @@ def lasd_fn(
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     save_states: bool = True,
-    use_chunk_loop: bool = False,
+    use_chunk_loop: bool = True,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """

@@ -29,6 +29,8 @@ def get_params():
         # LARGE D, E
         (2, 1125, 8, 255, 257),
         (2, 1025, 8, 255, 257),
+        # Train shape
+        (8, 2048, 12, 64, 64),
     ]
     return shapes
 
@@ -41,6 +43,7 @@ def get_params():
 @pytest.mark.parametrize("share_v", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("reverse", [True, False])
+@pytest.mark.parametrize("c", [10])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test(
     shape,
@@ -51,10 +54,12 @@ def test(
     share_v,
     use_varlen,
     reverse,
+    c,
     dtype,
 ):
     torch.manual_seed(2024)
     device = torch.device("cuda")
+    scale = 0.01
 
     # Generate input tensors
     b, n, h, d, e = shape
@@ -65,7 +70,7 @@ def test(
     if share_k:
         use_ldk = True
         ldk = F.logsigmoid(
-            torch.randn(b, n, h, d, dtype=dtype, device=device)
+            (1 + scale * torch.randn(b, n, h, d, dtype=dtype, device=device)) * c
         ).requires_grad_()
         k = None
     else:
@@ -73,7 +78,7 @@ def test(
 
         if use_ldk:
             ldk = F.logsigmoid(
-                torch.randn(b, n, h, d, dtype=dtype, device=device)
+                (1 + scale * torch.randn(b, n, h, d, dtype=dtype, device=device)) * c
             ).requires_grad_()
         else:
             ldk = None
@@ -81,7 +86,7 @@ def test(
     if share_v:
         use_ldv = True
         ldv = F.logsigmoid(
-            torch.randn(b, n, h, e, dtype=dtype, device=device)
+            (1 + scale * torch.randn(b, n, h, e, dtype=dtype, device=device)) * c
         ).requires_grad_()
         v = None
     else:
@@ -89,7 +94,7 @@ def test(
 
         if use_ldv:
             ldv = F.logsigmoid(
-                torch.randn(b, n, h, e, dtype=dtype, device=device)
+                (1 + scale * torch.randn(b, n, h, e, dtype=dtype, device=device)) * c
             ).requires_grad_()
         else:
             ldv = None
@@ -102,7 +107,8 @@ def test(
     MAX_BLOCK_C = MAX_BLOCK_N
     MAX_BLOCK_E = triton.next_power_of_2(e)
     MAX_BLOCK_D = triton.next_power_of_2(d)
-    BLOCK_N = 64
+
+    BLOCK_N = 128
     MAX_BLOCK_C = BLOCK_N
 
     # Get thresholds based on dtype
@@ -234,8 +240,6 @@ def test(
         "states diff max: ", torch.abs(global_states_ref - global_states).max().item()
     )
     print("states diff norm: ", torch.norm(global_states_ref - global_states).item())
-
-    # Assert results match within tolerance
     assert torch.allclose(global_states_ref, global_states, atol=atol, rtol=rtol)
 
     for i in range(l):
