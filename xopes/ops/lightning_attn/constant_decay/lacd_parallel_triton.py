@@ -455,7 +455,7 @@ def lacd_parallel_fwd(
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     trans: bool = False,
-    use_chunk_loop: bool = True,
+    use_chunk_loop: bool = False,
 ):
     """
     Forward pass for Lightning Attention with Scalar Decay in parallel mode.
@@ -546,7 +546,7 @@ def lacd_parallel_bwd(
     dfinal_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     states: Optional[torch.Tensor] = None,
-    use_chunk_loop: bool = True,
+    use_chunk_loop: bool = False,
 ):
     """
     Backward pass for Lightning Attention with Scalar Decay in parallel mode.
@@ -757,7 +757,7 @@ class LacdParallelFunction(torch.autograd.Function):
         initial_state=None,
         cu_seqlens=None,
         save_states=True,
-        use_chunk_loop=True,
+        use_chunk_loop=False,
     ):
         # Forward computation
         output, states = lacd_parallel_fwd(
@@ -809,7 +809,7 @@ def lacd_parallel_triton(
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     save_states: bool = True,
-    use_chunk_loop: bool = True,
+    use_chunk_loop: bool = False,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """

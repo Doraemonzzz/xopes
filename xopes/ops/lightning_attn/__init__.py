@@ -21,7 +21,7 @@ def lightning_attn_func(
     save_states: bool = True,
     save_ld: bool = True,
     save_a: bool = True,
-    use_chunk_loop: bool = True,
+    use_chunk_loop: bool = False,
     decay_type: str = "constant",
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:

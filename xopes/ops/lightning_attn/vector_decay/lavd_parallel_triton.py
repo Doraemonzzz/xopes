@@ -891,7 +891,7 @@ def lavd_parallel_fwd(
     cu_seqlens: Optional[torch.LongTensor] = None,
     reverse: bool = False,
     trans: bool = False,
-    use_chunk_loop: bool = True,
+    use_chunk_loop: bool = False,
 ):
     """
     Forward pass for Lightning Attention with Data-Dependent Scalar Decay in parallel mode.
@@ -1012,7 +1012,7 @@ def lavd_parallel_bwd(
     cu_seqlens: Optional[torch.LongTensor] = None,
     states: Optional[torch.Tensor] = None,
     a: Optional[torch.Tensor] = None,
-    use_chunk_loop: bool = True,
+    use_chunk_loop: bool = False,
 ):
     """
     Backward pass for Lightning Attention with Data-Dependent Scalar Decay in parallel mode.
@@ -1310,7 +1310,7 @@ class LavdParallelFunction(torch.autograd.Function):
         save_states=True,
         save_ld=True,
         save_a=True,
-        use_chunk_loop=True,
+        use_chunk_loop=False,
     ):
         # Forward computation
         output, states, ldk_cumsum, ldv_cumsum, a = lavd_parallel_fwd(
@@ -1428,7 +1428,7 @@ def lavd_parallel_triton(
     save_states: bool = True,
     save_ld: bool = True,
     save_a: bool = True,
-    use_chunk_loop: bool = True,
+    use_chunk_loop: bool = False,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
