@@ -1264,7 +1264,7 @@ def lavd_parallel_bwd(
         dldk = None
 
     if share_k:
-        dldk += dk * (-torch.exp(ldk))
+        dldk.add_(dk * (-torch.exp(ldk)))
         dk = None
 
     if ldv is not None and use_ldv and ldv.requires_grad:
@@ -1280,7 +1280,7 @@ def lavd_parallel_bwd(
         dldv = None
 
     if share_v:
-        dldv += dv * (-torch.exp(ldv))
+        dldv.add_(dv * (-torch.exp(ldv)))
         dv = None
 
     return (
