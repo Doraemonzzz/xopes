@@ -2751,42 +2751,6 @@ def _lavd_parallel_intra_inter_no_loop(
             + array_d[None, :]
         )
 
-        # ##### debug
-        # if REVERSE:
-        #     offset_ldq1_start = offset_block_c1 + BLOCK_C_
-        #     mask_ldq1_start = (offset_ldq1_start < BLOCK_N) & (
-        #         (offset_block_n + offset_ldq1_start) < N
-        #     )
-        #     offset_ldq2_start = offset_block_c2 + BLOCK_C_
-        #     mask_ldq2_start = (offset_ldq2_start < BLOCK_N) & (
-        #         (offset_block_n + offset_ldq2_start) < N
-        #     )
-        # else:
-        #     offset_ldq1_start = offset_block_c1 - 1
-        #     mask_ldq1_start = (offset_ldq1_start >= 0) & (
-        #         (offset_block_n + offset_ldq1_start) < N
-        #     )
-        #     offset_ldq2_start = offset_block_c2 - 1
-        #     mask_ldq2_start = (offset_ldq2_start >= 0) & (
-        #         (offset_block_n + offset_ldq2_start) < N
-        #     )
-
-        # ldq1_start_block_ptr = (
-        #     LOG_DECAY_K_CUMSUM
-        #     + offset_qk
-        #     + offset_block_qk
-        #     + offset_ldq1_start * H * D
-        #     + array_d[None, :]
-        # )
-
-        # ldq2_start_block_ptr = (
-        #     LOG_DECAY_K_CUMSUM
-        #     + offset_qk
-        #     + offset_block_qk
-        #     + offset_ldq2_start * H * D
-        #     + array_d[None, :]
-        # )
-
         if REVERSE:
             offset_ldq1_start = offset_ld1
             mask_ldq1_start = (offset_ldq1_start < BLOCK_N) & (

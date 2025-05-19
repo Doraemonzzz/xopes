@@ -317,9 +317,7 @@ def compute_dld_with_cumsum_triton(
     if sum_option == -1:
         dld = torch.empty(b, n, h, device=dld_q.device, dtype=dld_q.dtype)
     else:
-        dld = torch.empty_like(
-            dld_q, dtype=torch.float32
-        )  # for vector decay, we use fp32 dtype to compute
+        dld = torch.empty_like(dld_q, dtype=dld_q.dtype)
 
     # Determine if using final_state
     use_final_state = final_state is not None and dfinal_state is not None

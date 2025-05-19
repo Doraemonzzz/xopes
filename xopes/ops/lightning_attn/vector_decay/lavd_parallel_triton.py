@@ -792,8 +792,14 @@ def lavd_parallel_intra_inter(
 
     if a is None:
         NUM_ATTN_MATRIX = triton.cdiv(n, BLOCK_C)
+        # a_dtype = (
+        #     dtype if (share_q or share_k or share_v) else torch.float32
+        # )  # !!! important, if not share, a must be float32
+        # !!! important, a must be float32
         a = torch.empty(
-            (b, h, NUM_ATTN_MATRIX, BLOCK_C, BLOCK_C), dtype=dtype, device=device
+            (b, h, NUM_ATTN_MATRIX, BLOCK_C, BLOCK_C),
+            dtype=torch.float32,
+            device=device,
         )
 
         def grid(meta):

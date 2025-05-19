@@ -138,8 +138,8 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        x_vals=[2**i for i in range(8, 17)],
-        # x_vals=[2**i for i in range(10, 11)],
+        # x_vals=[2**i for i in range(8, 17)],
+        x_vals=[2**i for i in range(8, 11)],
         # x_vals=[2**i for i in range(8, 18)],
         # x_vals=[2**i for i in range(17, 18)],
         xlabel="Sequence Length",
@@ -151,19 +151,18 @@ configs = [
             # "land_p",
             # "lacd_pl",
             # "lasd_p",
-            # "lavd_k_p",
+            "lavd_k_p",
             # "lavd_kv_p",
             # "laer_r",
             # "laer_p",
             # "flash",
             # "lightning_p",
             # "lightning_c",
-            # "gla_k",
+            "gla_k",
             # "gla_s_k",
             # "fla_laer",
             # "mamba2",
             # "mlstm",
-            # "fla_linear", # bug
         ],
         line_names=[
             # "LACD_R",
@@ -171,19 +170,18 @@ configs = [
             # "LAND_P",
             # "LACD_PL",
             # "LASD_P",
-            # "LAVD_K_P",
+            "LAVD_K_P",
             # "LAVD_KV_P",
             # "LAER_R",
             # "LAER_P",
             # "Flash",
             # "LP",
             # "LC",
-            # "GLA_K",
+            "GLA_K",
             # "GLA_S_K",
             # "FLA_LAER",
             # "MAMBA2",
             # "MLSTM",
-            # "FLA_LA", # bug
         ],
         styles=[
             ("red", "-"),
@@ -224,8 +222,8 @@ configs = [
         "bwd",
     ]
     for dtype_name in ["bf16"]
-    for b, h, d in [[4, 32, 128], [1, 16, 128]]
-    # for b, h, d in [[4, 32, 128]]
+    # for b, h, d in [[4, 32, 128], [1, 16, 128]]
+    for b, h, d in [[4, 32, 128]]
     # for b, h, d in [[1, 16, 128]]
 ]
 

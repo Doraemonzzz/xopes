@@ -26,9 +26,8 @@ def get_params():
         # LARGE D, E
         (2, 1125, 8, 255, 257),
         (2, 1025, 8, 255, 257),
-        (8, 2048, 12, 64, 64)
-        # (32, 128, 12, 64, 64)
-        # (32, 512, 12, 128, 128)
+        # Train shape
+        (8, 2048, 12, 64, 64),
     ]
     return shapes
 
@@ -60,35 +59,6 @@ def get_params():
 @pytest.mark.parametrize("use_chunk_loop", [True, False])
 @pytest.mark.parametrize("c", [10])
 @pytest.mark.parametrize("dtype", [torch.float32])
-
-
-# @pytest.mark.parametrize("shape", get_params())
-# @pytest.mark.parametrize("use_initial_state", [False])
-# @pytest.mark.parametrize(
-#     "use_ldk",
-#     [
-#         True,
-#     ],
-# )
-# @pytest.mark.parametrize(
-#     "use_ldv",
-#     [
-#         False,
-#     ],
-# )
-# @pytest.mark.parametrize(
-#     "share_k",
-#     [False],
-# )
-# @pytest.mark.parametrize(
-#     "share_v",
-#     [False],
-# )
-# @pytest.mark.parametrize("use_varlen", [False])
-# @pytest.mark.parametrize("no_dstate", [True])
-# @pytest.mark.parametrize("use_chunk_loop", [True])
-# @pytest.mark.parametrize("c", [10])
-# @pytest.mark.parametrize("dtype", [torch.float32])
 def test(
     shape,
     use_initial_state,
@@ -136,12 +106,6 @@ def test(
             ldk = F.logsigmoid(
                 (1 + scale * torch.randn(b, n, h, d, dtype=dtype, device=device)) * c
             ).requires_grad_()
-
-            # ldk = F.logsigmoid(
-            #     torch.ones(b, n, h, d, dtype=dtype, device=device) * c
-            # ).requires_grad_()
-            # print("ldk", torch.max(ldk).item(), torch.min(ldk).item())
-            # ldk = torch.zeros(b, n, h, d, dtype=dtype, device=device).requires_grad_()
         else:
             ldk = None
 
@@ -190,20 +154,6 @@ def test(
         output_torch = o_torch
     else:
         output_torch = o_torch.mean() + s_torch.mean()
-
-    # from xopes.ops.lightning_attn.vector_decay.torch_utils import lavd_inter_torch
-    # o_torch = lavd_inter_torch(
-    #     q=q,
-    #     k=k,
-    #     v=v,
-    #     ldk=ldk,
-    #     ldv=ldv,
-    #     use_ldk=use_ldk,
-    #     use_ldv=use_ldv,
-    #     initial_state=initial_state,
-    #     BLOCK_N=16
-    # )
-    # output_torch = o_torch
 
     # triton parallel
     o_parallel_triton, s_parallel_triton = lavd_parallel_triton(
