@@ -101,7 +101,7 @@ folder=lightning_attn/vector_decay
 # folder=lightning_attn/vector_decay/state
 # folder=lightning_attn/vector_decay/inter
 # folder=lightning_attn/vector_decay/intra
-# folder=lightning_attn/vector_decay/recurrence
+folder=lightning_attn/vector_decay/recurrence
 # folder=lightning_attn/vector_decay/sub_intra
 
 # ##### laer 250407
