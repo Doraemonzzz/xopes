@@ -2,10 +2,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from xopes.ops.lightning_attn.vector_decay import (
-    lavd_parallel_triton,
-    lavd_torch,
-)
+from xopes.ops.lightning_attn.vector_decay import lavd_parallel_triton, lavd_torch
 from xopes.utils import assert_close, print_diff
 
 

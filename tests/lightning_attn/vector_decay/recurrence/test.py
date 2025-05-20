@@ -6,8 +6,7 @@ from xopes.ops.lightning_attn.vector_decay import (  # noqa
     lavd_recurrence_triton,
     lavd_torch,
 )
-from xopes.utils import get_threshold
-from xopes.utils import assert_close, print_diff
+from xopes.utils import assert_close
 
 
 def get_params():

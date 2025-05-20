@@ -13,10 +13,10 @@ $$
 考虑如下Linear Attention:
 $$
 \begin{aligned}
-\mathbf O &=\left[ 
+\mathbf O &=\left[
 \left( \mathbf Q \mathbf K^\top\right) \odot \mathbf M
 \right]^{-1} \mathbf V ,\\
-\left[ 
+\left[
 \left( \mathbf Q \mathbf K^\top\right) \odot \mathbf M
 \right] \mathbf O &= \mathbf V.
 
@@ -25,14 +25,8 @@ $$
 另一种形式为：
 $$
 \left[\left( \mathbf O \mathbf Q^\top\right) \odot \mathbf M
-\right] \mathbf K = \mathbf V, 
+\right] \mathbf K = \mathbf V,
 
 \left[\left( \mathbf Q \mathbf O^\top\right) \odot \mathbf M
-\right] \mathbf K = \mathbf V, 
+\right] \mathbf K = \mathbf V,
 $$
-
-
-
-
-
-
