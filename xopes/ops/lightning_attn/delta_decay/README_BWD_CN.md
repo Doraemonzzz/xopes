@@ -3,15 +3,15 @@
 递推式为：
 $$
 \begin{aligned}
-\mathbf O_i &= \mathbf {\bar Q}_i \mathbf S_{i-1} + 
-\left[ 
+\mathbf O_i &= \mathbf {\bar Q}_i \mathbf S_{i-1} +
+\left[
 \mathbf {\bar Q}_i \mathbf {\bar K}_i^\top  \odot \mathbf M
-\right] \mathbf V_i + \left[ 
+\right] \mathbf V_i + \left[
 \mathbf {\bar Q}_i \mathbf {\bar A}_i^\top  \odot \mathbf M
 \right] (\mathbf P_i + \mathbf U_i \mathbf S_{i-1}), \\
 
-\mathbf S_i 
-&= \Pi_{i, c}\mathbf S_{i-1} +  \mathbf {\tilde A}_i^\top (\mathbf U_i \mathbf S_{i-1} + \mathbf P_i) + 
+\mathbf S_i
+&= \Pi_{i, c}\mathbf S_{i-1} +  \mathbf {\tilde A}_i^\top (\mathbf U_i \mathbf S_{i-1} + \mathbf P_i) +
 \mathbf {\tilde K}_i^\top \mathbf V_i,  \\
 
 \ [\mathbf I - \mathrm{tril}(\mathbf {\bar C}_i \mathbf {\bar A}_i^\top
@@ -29,15 +29,15 @@ $$
 那么：
 $$
 \begin{aligned}
-\mathbf O_i &= \mathbf {\bar Q}_i \mathbf S_{i-1} + 
-\left[ 
+\mathbf O_i &= \mathbf {\bar Q}_i \mathbf S_{i-1} +
+\left[
 \mathbf {\bar Q}_i \mathbf {\bar K}_i^\top  \odot \mathbf M
-\right] \mathbf V_i + \left[ 
+\right] \mathbf V_i + \left[
 \mathbf {\bar Q}_i \mathbf {\bar A}_i^\top  \odot \mathbf M
 \right] \mathbf D_i , \\
 
-\mathbf S_i 
-&= \Pi_{i, c}\mathbf S_{i-1} +  \mathbf {\tilde A}_i^\top \mathbf D_i + 
+\mathbf S_i
+&= \Pi_{i, c}\mathbf S_{i-1} +  \mathbf {\tilde A}_i^\top \mathbf D_i +
 \mathbf {\tilde K}_i^\top \mathbf V_i,  \\
 
 \mathbf D_i &= \mathbf U_i \mathbf S_{i-1} + \mathbf P_i, \\
@@ -80,7 +80,7 @@ $$
 $\mathbf {S}_i$的计算涉及到$o, s,d$，所以不难得到：
 $$
 \begin{aligned}
-\mathbf {dS}_{i-1} &= \Pi_{i, c}   \mathbf {dS}_i+ 
+\mathbf {dS}_{i-1} &= \Pi_{i, c}   \mathbf {dS}_i+
 \mathbf {\bar Q}_i^\top \mathbf {d \bar O}_i  + \mathbf {U}_i^\top \mathbf {dD_i}.
 \end{aligned}
 $$
@@ -90,7 +90,7 @@ $$
 
 $\mathbf D$涉及到$o, s$，所以：
 $$
-\mathbf {dD}_i = \left[ 
+\mathbf {dD}_i = \left[
 \mathbf {\bar Q}_i \mathbf {\bar A}_i^\top  \odot \mathbf M
 \right]^\top \mathbf {dO}_i  + \mathbf {\tilde A}_i \mathbf {dS}_i.
 $$
@@ -117,7 +117,7 @@ $$
 
 $\mathbf V$的计算涉及到$o, s, p$，我们先求$o, s$部分：
 $$
-\mathbf {dV}_{i, 1} = \left[ 
+\mathbf {dV}_{i, 1} = \left[
 \mathbf {\bar Q}_i \mathbf {\bar K}_i^\top  \odot \mathbf M
 \right]^\top \mathbf {dO}_i  + \mathbf {\tilde K}_i \mathbf {dS}_i.
 $$
@@ -132,7 +132,7 @@ $$
 $$
 
 
-## $\mathbf {dK}, \mathbf {dV}, \mathbf {dA}, \mathbf {dC}$ part2 
+## $\mathbf {dK}, \mathbf {dV}, \mathbf {dA}, \mathbf {dC}$ part2
 
 回顾公式：
 $$
@@ -153,22 +153,22 @@ $$
 所以给定$\mathbf {dP}_i$，我们有：
 $$
 \begin{aligned}
-\mathbf {dC}_i &= 
+\mathbf {dC}_i &=
 \left[
 \mathrm{tril}( \mathbf {dP}_i \mathbf P_i^\top, -1 )\mathbf {\bar A}_i
 + \mathrm{tril}( \mathbf {dP}_i \mathbf V_i^\top, -1 )\mathbf {\bar K}_i
 \right] \odot \Pi_i,  \\
 
-\mathbf {dA}_i &= 
+\mathbf {dA}_i &=
 \left[
 \mathrm{tril}( \mathbf {dP}_i \mathbf P_i^\top, -1 )^\top \mathbf {\bar C}_i
 \right] / \Pi_i, \\
 
 \mathbf {dK}_i &= \left[\mathrm{tril}( \mathbf {dP}_i \mathbf V_i^\top, -1 )^\top \mathbf {\bar C}_i \right]/ \Pi_i, \\
 
-\mathbf {dV}_i &= \left[ 
+\mathbf {dV}_i &= \left[
 \mathrm{tril}(\mathbf {\bar C}_i \mathbf {\bar K}_i^\top
-\odot \mathbf M, -1) 
+\odot \mathbf M, -1)
 \right]^\top \mathbf P_i.
 \end{aligned}
 $$
@@ -195,15 +195,15 @@ $$
 + \mathrm{tril}(\mathbf {dU}_i \mathbf U_i, -1) \mathbf {\bar A}_i
 \right] \odot \Pi_i + \mathbf {dU}_i,  \\
 
-\mathbf {dA}_{i, 2} &= 
+\mathbf {dA}_{i, 2} &=
 \left[ \mathrm{tril}( \mathbf {dP}_i \mathbf P_i^\top + \mathbf {dU}_i \mathbf U_i, -1 )^\top \mathbf {\bar C}_i
 \right] / \Pi_i,  \\
 
 \mathbf {dK}_{i, 2} &= \left[\mathrm{tril}( \mathbf {dP}_i \mathbf V_i^\top, -1 )^\top \mathbf {\bar C}_i \right]/ \Pi_i, \\
 
-\mathbf {dV}_{i, 2} &= \left[ 
+\mathbf {dV}_{i, 2} &= \left[
 \mathrm{tril}(\mathbf {\bar C}_i \mathbf {\bar K}_i^\top
-, -1) 
+, -1)
 \right]^\top \mathbf P_i.
 \end{aligned}
 $$
@@ -218,15 +218,15 @@ $$
 那么：
 $$
 \begin{aligned}
-\mathbf O &= \mathbf {\bar Q} \mathbf S_{0} + 
-\left[ 
+\mathbf O &= \mathbf {\bar Q} \mathbf S_{0} +
+\left[
 \mathbf {\bar Q} \mathbf {\bar K}^\top  \odot \mathbf M
-\right] \mathbf V + \left[ 
+\right] \mathbf V + \left[
 \mathbf {\bar Q} \mathbf {\bar A}^\top  \odot \mathbf M
 \right] (\mathbf P+ \mathbf U \mathbf S_{0}), \\
 
-\mathbf S_n 
-&= \pi_n \mathbf S_{0} +  \mathbf {\tilde A}^\top (\mathbf U \mathbf S_{0} + \mathbf P) + 
+\mathbf S_n
+&= \pi_n \mathbf S_{0} +  \mathbf {\tilde A}^\top (\mathbf U \mathbf S_{0} + \mathbf P) +
 \mathbf {\tilde K}^\top \mathbf V, \\
 
 \ [\mathbf I - \mathrm{tril}(\mathbf {\bar C} \mathbf {\bar A}^\top
@@ -244,15 +244,15 @@ $$
 注意到：
 $$
 \begin{aligned}
- \frac{\partial l}{\partial \mathbf {q}_i} \frac{\partial \mathbf {q}_i}{\partial \log \pi_i}  
+ \frac{\partial l}{\partial \mathbf {q}_i} \frac{\partial \mathbf {q}_i}{\partial \log \pi_i}
 
 &= \mathbf {dq}_i \odot \left(
 \frac{\partial \mathbf {q}_i}{\partial \mathbf {\bar q}_i}
-\frac {\partial \mathbf {\bar q}_i} {\partial \log \pi_i} 
+\frac {\partial \mathbf {\bar q}_i} {\partial \log \pi_i}
 \right) \\
 
 &= \mathbf {dq}_i \odot \left(
-\frac{1}{\alpha_i} \odot 
+\frac{1}{\alpha_i} \odot
 \mathbf q_i \odot \alpha_i
 \right) \\
 
@@ -267,7 +267,7 @@ $$
 &= \frac{\partial l}{\partial \log \pi_i} \\
 &= \frac{\partial l}{\partial \mathbf {q}_i} \frac{\partial \mathbf {q}_i}{\partial \log \pi_i}
 +  \frac{\partial l}{\partial \mathbf {k}_i} \frac{\partial \mathbf {k}_i}{\partial \log \pi_i}
-+  \frac{\partial l}{\partial \mathbf {a}_i} \frac{\partial \mathbf {a}_i}{\partial \log \pi_i} 
++  \frac{\partial l}{\partial \mathbf {a}_i} \frac{\partial \mathbf {a}_i}{\partial \log \pi_i}
 + \frac{\partial l}{\partial \mathbf {c}_i} \frac{\partial \mathbf {c}_i}{\partial \log \pi_i} \\
 
 
@@ -315,20 +315,20 @@ $$
 \odot \Theta_i, \\
 \mathbf {dK}_{i, 2} &= \left[\mathrm{tril}( \mathbf {dP}_i \mathbf V_i^\top, -1 )^\top \mathbf {\bar C}_i \right]/ \Pi_i,  \\
 
-\mathbf {dK} &=\mathbf {dK}_{i, 1}  + \mathbf {dK}_{i, 2}. 
+\mathbf {dK} &=\mathbf {dK}_{i, 1}  + \mathbf {dK}_{i, 2}.
 \end{aligned}
 $$
 $\mathbf {dV}$：
 $$
 \begin{aligned}
-\mathbf {dV}_{i, 1} &= \left[ 
+\mathbf {dV}_{i, 1} &= \left[
 \mathbf {\bar Q}_i \mathbf {\bar K}_i^\top  \odot \mathbf M
 \right]^\top \mathbf {dO}_i  + \mathbf {\tilde K}_i \mathbf {dS}_i, \\
 
 
-\mathbf {dV}_{i, 2} &= \left[ 
+\mathbf {dV}_{i, 2} &= \left[
 \mathrm{tril}(\mathbf {\bar C}_i \mathbf {\bar K}_i^\top
-, -1) 
+, -1)
 \right]^\top \mathbf P_i, \\
 
 \mathbf {dK} &= \mathbf {dV}_{i, 1} + \mathbf {dV}_{i, 2}.
@@ -341,7 +341,7 @@ $$
 \mathbf {dA}_{i, 1} &= \left[\mathbf {dO}_i \mathbf D_i^\top \odot \mathbf M \right]^\top \mathbf {\bar Q}_i / \Pi_i +  \left[ \mathbf D_i \mathbf {dS}_i^\top  \right]
 \odot \Theta_i, \\
 
-\mathbf {dA}_{i, 2} &= 
+\mathbf {dA}_{i, 2} &=
 \left[ \mathrm{tril}( \mathbf {dP}_i \mathbf P_i^\top + \mathbf {dU}_i \mathbf U_i, -1 )^\top \mathbf {\bar C}_i
 \right] / \Pi_i, \\
 
@@ -351,7 +351,7 @@ $$
 $$
 $\mathbf {dC}$：
 $$
-\mathbf {dC}_i = 
+\mathbf {dC}_i =
 \left[
 \mathrm{tril}( \mathbf {dP}_i \mathbf P_i^\top, -1 )\mathbf {\bar A}_i
 + \mathrm{tril}( \mathbf {dP}_i \mathbf V_i^\top, -1 )\mathbf {\bar K}_i
@@ -383,4 +383,3 @@ $$
 \end{aligned}
 $$
 如果使用参数共享，即$\mathbf A = \mathbf K$，那么需要进一步化简梯度。
-

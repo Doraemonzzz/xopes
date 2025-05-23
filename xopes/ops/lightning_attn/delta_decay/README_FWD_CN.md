@@ -227,23 +227,23 @@ $$
 
 &= \mathbf M_{i}^j \mathbf s_j + \sum_{s=j+1}^i \mathbf M_{i}^s \mathbf k_s \mathbf v_s^\top  \\
 
-&= \left(\mathrm{diag}(\gamma_i/\gamma_j) + \sum_{k=j+1}^i  \mathrm{diag}(\gamma_i/\gamma_k)\mathbf a_k \mathbf u_k^\top\right) \mathbf s_j + 
+&= \left(\mathrm{diag}(\gamma_i/\gamma_j) + \sum_{k=j+1}^i  \mathrm{diag}(\gamma_i/\gamma_k)\mathbf a_k \mathbf u_k^\top\right) \mathbf s_j +
 \sum_{t=j+1}^i  \mathrm{diag}(\gamma_i/\gamma_t)
 \left(
 \mathbf k_t \mathbf v_t^\top + \mathbf a_t \mathbf p_t^\top
 \right) \\
 
-&= \mathrm{diag}(\gamma_i/\gamma_j) \mathbf s_j + 
+&= \mathrm{diag}(\gamma_i/\gamma_j) \mathbf s_j +
 \sum_{t=j+1}^i  \mathrm{diag}(\gamma_i/\gamma_t)
 \left(
-\mathbf k_t \mathbf v_t^\top + \mathbf a_t \mathbf p_t^\top + \mathbf a_k \mathbf u_k^\top  \mathbf s_j 
+\mathbf k_t \mathbf v_t^\top + \mathbf a_t \mathbf p_t^\top + \mathbf a_k \mathbf u_k^\top  \mathbf s_j
 \right), \\
 
-\mathbf o_i^\top 
-&= \mathbf q_i^\top  \mathrm{diag}(\gamma_i/\gamma_j) \mathbf s_j + \mathbf q_i^\top  
+\mathbf o_i^\top
+&= \mathbf q_i^\top  \mathrm{diag}(\gamma_i/\gamma_j) \mathbf s_j + \mathbf q_i^\top
 \sum_{t=j+1}^i  \mathrm{diag}(\gamma_i/\gamma_t)
 \left(
-\mathbf k_t \mathbf v_t^\top + \mathbf a_t \mathbf p_t^\top + \mathbf a_t \mathbf u_t^\top  \mathbf s_j 
+\mathbf k_t \mathbf v_t^\top + \mathbf a_t \mathbf p_t^\top + \mathbf a_t \mathbf u_t^\top  \mathbf s_j
 \right).
 
 \end{aligned}
@@ -263,17 +263,17 @@ $$
 
 \tilde{\mathbf A}_i &=  \mathbf A_i \odot \mathbf \Theta_i,  \\
 
-\mathbf O_i &= \mathbf {\bar Q}_i \mathbf S_{i-1} + 
-\left[ 
+\mathbf O_i &= \mathbf {\bar Q}_i \mathbf S_{i-1} +
+\left[
 \mathbf {\bar Q}_i \mathbf {\bar K}_i^\top  \odot \mathbf M
-\right] \mathbf V_i + \left[ 
+\right] \mathbf V_i + \left[
 \mathbf {\bar Q}_i \mathbf {\bar A}_i^\top  \odot \mathbf M
 \right] (\mathbf P_i + \mathbf U_i \mathbf S_{i-1}), \\
 
-\mathbf S_i 
+\mathbf S_i
 &= \mathbf M_{i}^j \mathbf S_{i-1} + \sum_{s=j+1}^i \mathbf M_{i}^s \mathbf k_s \mathbf v_s^\top  \\
 &= (\Pi_{i, c} + \mathbf {\tilde A}_i^\top \mathbf U_i) \mathbf S_{i-1} + \mathbf {\tilde K}_i^\top \mathbf V_i + \mathbf {\tilde A}_i^\top \mathbf P_i \\
-&= \Pi_{i, c}\mathbf S_{i-1} +  \mathbf {\tilde A}_i^\top (\mathbf U_i \mathbf S_{i-1} + \mathbf P_i) + 
+&= \Pi_{i, c}\mathbf S_{i-1} +  \mathbf {\tilde A}_i^\top (\mathbf U_i \mathbf S_{i-1} + \mathbf P_i) +
 \mathbf {\tilde K}_i^\top \mathbf V_i.
 
 \end{aligned}
@@ -293,4 +293,3 @@ $$
 
 \end{aligned}
 $$
-
