@@ -44,7 +44,7 @@ $$
 \right]^{-1} \left( \mathbf O - \Alpha \mathbf Q \mathbf S_0 \right)  \\
 &\triangleq \left[
 \left( \mathbf Q \mathbf K^\top\right) \odot \mathbf M
-\right]^{-1}  \mathbf V.
+\right]^{-1}  \mathbf O.
 \end{aligned}
 $$
 为了方便叙述，我们将最后一项仍然记为$\mathbf O $：
