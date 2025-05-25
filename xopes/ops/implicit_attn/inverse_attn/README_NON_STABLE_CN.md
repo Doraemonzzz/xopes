@@ -22,9 +22,7 @@ $$
 \end{aligned}
 $$
 
-
 ### 递推形式
-
 注意到：
 $$
 \begin{aligned}
@@ -94,7 +92,7 @@ $$
 
 
 
-## Backward
+## Backward(有循环论证问题)
 
 在反向传播时，给定$\mathbf {dV}$，计算$\mathbf {dQ}, \mathbf {dK}, \mathbf {dO}$。
 
@@ -156,7 +154,7 @@ t&=1,\ldots, n- 1, \\
 
 \mathbf{dk}_t^\top &=\mathbf v_t^\top \mathbf {ds}_t^\top,  \\
 
-\mathbf{dv}_t& = \mathbf k_t^\top \mathbf {ds}_t.
+\mathbf{dv}_t^\top& = \mathbf k_t^\top \mathbf {ds}_t.
 \end{aligned}
 $$
 

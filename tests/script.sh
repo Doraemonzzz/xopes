@@ -114,6 +114,9 @@ folder=lightning_attn/vector_decay/recurrence
 # ##### inverse 250502
 # folder=inverse
 
+##### ilav 250525
+folder=implicit_attn/inverse_attn
+
 mkdir -p $folder/log
 
 
