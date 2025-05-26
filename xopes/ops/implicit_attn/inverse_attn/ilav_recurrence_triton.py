@@ -177,19 +177,21 @@ def ilav_recurrence_fwd(
     key=["B", "H", "D", "E", "USE_INITIAL_STATE", "USE_CU_SEQLENS"],
 )
 @triton.jit
-def _ilav_recurrence_bwd_dk(
+def _ilav_recurrence_bwd_do_dk_p(
     Q,  # B N H D
     K,  # B N H D
     V,  # B N H E
+    O,  # B N H E
     STATE,  # B H D E
     CU_SEQLENS,  # M
     FINAL_STATE,  # B H D E
-    LOG_DECAY,  # H
+    LOG_DECAY,  # B N H
     DO,  # B N H E
     DSTATE,  # B H D E
     DQ,  # B N H D
     DK,  # B N H D
     DV,  # B N H E
+    P,  # B N H E
     DINITIAL_STATE,  # B H D E
     B: tl.constexpr,
     N: tl.constexpr,
@@ -224,6 +226,9 @@ def _ilav_recurrence_bwd_dk(
     q_block_ptr = Q + offset_qk + array_d
     k_block_ptr = K + offset_qk + array_d
     v_block_ptr = V + offset_vo + array_e
+    o_block_ptr = O + offset_vo + array_e
+    p_block_ptr = P + offset_vo + array_e
+    do_block_ptr = DO + offset_vo + array_e
     dk_block_ptr = DK + offset_qk + array_d
     dv_block_ptr = DV + offset_vo + array_e
     log_decay_block_ptr = LOG_DECAY + offset_log_decay
@@ -248,6 +253,9 @@ def _ilav_recurrence_bwd_dk(
         q_block_ptr -= H * D
         k_block_ptr -= H * D
         v_block_ptr -= H * E
+        o_block_ptr -= H * E
+        p_block_ptr -= H * E
+        do_block_ptr -= H * E
         dk_block_ptr -= H * D
         dv_block_ptr -= H * E
         log_decay_block_ptr -= H
@@ -255,17 +263,24 @@ def _ilav_recurrence_bwd_dk(
         # load
         dv = tl.load(dv_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         q = tl.load(q_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
         v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        o = tl.load(o_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
         decay = tl.exp(log_decay)
 
-        # compute dk
-        dk = (1 - decay) * tl.sum(v[None, :] * dstate, axis=-1)
+        # compute p, do, dk
+        p = (1 - decay) * tl.sum(dstate * k[:, None], axis=0)
+        do = dv + p
+        dk = (1 - decay) * (tl.sum(dstate * v[None, :], axis=-1))
 
-        # update dstate
-        dstate = decay * (dstate - q[:, None] * dv[None, :])
-
+        # store
+        tl.store(do_block_ptr, do.to(do_block_ptr.dtype.element_ty), mask=mask_e)
+        tl.store(p_block_ptr, p.to(p_block_ptr.dtype.element_ty), mask=mask_e)
         tl.store(dk_block_ptr, dk.to(dk_block_ptr.dtype.element_ty), mask=mask_d)
+
+        # compute dk
+        dstate = decay * (dstate - q[:, None] * (p + dv)[None, :])
 
     dinitial_state_block_ptr = (
         DINITIAL_STATE + offset_state + array_d[:, None] * E + array_e[None, :]
@@ -286,10 +301,11 @@ def _ilav_recurrence_bwd_dk(
     key=["B", "H", "D", "E", "USE_INITIAL_STATE", "USE_CU_SEQLENS"],
 )
 @triton.jit
-def _ilav_recurrence_bwd_dq(
+def _ilav_recurrence_bwd_dq_dk(
     Q,  # B N H D
     K,  # B N H D
     V,  # B N H E
+    O,  # B N H E
     STATE,  # B H D E
     CU_SEQLENS,  # M
     FINAL_STATE,  # B H D E
@@ -299,6 +315,7 @@ def _ilav_recurrence_bwd_dq(
     DQ,  # B N H D
     DK,  # B N H D
     DV,  # B N H E
+    P,  # B N H E
     DINITIAL_STATE,  # B H D E
     B: tl.constexpr,
     N: tl.constexpr,
@@ -333,7 +350,10 @@ def _ilav_recurrence_bwd_dq(
     Q + offset_qk + array_d
     k_block_ptr = K + offset_qk + array_d
     v_block_ptr = V + offset_vo + array_e
+    O + offset_vo + array_e
+    p_block_ptr = P + offset_vo + array_e
     dq_block_ptr = DQ + offset_qk + array_d
+    DK + offset_qk + array_d
     dv_block_ptr = DV + offset_vo + array_e
     mask_d = array_d < D
     mask_e = array_e < E
@@ -356,20 +376,23 @@ def _ilav_recurrence_bwd_dq(
         dv = tl.load(dv_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
         v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        p = tl.load(p_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
         decay = tl.exp(log_decay)
 
         # compute dq
-        dq = -decay * tl.sum(dv[None, :] * state, axis=-1)
+        dq = -decay * tl.sum(state * (dv + p)[None, :], axis=-1)
+
+        # save
+        tl.store(dq_block_ptr, dq.to(dq_block_ptr.dtype.element_ty), mask=mask_d)
 
         # update state
         state = decay * state + (1 - decay) * k[:, None] * v[None, :]
 
-        tl.store(dq_block_ptr, dq.to(dq_block_ptr.dtype.element_ty), mask=mask_d)
-
         # update
         k_block_ptr += H * D
         v_block_ptr += H * E
+        p_block_ptr += H * E
         dv_block_ptr += H * E
         dq_block_ptr += H * D
         log_decay_block_ptr += H
@@ -379,6 +402,7 @@ def ilav_recurrence_bwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
+    o: torch.Tensor,
     ld: torch.Tensor,
     initial_state: torch.Tensor,
     final_state: torch.Tensor,
@@ -400,16 +424,18 @@ def ilav_recurrence_bwd(
 
     dq = torch.empty_like(q)
     dk = torch.empty_like(k)
-    do = dv
+    do = torch.empty_like(v)
+    p = torch.empty_like(v)
     dinitial_state = torch.empty(b, h, d, e, device=q.device, dtype=torch.float32)
 
     def grid(meta):
         return (b, h)
 
-    _ilav_recurrence_bwd_dk[grid](
+    _ilav_recurrence_bwd_do_dk_p[grid](
         Q=q,
         K=k,
         V=v,
+        O=o,
         STATE=initial_state,
         CU_SEQLENS=cu_seqlens,
         FINAL_STATE=final_state,
@@ -419,6 +445,7 @@ def ilav_recurrence_bwd(
         DQ=dq,
         DK=dk,
         DV=dv,
+        P=p,
         DINITIAL_STATE=dinitial_state,
         B=b,
         N=n,
@@ -432,10 +459,11 @@ def ilav_recurrence_bwd(
         BLOCK_E=BLOCK_E,
     )
 
-    _ilav_recurrence_bwd_dq[grid](
+    _ilav_recurrence_bwd_dq_dk[grid](
         Q=q,
         K=k,
         V=v,
+        O=o,
         STATE=initial_state,
         CU_SEQLENS=cu_seqlens,
         FINAL_STATE=final_state,
@@ -445,6 +473,7 @@ def ilav_recurrence_bwd(
         DQ=dq,
         DK=dk,
         DV=dv,
+        P=p,
         DINITIAL_STATE=dinitial_state,
         B=b,
         N=n,
@@ -511,19 +540,20 @@ class IlavRecurrenceFunction(torch.autograd.Function):
         )
 
         # Save tensors needed for backward
-        ctx.save_for_backward(q, k, v, ld, initial_state, final_state, cu_seqlens)
+        ctx.save_for_backward(q, k, v, o, ld, initial_state, final_state, cu_seqlens)
 
         return v, final_state
 
     @staticmethod
     @contiguous
     def backward(ctx, dv, dfinal_state):
-        q, k, v, ld, initial_state, final_state, cu_seqlens = ctx.saved_tensors
+        q, k, v, o, ld, initial_state, final_state, cu_seqlens = ctx.saved_tensors
 
         dq, dk, do, dld, dinitial_state = ilav_recurrence_bwd(
             q=q,
             k=k,
             v=v,
+            o=o,
             ld=ld,
             initial_state=initial_state,
             final_state=final_state,

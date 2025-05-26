@@ -121,23 +121,57 @@ $$
 根据之前的递推，我们有：
 $$
 \begin{aligned}
+\mathbf p_t &\triangleq (1-\lambda_t) \mathbf {ds}_{t}^\top \mathbf k_t, \\
+
 \mathbf{ds}_{t} &= \lambda_{t+1} (\mathbf I - (1-\lambda_{t+1}) \mathbf k_{t+1} \mathbf q_{t+1}^\top )^\top
-\mathbf{ds}_{t+1} - \lambda_{t+1}\mathbf{q}_{t+1}\mathbf {dv}^\top_{t+1}, \\
-t&=1,\ldots, n- 1, \\
-\mathbf {ds}_0&=  \lambda_1 (\mathbf I - (1-\lambda_{1}) \mathbf q_{1} \mathbf k_{1}^\top )\mathbf {ds}_1, \\
+\mathbf{ds}_{t+1} - \lambda_{t+1}\mathbf{q}_{t+1}\mathbf {dv}^\top_{t+1} \\
+&=  \lambda_{t+1} \mathbf{ds}_{t+1} - \lambda_{t+1} (1-\lambda_{t+1}) \mathbf q_{t+1} \left[\mathbf k_{t+1}^\top \mathbf{ds}_{t+1}\right]
+-\lambda_{t+1}\mathbf{q}_{t+1}\mathbf {dv}^\top_{t+1} \\
+
+&=  \lambda_{t+1} \mathbf{ds}_{t+1} - \lambda_{t+1} (1-\lambda_{t+1}) \mathbf q_{t+1} \left[ \mathbf{ds}_{t+1}^\top \mathbf k_{t+1}\right]^\top
+-\lambda_{t+1}\mathbf{q}_{t+1}\mathbf {dv}^\top_{t+1} \\
+
+&=  \lambda_{t+1} \mathbf{ds}_{t+1} - \lambda_{t+1}  \mathbf q_{t+1} \mathbf p_{t+1}^\top
+-\lambda_{t+1}\mathbf{q}_{t+1}\mathbf {dv}^\top_{t+1} \\
+
+&= \lambda_{t+1} \mathbf{ds}_{t+1} - \lambda_{t+1}  \mathbf q_{t+1} (\mathbf p_{t+1} + \mathbf {dv}_{t+1})^\top,
+
+\\
+&t=1,\ldots, n- 1, \\
+\mathbf {ds}_0&=  \lambda_1 (\mathbf I - (1-\lambda_{1}) \mathbf q_{1} \mathbf k_{1}^\top ) \mathbf {ds}_1 \\
+
+
+&=\lambda_1 \mathbf{ds}_1 - \lambda_1 \mathbf q_{1} \mathbf p_1^\top,  \\
+
 
 \mathbf {do}_t^\top &= \frac{\partial l}{\partial \mathbf v_t}^\top \frac{\partial \mathbf v_t}{\partial \mathbf o_t} +  \frac{\partial l}{\partial \mathbf s_t} \frac{\partial \mathbf s_t}{\partial \mathbf o_t} \\
 
-&= \mathbf {dv}_t^\top + (1- \lambda_t) \mathbf {ds}_t^\top  \mathbf k_t, \\
+&= \mathbf {dv}_t^\top + (1- \lambda_t) \mathbf {ds}_t^\top  \mathbf k_t \\
+
+&= \mathbf {dv}_t^\top + \mathbf p_t^\top ,\\
 
 \mathbf {dk}_t^\top &= \frac{\partial l}{\partial \mathbf v_t}^\top \frac{\partial \mathbf v_t}{\partial \mathbf k_t} +  \frac{\partial l}{\partial \mathbf s_t} \frac{\partial \mathbf s_t}{\partial \mathbf k_t} \\
 
-&= (1- \lambda_t) \mathbf {ds}_t \mathbf o_t
- - \lambda_t (1-\lambda_t) \mathbf {ds}_t \mathbf {s}_{t-1}^\top \mathbf q_t, \\
+&= (1- \lambda_t)  \mathbf o_t^\top \mathbf {ds}_t ^\top
+ - \lambda_t (1-\lambda_t)  [\mathbf {ds}_t \mathbf {s}_{t-1}^\top \mathbf q_t]^\top \\
+
+
+ &= (1- \lambda_t) \left[  \mathbf {ds}_t   \mathbf o_t \right]^\top
+ + (1-\lambda_t)  \left[\mathbf {ds}_{t} (\mathbf {v}_t - \mathbf {o}_t)\right]^\top  \\
+
+ &=(1- \lambda_t) \left[  \mathbf {ds}_t   \mathbf v_t \right]^\top, \\
+
 
 \mathbf {dq}_t^\top &= \frac{\partial l}{\partial \mathbf v_t}^\top \frac{\partial \mathbf v_t}{\partial \mathbf q_t} +  \frac{\partial l}{\partial \mathbf s_t} \frac{\partial \mathbf s_t}{\partial \mathbf q_t} \\
 
 &= -\lambda_t \mathbf {dv}_t^\top \mathbf s_{t-1} ^\top
- - \lambda_t (1-\lambda_t)  \mathbf {s}_{t-1}\mathbf {ds}_t^\top \mathbf k_t.
+ - \lambda_t (1-\lambda_t) \left( \mathbf {s}_{t-1}\mathbf {ds}_t^\top \mathbf k_t]\right)^\top \\
+&= -\lambda_t  \left[\mathbf s_{t-1} \mathbf {dv}_t\right]^\top
+- \lambda_t \left[\mathbf {s}_{t-1} \mathbf p_t \right]^\top  \\
+&= -\lambda_t \mathbf {s}_{t-1} \left[\mathbf {dv}_t + \mathbf p_t\right]^\top.
 \end{aligned}
 $$
+计算流程：
+
+1. 计算$\mathbf {do}_t, \mathbf p_t, \mathbf {dk}_t$；
+2. 计算$\mathbf {dq}_t$；

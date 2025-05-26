@@ -15,51 +15,51 @@ def get_params():
     Returns various shapes to test edge cases and typical usage scenarios.
     """
     shapes = [
-        # # Standard shapes
-        # (2, 256, 12, 128, 128),
-        # (2, 1024, 8, 32, 16),
-        # # BLOCK_N +- 1 (edge cases around block boundaries)
-        # (2, 257, 8, 64, 32),
-        # (2, 255, 8, 64, 32),
-        # (2, 65, 7, 33, 63),
-        # # BLOCK_N +- C (various offsets from block boundaries)
-        # (2, 270, 8, 64, 32),
-        # (2, 270, 8, 33, 16),
-        # (2, 1125, 8, 43, 33),
-        # # Large D, E dimensions
-        # (2, 1125, 8, 255, 257),
-        # (2, 1025, 8, 255, 257),
-        # # Training-like shape
-        # (8, 2048, 12, 64, 64),
-        (2, 128, 12, 128, 128),
+        # Standard shapes
+        (2, 256, 12, 128, 128),
+        (2, 1024, 8, 32, 16),
+        # BLOCK_N +- 1 (edge cases around block boundaries)
+        (2, 257, 8, 64, 32),
+        (2, 255, 8, 64, 32),
+        (2, 65, 7, 33, 63),
+        # BLOCK_N +- C (various offsets from block boundaries)
+        (2, 270, 8, 64, 32),
+        (2, 270, 8, 33, 16),
+        (2, 1125, 8, 43, 33),
+        # Training-like shape
+        (8, 2048, 12, 64, 64),
+        # debug
+        # (2, 128, 12, 128, 64),
         # (1, 1, 1, 4, 4)
     ]
     return shapes
 
 
 @pytest.mark.parametrize("shape", get_params())
-# @pytest.mark.parametrize("use_initial_state", [True, False])
-# @pytest.mark.parametrize("use_varlen", [False])  # Variable length sequences
-# @pytest.mark.parametrize("no_dstate", [True, False])  # Whether to include state gradients
-# @pytest.mark.parametrize("c", [10])  # Scaling factor for log decay
-# @pytest.mark.parametrize("dtype", [torch.float32])
-
-
-@pytest.mark.parametrize(
-    "use_initial_state",
-    [
-        True,
-    ],
-)
+@pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])  # Variable length sequences
 @pytest.mark.parametrize(
-    "no_dstate",
-    [
-        True,
-    ],
+    "no_dstate", [True, False]
 )  # Whether to include state gradients
-@pytest.mark.parametrize("c", [0.1])  # Scaling factor for log decay
+@pytest.mark.parametrize("c", [0.1, 10])  # Scaling factor for log decay
 @pytest.mark.parametrize("dtype", [torch.float32])
+
+
+# @pytest.mark.parametrize(
+#     "use_initial_state",
+#     [
+#         True,
+#     ],
+# )
+# @pytest.mark.parametrize("use_varlen", [False])  # Variable length sequences
+# @pytest.mark.parametrize(
+#     "no_dstate",
+#     [
+#         True,
+#     ],
+# )  # Whether to include state gradients
+# @pytest.mark.parametrize("c", [0.1])  # Scaling factor for log decay
+# @pytest.mark.parametrize("dtype", [torch.float32])
 def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
@@ -186,9 +186,7 @@ def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     )
     print("dk diff norm (torch vs triton): ", torch.norm(dk_torch - dk_triton).item())
     print_diff(dk_torch, dk_triton, n)
-    for i in range(n):
-        print(i, torch.norm(dk_torch[:, i, :, :] - dk_triton[:, i, :, :]).item())
-    # assert_close(dk_torch, dk_triton, atol=atol, rtol=rtol)
+    assert_close(dk_torch, dk_triton, atol=atol, rtol=rtol)
 
     print(
         "do diff max (torch vs triton): ",
@@ -196,14 +194,7 @@ def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     )
     print("do diff norm (torch vs triton): ", torch.norm(do_torch - do_triton).item())
     print_diff(do_torch, do_triton, n)
-    for i in range(n):
-        print(
-            i,
-            torch.norm(do_torch[:, i, :, :] - do_triton[:, i, :, :]).item(),
-            torch.norm(do_torch[:, i, :, :] - dv[:, i, :, :]).item(),
-        )
-    print("torch do", torch.norm(do_torch - dv).item())
-    # assert_close(do_torch, do_triton, atol=atol, rtol=rtol)
+    assert_close(do_torch, do_triton, atol=atol, rtol=rtol)
 
     print(
         "dq diff max (torch vs triton): ",
@@ -211,11 +202,9 @@ def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     )
     print("dq diff norm (torch vs triton): ", torch.norm(dq_torch - dq_triton).item())
     print_diff(dq_torch, dq_triton, n)
-    for i in range(n):
-        print(i, torch.norm(dq_torch[:, i, :, :] - dq_triton[:, i, :, :]).item())
     assert_close(dq_torch, dq_triton, atol=atol, rtol=rtol)
 
-    assert False
+    # assert False
 
     # print(
     #     "dld diff max (torch vs triton): ",
