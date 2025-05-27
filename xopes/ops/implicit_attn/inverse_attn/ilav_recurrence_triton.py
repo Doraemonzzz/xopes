@@ -385,7 +385,6 @@ def _ilav_recurrence_bwd_dq_dk(
 
         # save
         tl.store(dq_block_ptr, dq.to(dq_block_ptr.dtype.element_ty), mask=mask_d)
-
         # update state
         state = decay * state + (1 - decay) * k[:, None] * v[None, :]
 
@@ -510,7 +509,9 @@ def ilav_recurrence_bwd(
         if dfinal_state is not None:
             dld = dld + dld_state
 
-    # dld = ld
+    decay = torch.exp(ld.unsqueeze(-1))
+    dld_ = -(decay / (1 - decay)) * k * dk
+    dld = dld + dld_.sum(-1)
 
     dinitial_state = dinitial_state if use_initial_state else None
 

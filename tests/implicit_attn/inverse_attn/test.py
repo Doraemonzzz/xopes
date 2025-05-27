@@ -28,9 +28,8 @@ def get_params():
         (2, 1125, 8, 43, 33),
         # Training-like shape
         (8, 2048, 12, 64, 64),
-        # debug
+        # # debug
         # (2, 128, 12, 128, 64),
-        # (1, 1, 1, 4, 4)
     ]
     return shapes
 
@@ -44,11 +43,10 @@ def get_params():
 @pytest.mark.parametrize("c", [0.1, 10])  # Scaling factor for log decay
 @pytest.mark.parametrize("dtype", [torch.float32])
 
-
 # @pytest.mark.parametrize(
 #     "use_initial_state",
 #     [
-#         True,
+#         False,
 #     ],
 # )
 # @pytest.mark.parametrize("use_varlen", [False])  # Variable length sequences
@@ -78,9 +76,6 @@ def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
         cu_seqlens = None
 
     # Generate input tensors
-    # q = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
-    # k = torch.ones((b, n, h, d), dtype=dtype, device=device).requires_grad_()
-    # o = torch.ones((b, n, h, e), dtype=dtype, device=device).requires_grad_()
     q = (
         F.normalize(torch.randn((b, n, h, d), dtype=dtype, device=device), dim=-1)
     ).requires_grad_()  # !!! important
@@ -204,25 +199,23 @@ def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     print_diff(dq_torch, dq_triton, n)
     assert_close(dq_torch, dq_triton, atol=atol, rtol=rtol)
 
-    # assert False
+    print(
+        "dld diff max (torch vs triton): ",
+        torch.abs(dld_torch - dld_triton).max().item(),
+    )
+    print(
+        "dld diff norm (torch vs triton): ", torch.norm(dld_torch - dld_triton).item()
+    )
+    assert_close(dld_torch, dld_triton, atol=atol, rtol=rtol)
 
-    # print(
-    #     "dld diff max (torch vs triton): ",
-    #     torch.abs(dld_torch - dld_triton).max().item(),
-    # )
-    # print(
-    #     "dld diff norm (torch vs triton): ", torch.norm(dld_torch - dld_triton).item()
-    # )
-    # assert_close(dld_torch, dld_triton, atol=atol, rtol=rtol)
-
-    # # Validate initial state gradients if applicable
-    # if use_initial_state:
-    #     print(
-    #         "ds diff max (torch vs triton): ",
-    #         torch.abs(ds_torch - ds_triton).max().item(),
-    #     )
-    #     print(
-    #         "ds diff norm (torch vs triton): ",
-    #         torch.norm(ds_torch - ds_triton).item(),
-    #     )
-    #     assert_close(ds_torch, ds_triton, atol=atol, rtol=rtol)
+    # Validate initial state gradients if applicable
+    if use_initial_state:
+        print(
+            "ds diff max (torch vs triton): ",
+            torch.abs(ds_torch - ds_triton).max().item(),
+        )
+        print(
+            "ds diff norm (torch vs triton): ",
+            torch.norm(ds_torch - ds_triton).item(),
+        )
+        assert_close(ds_torch, ds_triton, atol=atol, rtol=rtol)
