@@ -301,7 +301,7 @@ def _ilav_recurrence_bwd_do_dk_p(
     key=["B", "H", "D", "E", "USE_INITIAL_STATE", "USE_CU_SEQLENS"],
 )
 @triton.jit
-def _ilav_recurrence_bwd_dq_dk(
+def _ilav_recurrence_bwd_dq(
     Q,  # B N H D
     K,  # B N H D
     V,  # B N H E
@@ -458,7 +458,7 @@ def ilav_recurrence_bwd(
         BLOCK_E=BLOCK_E,
     )
 
-    _ilav_recurrence_bwd_dq_dk[grid](
+    _ilav_recurrence_bwd_dq[grid](
         Q=q,
         K=k,
         V=v,
@@ -489,7 +489,7 @@ def ilav_recurrence_bwd(
     if dfinal_state is not None:
         dld_state = (final_state * dfinal_state).sum(dim=-1).sum(dim=-1).unsqueeze(1)
 
-    dld = (q * dq - k * dk).sum(dim=-1)
+    dld = (q.float() * dq.float() - k.float() * dk.float()).sum(dim=-1)
     if cu_seqlens is not None:
         dld = dld.squeeze(0)
         b = cu_seqlens.shape[0] - 1
@@ -509,8 +509,8 @@ def ilav_recurrence_bwd(
         if dfinal_state is not None:
             dld = dld + dld_state
 
-    decay = torch.exp(ld.unsqueeze(-1))
-    dld_ = -(decay / (1 - decay)) * k * dk
+    decay = torch.exp(ld.float().unsqueeze(-1))
+    dld_ = -(decay / (1 - decay)) * k.float() * dk.float()
     dld = dld + dld_.sum(-1)
 
     dinitial_state = dinitial_state if use_initial_state else None

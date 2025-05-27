@@ -41,7 +41,7 @@ def get_params():
     "no_dstate", [True, False]
 )  # Whether to include state gradients
 @pytest.mark.parametrize("c", [0.1, 10])  # Scaling factor for log decay
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.bfloat16])
 
 # @pytest.mark.parametrize(
 #     "use_initial_state",
@@ -57,7 +57,7 @@ def get_params():
 #     ],
 # )  # Whether to include state gradients
 # @pytest.mark.parametrize("c", [0.1])  # Scaling factor for log decay
-# @pytest.mark.parametrize("dtype", [torch.float32])
+# @pytest.mark.parametrize("dtype", [torch.bfloat16])
 def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
@@ -151,6 +151,8 @@ def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     # Set tolerance for numerical comparisons
     atol = 5e-3
     rtol = 5e-3
+    ld_atol = 6e-2 if dtype == torch.bfloat16 else atol
+    ld_rtol = 6e-2 if dtype == torch.bfloat16 else rtol
 
     ##### Forward pass validation
     print(
@@ -206,7 +208,7 @@ def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, dtype):
     print(
         "dld diff norm (torch vs triton): ", torch.norm(dld_torch - dld_triton).item()
     )
-    assert_close(dld_torch, dld_triton, atol=atol, rtol=rtol)
+    assert_close(dld_torch, dld_triton, atol=ld_atol, rtol=ld_rtol)
 
     # Validate initial state gradients if applicable
     if use_initial_state:

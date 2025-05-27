@@ -16,6 +16,7 @@ from .grpe import (
     grpe_recurrence_triton,
 )
 from .householder import householder_fn
+from .implicit_attn import implicit_attn_func
 from .lightning_attn import lightning_attn_func
 from .logcumsumexp import lcse_fn
 from .lrpe import lrpe_bwd_fn, lrpe_fn, lrpe_fwd_fn
