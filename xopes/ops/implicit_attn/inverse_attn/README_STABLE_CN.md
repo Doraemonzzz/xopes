@@ -134,9 +134,9 @@ $$
 &=  \lambda_{t+1} \mathbf{ds}_{t+1} - \lambda_{t+1}  \mathbf q_{t+1} \mathbf p_{t+1}^\top
 -\lambda_{t+1}\mathbf{q}_{t+1}\mathbf {dv}^\top_{t+1} \\
 
-&= \lambda_{t+1} \mathbf{ds}_{t+1} - \lambda_{t+1}  \mathbf q_{t+1} (\mathbf p_{t+1} + \mathbf {dv}_{t+1})^\top,
+&= \lambda_{t+1} \mathbf{ds}_{t+1} - \lambda_{t+1}  \mathbf q_{t+1} (\mathbf p_{t+1} + \mathbf {dv}_{t+1})^\top \\
 
-\\
+&= \lambda_{t+1} \mathbf{ds}_{t+1} - \lambda_{t+1}\mathbf {q}_{t+1} \mathbf {do}_{t+1}^\top  ,\\
 &t=1,\ldots, n- 1, \\
 \mathbf {ds}_0&=  \lambda_1 (\mathbf I - (1-\lambda_{1}) \mathbf q_{1} \mathbf k_{1}^\top ) \mathbf {ds}_1 \\
 
@@ -168,7 +168,10 @@ $$
  - \lambda_t (1-\lambda_t) \left( \mathbf {s}_{t-1}\mathbf {ds}_t^\top \mathbf k_t]\right)^\top \\
 &= -\lambda_t  \left[\mathbf s_{t-1} \mathbf {dv}_t\right]^\top
 - \lambda_t \left[\mathbf {s}_{t-1} \mathbf p_t \right]^\top  \\
-&= -\lambda_t  \left[\mathbf {s}_{t-1}(\mathbf {dv}_t + \mathbf p_t)\right]^\top.
+&= -\lambda_t  \left[\mathbf {s}_{t-1}(\mathbf {dv}_t + \mathbf p_t)\right]^\top \\
+
+&=  -\lambda_t  \left[\mathbf {s}_{t-1}\mathbf {do}_t\right]^\top
+.
 \end{aligned}
 $$
 计算流程：

@@ -13,6 +13,7 @@ def ilav_torch(
     ld: torch.Tensor,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
+    normalize: bool = True,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -25,6 +26,7 @@ def ilav_torch(
         ld: Logarithmic decay tensor of shape (B, N, H)
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
+        normalize: Whether to normalize the key
 
     Returns:
         output: Tensor of shape (B, N, H, E)
@@ -57,9 +59,9 @@ def ilav_torch(
             state = ratio.unsqueeze(-1).unsqueeze(-1) * state
 
             vi = oi - torch.einsum("b h d, b h d e -> b h e", qi, state)
-            state_ = (1 - ratio.unsqueeze(-1).unsqueeze(-1)) * torch.einsum(
-                "b h d, b h e -> b h d e", ki, vi
-            )
+            if normalize:
+                ki = ki * (1 - ratio.unsqueeze(-1))
+            state_ = torch.einsum("b h d, b h e -> b h d e", ki, vi)
             state = state + state_
 
             v.append(vi.unsqueeze(1))

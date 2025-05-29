@@ -41,6 +41,7 @@ def _ilav_recurrence_fwd(
     E: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
+    NORMALIZE: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
 ):
@@ -98,7 +99,11 @@ def _ilav_recurrence_fwd(
         state *= decay
         v = o - tl.sum(q[:, None] * state, axis=0)
 
-        state_ = (1 - decay) * k[:, None] * v[None, :]
+        state_ = k[:, None] * v[None, :]
+
+        if NORMALIZE:
+            state_ *= 1 - decay
+
         state += state_
 
         tl.store(v_block_ptr, v.to(v_block_ptr.dtype.element_ty), mask=mask_e)
@@ -124,6 +129,7 @@ def ilav_recurrence_fwd(
     ld: torch.Tensor,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
+    normalize: bool = True,
 ):
     b, n, h, d = q.shape
     e = o.shape[-1]
@@ -161,6 +167,7 @@ def ilav_recurrence_fwd(
         E=e,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
+        NORMALIZE=normalize,
         BLOCK_D=BLOCK_D,
         BLOCK_E=BLOCK_E,
     )
@@ -201,6 +208,7 @@ def _ilav_recurrence_bwd_do_dk_p(
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_DFINAL_STATE: tl.constexpr,
+    NORMALIZE: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
 ):
@@ -270,9 +278,13 @@ def _ilav_recurrence_bwd_do_dk_p(
         decay = tl.exp(log_decay)
 
         # compute p, do, dk
-        p = (1 - decay) * tl.sum(dstate * k[:, None], axis=0)
+        p = tl.sum(dstate * k[:, None], axis=0)
+        if NORMALIZE:
+            p *= 1 - decay
         do = dv + p
-        dk = (1 - decay) * (tl.sum(dstate * v[None, :], axis=-1))
+        dk = tl.sum(dstate * v[None, :], axis=-1)
+        if NORMALIZE:
+            dk *= 1 - decay
 
         # store
         tl.store(do_block_ptr, do.to(do_block_ptr.dtype.element_ty), mask=mask_e)
@@ -280,7 +292,7 @@ def _ilav_recurrence_bwd_do_dk_p(
         tl.store(dk_block_ptr, dk.to(dk_block_ptr.dtype.element_ty), mask=mask_d)
 
         # compute dk
-        dstate = decay * (dstate - q[:, None] * (p + dv)[None, :])
+        dstate = decay * (dstate - q[:, None] * do[None, :])
 
     dinitial_state_block_ptr = (
         DINITIAL_STATE + offset_state + array_d[:, None] * E + array_e[None, :]
@@ -325,6 +337,7 @@ def _ilav_recurrence_bwd_dq(
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_DFINAL_STATE: tl.constexpr,
+    NORMALIZE: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
 ):
@@ -347,14 +360,10 @@ def _ilav_recurrence_bwd_dq(
     # compute block ptr
     array_d = tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
-    Q + offset_qk + array_d
     k_block_ptr = K + offset_qk + array_d
     v_block_ptr = V + offset_vo + array_e
-    O + offset_vo + array_e
-    p_block_ptr = P + offset_vo + array_e
     dq_block_ptr = DQ + offset_qk + array_d
-    DK + offset_qk + array_d
-    dv_block_ptr = DV + offset_vo + array_e
+    do_block_ptr = DO + offset_vo + array_e
     mask_d = array_d < D
     mask_e = array_e < E
 
@@ -373,26 +382,28 @@ def _ilav_recurrence_bwd_dq(
     # compute
     for i in range(N):
         # load
-        dv = tl.load(dv_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
         v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
-        p = tl.load(p_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        do = tl.load(do_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
         decay = tl.exp(log_decay)
 
         # compute dq
-        dq = -decay * tl.sum(state * (dv + p)[None, :], axis=-1)
+        dq = -decay * tl.sum(state * do[None, :], axis=-1)
 
         # save
         tl.store(dq_block_ptr, dq.to(dq_block_ptr.dtype.element_ty), mask=mask_d)
         # update state
-        state = decay * state + (1 - decay) * k[:, None] * v[None, :]
+        state *= decay
+        state_ = k[:, None] * v[None, :]
+        if NORMALIZE:
+            state_ *= 1 - decay
+        state += state_
 
         # update
         k_block_ptr += H * D
         v_block_ptr += H * E
-        p_block_ptr += H * E
-        dv_block_ptr += H * E
+        do_block_ptr += H * E
         dq_block_ptr += H * D
         log_decay_block_ptr += H
 
@@ -408,6 +419,7 @@ def ilav_recurrence_bwd(
     dv: torch.Tensor,
     dfinal_state: torch.Tensor,
     cu_seqlens: torch.LongTensor,
+    normalize: bool = True,
 ):
     b, n, h, d = q.shape
     e = v.shape[-1]
@@ -454,6 +466,7 @@ def ilav_recurrence_bwd(
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
         USE_DFINAL_STATE=use_dfinal_state,
+        NORMALIZE=normalize,
         BLOCK_D=BLOCK_D,
         BLOCK_E=BLOCK_E,
     )
@@ -482,6 +495,7 @@ def ilav_recurrence_bwd(
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
         USE_DFINAL_STATE=use_dfinal_state,
+        NORMALIZE=normalize,
         BLOCK_D=BLOCK_D,
         BLOCK_E=BLOCK_E,
     )
@@ -510,8 +524,9 @@ def ilav_recurrence_bwd(
             dld = dld + dld_state
 
     decay = torch.exp(ld.float().unsqueeze(-1))
-    dld_ = -(decay / (1 - decay)) * k.float() * dk.float()
-    dld = dld + dld_.sum(-1)
+    if normalize:
+        dld_ = -(decay / (1 - decay)) * k.float() * dk.float()
+        dld = dld + dld_.sum(-1)
 
     dinitial_state = dinitial_state if use_initial_state else None
 
@@ -529,6 +544,7 @@ class IlavRecurrenceFunction(torch.autograd.Function):
         ld,
         initial_state=None,
         cu_seqlens=None,
+        normalize=True,
     ):
         # Forward computation
         v, final_state = ilav_recurrence_fwd(
@@ -538,10 +554,12 @@ class IlavRecurrenceFunction(torch.autograd.Function):
             ld=ld,
             initial_state=initial_state,
             cu_seqlens=cu_seqlens,
+            normalize=normalize,
         )
 
         # Save tensors needed for backward
         ctx.save_for_backward(q, k, v, o, ld, initial_state, final_state, cu_seqlens)
+        ctx.normalize = normalize
 
         return v, final_state
 
@@ -549,6 +567,7 @@ class IlavRecurrenceFunction(torch.autograd.Function):
     @contiguous
     def backward(ctx, dv, dfinal_state):
         q, k, v, o, ld, initial_state, final_state, cu_seqlens = ctx.saved_tensors
+        normalize = ctx.normalize
 
         dq, dk, do, dld, dinitial_state = ilav_recurrence_bwd(
             q=q,
@@ -561,16 +580,10 @@ class IlavRecurrenceFunction(torch.autograd.Function):
             dv=dv,
             dfinal_state=dfinal_state,
             cu_seqlens=cu_seqlens,
+            normalize=normalize,
         )
 
-        return (
-            dq,
-            dk,
-            do,
-            dld,
-            dinitial_state,
-            None,
-        )
+        return (dq, dk, do, dld, dinitial_state, None, None)
 
 
 def ilav_recurrence_triton(
@@ -580,6 +593,7 @@ def ilav_recurrence_triton(
     ld: torch.Tensor,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
+    normalize: bool = True,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -592,6 +606,7 @@ def ilav_recurrence_triton(
         ld: Logarithmic decay tensor of shape (B, N, H)
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
+        normalize: Whether to normalize the key
 
     Returns:
         output: Tensor of shape (B, N, H, E)
@@ -614,6 +629,7 @@ def ilav_recurrence_triton(
         ld,
         initial_state,
         cu_seqlens,
+        normalize,
     )
 
 
