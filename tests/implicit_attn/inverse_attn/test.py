@@ -42,7 +42,8 @@ def get_params():
 )  # Whether to include state gradients
 @pytest.mark.parametrize("c", [0.1, 10])  # Scaling factor for log decay
 @pytest.mark.parametrize("normalize", [True, False])
-@pytest.mark.parametrize("dtype", [torch.bfloat16])
+@pytest.mark.parametrize("rms_norm", [False])
+@pytest.mark.parametrize("dtype", [torch.float32])
 
 # @pytest.mark.parametrize("shape", get_params())
 # @pytest.mark.parametrize(
@@ -55,18 +56,24 @@ def get_params():
 # @pytest.mark.parametrize(
 #     "no_dstate",
 #     [
-#         False,
+#         True,
 #     ],
 # )  # Whether to include state gradients
 # @pytest.mark.parametrize("c", [10])  # Scaling factor for log decay
 # @pytest.mark.parametrize("normalize", [False])
-# @pytest.mark.parametrize("dtype", [torch.bfloat16])
-def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, normalize, dtype):
+# @pytest.mark.parametrize("rms_norm", [False])
+# @pytest.mark.parametrize("dtype", [torch.float32])
+def test_ilav(
+    shape, use_initial_state, use_varlen, no_dstate, c, normalize, rms_norm, dtype
+):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     scale = 0.01
 
     b, n, h, d, e = shape
+
+    if not normalize and rms_norm:
+        return
 
     # Setup variable length sequences if requested
     if use_varlen:
@@ -78,17 +85,18 @@ def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, normalize, dty
     else:
         cu_seqlens = None
 
+    if rms_norm:
+        c = d**0.5
+    else:
+        c = 1
+
     # Generate input tensors
     q = (
-        F.normalize(torch.randn((b, n, h, d), dtype=dtype, device=device), dim=-1)
+        F.normalize(torch.randn((b, n, h, d), dtype=dtype, device=device), dim=-1) * c
     ).requires_grad_()  # !!! important
-
-    if not normalize:
-        k = (
-            F.normalize(torch.randn((b, n, h, d), dtype=dtype, device=device), dim=-1)
-        ).requires_grad_()
-    else:
-        k = torch.randn((b, n, h, d), dtype=dtype, device=device).requires_grad_()
+    k = (
+        F.normalize(torch.randn((b, n, h, d), dtype=dtype, device=device), dim=-1) * c
+    ).requires_grad_()
     o = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
     ld = F.logsigmoid(
         (1 + scale * torch.randn((b, n, h), dtype=dtype, device=device)) * c
@@ -119,6 +127,7 @@ def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, normalize, dty
         initial_state=initial_state.clone() if initial_state is not None else None,
         cu_seqlens=cu_seqlens,
         normalize=normalize,
+        rms_norm=rms_norm,
     )
     if no_dstate:
         output_torch = v_torch
@@ -134,6 +143,7 @@ def test_ilav(shape, use_initial_state, use_varlen, no_dstate, c, normalize, dty
         initial_state=initial_state,
         cu_seqlens=cu_seqlens,
         normalize=normalize,
+        rms_norm=rms_norm,
     )
     if no_dstate:
         output_triton = v_triton

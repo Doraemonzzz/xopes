@@ -14,6 +14,7 @@ def ilav_torch(
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     normalize: bool = True,
+    rms_norm: bool = False,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -27,6 +28,7 @@ def ilav_torch(
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
         normalize: Whether to normalize the key
+        rms_norm: Whether to use RMS normalization for q and k
 
     Returns:
         output: Tensor of shape (B, N, H, E)
@@ -39,6 +41,7 @@ def ilav_torch(
     k = k.float()
     o = o.float()
     ld = ld.float()
+    c = d**0.5 if rms_norm else 1
 
     if cu_seqlens is None:
         if initial_state is None:
@@ -58,10 +61,10 @@ def ilav_torch(
             ratio = torch.exp(ldi)
             state = ratio.unsqueeze(-1).unsqueeze(-1) * state
 
-            vi = oi - torch.einsum("b h d, b h d e -> b h e", qi, state)
+            vi = (oi - torch.einsum("b h d, b h d e -> b h e", qi, state)) / c
             if normalize:
                 ki = ki * (1 - ratio.unsqueeze(-1))
-            state_ = torch.einsum("b h d, b h e -> b h d e", ki, vi)
+            state_ = torch.einsum("b h d, b h e -> b h d e", ki, vi) / c
             state = state + state_
 
             v.append(vi.unsqueeze(1))
