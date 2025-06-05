@@ -8,15 +8,22 @@ try:
 except:
     flash_attn_func = None
 
+from xopes.ops.cumsum import cumsum_fn
 
 
 def chunk_rnn_parallel(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    log_f: Optional[torch.Tensor] = None,
+    f: Optional[torch.Tensor] = None,
+    beta: Optional[torch.Tensor] = None,
+    decay_weight: Optional[torch.Tensor] = None,
+    decay_type: str = "pos",
+    decay_fn: str = "mean",
     initial_state: Optional[torch.Tensor] = None,
     chunk_size: int = 128,
+    attention_mask: Optional[torch.Tensor] = None,
+    start: int = 0,
 ):
     """
     Applies parallel chunk RNN in Pytorch.
@@ -24,14 +31,16 @@ def chunk_rnn_parallel(
     Args:
         q: Query tensor, shape (B, N, H, D)
         k: Key tensor, shape (B, N, H, D)
-        v: Value tensor, shape (B, N, H, D)
-        log_f: Log frequency tensor, shape (B, N, H, D)
-        initial_state: Initial state tensor, shape (B, H, D, D) or (H, D, D)
+        v: Value tensor, shape (B, N, H, E)
+        f: Decay tensor, shape (B, N, H, 1) or (B, N, H, D)
+        initial_state: Initial state tensor, shape (B, H, D, E) or (H, D, E)
         chunk_size: Chunk size
+        attention_mask: Attention mask tensor, shape (B, N)
+        start: Start index
 
     Returns:
-        Output tensor, shape (B, N, H, D)
-        State tensor, shape (B, N, H, D)
+        Output tensor, shape (B, N, H, E)
+        State tensor, shape (B, N, H, E)
     """
     b, n, h, d = q.shape
     e = v.shape[-1]
@@ -46,16 +55,29 @@ def chunk_rnn_parallel(
     for i in range(m):
         start = i * chunk_size
         end = min(start + chunk_size, n)
-        scale = (end - start) ** -0.5
+        l = end - start
+        scale = l**-0.5
         qi = q[:, start:end]
         ki = k[:, start:end]
         vi = v[:, start:end]
-        log_fi = log_f[:, start:end]
+        fi = f[:, start:end]
+
+        if decay_fn == "mean":
+            log_fi = F.logsigmoid(fi)
+            log_fi_cumsum = cumsum_fn(log_fi, dim=1)
+            # b c h f -> b h f -> b h f 1
+            decay = torch.exp(log_fi_cumsum[:, -1]).unsqueeze(-1)
+            qi = qi * torch.exp(log_fi_cumsum)
+            ki = ki * torch.exp(log_fi_cumsum[:, -1:] - log_fi_cumsum)
+        else:
+            fi = torch.einsum("b c h d, c -> b h d", fi, decay_weight[:l]).unsqueeze(-1)
+            decay = F.sigmoid(fi)
+
+        if decay_type == "neg":
+            decay = 2 * decay - 1
 
         oi_inter = torch.einsum("b c h d, b h d e -> b c h e", qi, state)
         o_inter.append(oi_inter)
-        # b c h -> b h -> b h 1 1
-        decay = torch.exp(torch.sum(log_fi, dim=1)).unsqueeze(-1).unsqueeze(-1)
 
         score = torch.einsum("b c h d, b c h e -> b h d e", ki, vi) * scale
         trans_score = F.softmax(score, dim=-1)
