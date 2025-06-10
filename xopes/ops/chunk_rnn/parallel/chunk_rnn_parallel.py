@@ -16,7 +16,6 @@ def chunk_rnn_parallel(
     k: torch.Tensor,
     v: torch.Tensor,
     f: Optional[torch.Tensor] = None,
-    beta: Optional[torch.Tensor] = None,
     decay_weight: Optional[torch.Tensor] = None,
     decay_type: str = "pos",
     decay_fn: str = "mean",
