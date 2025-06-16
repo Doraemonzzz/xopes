@@ -27,9 +27,6 @@ def poly_attn_torch(
         mask: Mask tensor of shape (N, N)
     """
     dtype = q.dtype
-    q = q.to(torch.float32)
-    k = k.to(torch.float32)
-    v = v.to(torch.float32)
     b, n, h, d = q.shape
     v.shape[-1]
     if scale == -1:
@@ -57,6 +54,7 @@ def poly_attn_log_torch(
     scale: float = -1,
     causal: bool = False,
     mask: Optional[torch.Tensor] = None,
+    eps=1e-6,
     **kwargs,
 ):
     """
@@ -72,9 +70,6 @@ def poly_attn_log_torch(
         mask: Mask tensor of shape (N, N)
     """
     dtype = q.dtype
-    q = q.to(torch.float32)
-    k = k.to(torch.float32)
-    v = v.to(torch.float32)
     b, n, h, d = q.shape
     v.shape[-1]
     if scale == -1:
@@ -89,8 +84,56 @@ def poly_attn_log_torch(
     log_score_max = torch.max(log_score, dim=-1, keepdim=True).values
     log_score_safe = log_score - log_score_max
     score_safe = torch.exp(log_score_safe)
-    score_sum = torch.sum(score_safe, dim=-1, keepdim=True)
+    score_sum = torch.sum(score_safe, dim=-1, keepdim=True) + eps
     score = score_safe / score_sum
+
+    return torch.einsum("b h n m, b m h e -> b n h e", score, v).to(dtype)
+
+
+def poly_attn_naive_torch(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    p: int = 4,
+    poly_type: int = 1,
+    scale: float = -1,
+    causal: bool = False,
+    mask: Optional[torch.Tensor] = None,
+    eps=1e-6,
+    **kwargs,
+):
+    """
+    Apply Polynomial Attention in Pytorch.
+
+    Args:
+        q: Query tensor of shape (B, N, H, D)
+        k: Key tensor of shape (B, N, H, D)
+        v: Value tensor of shape (B, N, H, E)
+        p: Order of the polynomial
+        poly_type: Type of the polynomial
+        scale: Scale of the polynomial
+        causal: Whether to use causal attention
+        mask: Mask tensor of shape (N, N)
+    """
+    dtype = q.dtype
+    b, n, h, d = q.shape
+    v.shape[-1]
+    if scale == -1:
+        scale = d**-0.5
+    score = torch.einsum("b n h d, b m h d -> b h n m", q, k) * scale
+
+    if poly_type == 1:
+        score = torch.pow(1 + score / p, p)
+    elif poly_type == 2:
+        score = torch.pow(score, p)
+
+    if causal:
+        if mask is None:
+            mask = torch.tril(torch.ones(n, n).to(q))
+        score = score.masked_fill(mask == 0, 0)
+
+    score_sum = torch.sum(score, dim=-1, keepdim=True) + eps
+    score = score / score_sum
 
     return torch.einsum("b h n m, b m h e -> b n h e", score, v).to(dtype)
 
@@ -116,9 +159,6 @@ def softmax_attn_torch(
         mask: Mask tensor of shape (N, N)
     """
     dtype = q.dtype
-    q = q.to(torch.float32)
-    k = k.to(torch.float32)
-    v = v.to(torch.float32)
     b, n, h, d = q.shape
     v.shape[-1]
     if scale == -1:

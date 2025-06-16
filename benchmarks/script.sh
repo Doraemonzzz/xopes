@@ -90,6 +90,9 @@ folder=lightning_attention
 # ##### inverse 250504
 # folder=inverse
 
+##### poly_attn 250611
+folder=poly_attn
+
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0

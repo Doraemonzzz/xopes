@@ -28,8 +28,8 @@ def get_params():
         (2, 1125, 8, 43, 33),
         # Training-like shape
         (8, 2048, 12, 64, 64),
-        # # debug
-        # (2, 128, 12, 128, 64),
+        # debug
+        (2, 128, 12, 128, 64),
     ]
     return shapes
 
@@ -43,7 +43,7 @@ def get_params():
 @pytest.mark.parametrize("c", [0.1, 10])  # Scaling factor for log decay
 @pytest.mark.parametrize("normalize", [True, False])
 @pytest.mark.parametrize("rms_norm", [False])
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.bfloat16])
 
 # @pytest.mark.parametrize("shape", get_params())
 # @pytest.mark.parametrize(
@@ -62,7 +62,7 @@ def get_params():
 # @pytest.mark.parametrize("c", [10])  # Scaling factor for log decay
 # @pytest.mark.parametrize("normalize", [False])
 # @pytest.mark.parametrize("rms_norm", [False])
-# @pytest.mark.parametrize("dtype", [torch.float32])
+# @pytest.mark.parametrize("dtype", [torch.bfloat16])
 def test_ilav(
     shape, use_initial_state, use_varlen, no_dstate, c, normalize, rms_norm, dtype
 ):

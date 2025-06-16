@@ -4,7 +4,7 @@ import torch
 from einops import rearrange
 
 
-def poly_attn_chunk_torch(
+def poly_attn_chunk(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -29,9 +29,6 @@ def poly_attn_chunk_torch(
         mask: Mask tensor of shape (N, N)
     """
     dtype = q.dtype
-    q = q.to(torch.float32)
-    k = k.to(torch.float32)
-    v = v.to(torch.float32)
     b, n, h, d = q.shape
     m = v.shape[1]
     e = v.shape[-1]
