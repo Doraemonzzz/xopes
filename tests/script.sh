@@ -125,6 +125,7 @@ folder=lightning_attn/delta_decay/inv
 
 ##### krcl 250617
 folder=kernel_regression/causal_linear
+folder=kernel_regression/causal_linear/inv
 
 mkdir -p $folder/log
 
