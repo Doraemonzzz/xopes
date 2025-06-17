@@ -25,24 +25,27 @@ from xopes.utils import contiguous, generate_configs
     ],
 )
 @triton.jit
-def _ilav_recurrence_fwd(
+def _krcl_recurrence_fwd(
     Q,  # B N H D
     K,  # B N H D
-    O,  # B N H E
-    STATE,  # B H D E
-    CU_SEQLENS,  # M
     V,  # B N H E
-    FINAL_STATE,  # B H D E
+    O,  # B N H E
     LOG_DECAY,  # B N H
+    ALPHA,  # B N H
+    BETA,  # B N H
+    STATE, # B H D E
+    FINAL_STATE,  # B H D E
+    CU_SEQLENS,  # M
     B: tl.constexpr,
     N: tl.constexpr,
     H: tl.constexpr,
     D: tl.constexpr,
     E: tl.constexpr,
+    USE_Q: tl.constexpr,
+    USE_ALPHA: tl.constexpr,
+    USE_BETA: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
-    NORMALIZE: tl.constexpr,
-    RMS_NORM: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
 ):
@@ -65,11 +68,16 @@ def _ilav_recurrence_fwd(
     # compute block ptr
     array_d = tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
-    q_block_ptr = Q + offset_qk + array_d
+    if USE_Q:
+        q_block_ptr = Q + offset_qk + array_d
     k_block_ptr = K + offset_qk + array_d
     v_block_ptr = V + offset_vo + array_e
     o_block_ptr = O + offset_vo + array_e
     log_decay_block_ptr = LOG_DECAY + offset_log_decay
+    if USE_ALPHA:
+        alpha_block_ptr = ALPHA + offset_log_decay
+    if USE_BETA:
+        beta_block_ptr = BETA + offset_log_decay
     mask_d = array_d < D
     mask_e = array_e < E
 
@@ -87,39 +95,43 @@ def _ilav_recurrence_fwd(
         FINAL_STATE + offset_state + array_d[:, None] * E + array_e[None, :]
     )
 
-    if RMS_NORM:
-        c = D**0.5
-    else:
-        c = 1
-
     # compute
     for i in range(N):
         # load
-        q = tl.load(q_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
         k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
-        o = tl.load(o_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        if USE_Q:
+            q = tl.load(q_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        else:
+            q = k
+        v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        if USE_ALPHA:
+            alpha = tl.load(alpha_block_ptr).to(tl.float32)
+            q = q * alpha
+        if USE_BETA:
+            beta = tl.load(beta_block_ptr).to(tl.float32)
+            k = k * beta
         log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
         decay = tl.exp(log_decay)
 
         # update state
         state *= decay
-        v = (o - tl.sum(q[:, None] * state, axis=0)) / c
-
-        state_ = k[:, None] * v[None, :] / c
-
-        if NORMALIZE:
-            state_ *= 1 - decay
-
+        o = v - tl.sum(q[:, None] * state, axis=0)
+        state_ = k[:, None] * o[None, :]
         state += state_
 
-        tl.store(v_block_ptr, v.to(v_block_ptr.dtype.element_ty), mask=mask_e)
+        tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), mask=mask_e)
 
         # update
-        q_block_ptr += H * D
+        if USE_Q:
+            q_block_ptr += H * D
         k_block_ptr += H * D
         v_block_ptr += H * E
         o_block_ptr += H * E
         log_decay_block_ptr += H
+        if USE_ALPHA:
+            alpha_block_ptr += H
+        if USE_BETA:
+            beta_block_ptr += H
 
     tl.store(
         final_state_block_ptr,
@@ -128,59 +140,68 @@ def _ilav_recurrence_fwd(
     )
 
 
-def ilav_recurrence_fwd(
+def krcl_recurrence_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
-    o: torch.Tensor,
+    v: torch.Tensor,
     ld: torch.Tensor,
+    alpha: Optional[torch.Tensor] = None,
+    beta: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
-    normalize: bool = True,
-    rms_norm: bool = False,
 ):
-    b, n, h, d = k.shape
-    e = o.shape[-1]
+    b, n, h, d = q.shape
+    e = v.shape[-1]
 
     use_cu_seqlens = cu_seqlens is not None
     if use_cu_seqlens:
         b = cu_seqlens.shape[0] - 1
 
     use_initial_state = initial_state is not None
+    use_q = q is not None
+    use_alpha = alpha is not None
+    use_beta = beta is not None
     final_state = torch.empty((b, h, d, e), dtype=torch.float32, device=q.device)
     BLOCK_D = triton.next_power_of_2(d)
     BLOCK_E = triton.next_power_of_2(e)
 
     if use_cu_seqlens:
-        v = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
+        o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
     else:
-        v = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
+        o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
 
     def grid(meta):
         return (b, h)
 
-    _ilav_recurrence_fwd[grid](
+    print("aaa", torch.mean(alpha).item(), torch.mean(beta).item(), torch.norm(q).item(), torch.norm(k).item(), torch.norm(v).item())
+    print(torch.norm(q - k).item())
+
+    _krcl_recurrence_fwd[grid](
         Q=q,
         K=k,
-        O=o,
-        STATE=initial_state,
-        CU_SEQLENS=cu_seqlens,
         V=v,
-        FINAL_STATE=final_state,
+        O=o,
         LOG_DECAY=ld,
+        ALPHA=alpha,
+        BETA=beta,
+        STATE=initial_state,
+        FINAL_STATE=final_state,
+        CU_SEQLENS=cu_seqlens,
         B=b,
         N=n,
         H=h,
         D=d,
         E=e,
+        USE_Q=use_q,
+        USE_ALPHA=use_alpha,
+        USE_BETA=use_beta,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
-        NORMALIZE=normalize,
-        RMS_NORM=rms_norm,
         BLOCK_D=BLOCK_D,
         BLOCK_E=BLOCK_E,
     )
 
-    return v, final_state
+    return o, final_state
 
 
 @triton.autotune(
@@ -192,33 +213,38 @@ def ilav_recurrence_fwd(
     key=["B", "H", "D", "E", "USE_INITIAL_STATE", "USE_CU_SEQLENS"],
 )
 @triton.jit
-def _ilav_recurrence_bwd_do_dk_p(
+def _krcl_recurrence_bwd_dk_dv_p(
     Q,  # B N H D
     K,  # B N H D
     V,  # B N H E
     O,  # B N H E
-    STATE,  # B H D E
-    CU_SEQLENS,  # M
-    FINAL_STATE,  # B H D E
     LOG_DECAY,  # B N H
-    DO,  # B N H E
-    DSTATE,  # B H D E
+    ALPHA,  # B N H
+    BETA,  # B N H
+    STATE,  # B H D E
+    FINAL_STATE,  # B H D E
     DQ,  # B N H D
     DK,  # B N H D
     DV,  # B N H E
+    DO,  # B N H E
+    DALPHA,  # B N H
+    DBETA,  # B N H
+    DSTATE,  # B H D E
+    DINITIAL_STATE,  # B H D E
     QDQ,  # B N H
     KDK,  # B N H
-    DINITIAL_STATE,  # B H D E
+    CU_SEQLENS,  # M
     B: tl.constexpr,
     N: tl.constexpr,
     H: tl.constexpr,
     D: tl.constexpr,
     E: tl.constexpr,
+    USE_Q: tl.constexpr,
+    USE_ALPHA: tl.constexpr,
+    USE_BETA: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_DFINAL_STATE: tl.constexpr,
-    NORMALIZE: tl.constexpr,
-    RMS_NORM: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
 ):
@@ -241,7 +267,8 @@ def _ilav_recurrence_bwd_do_dk_p(
     # compute block ptr
     array_d = tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
-    q_block_ptr = Q + offset_qk + array_d
+    if USE_Q:
+        q_block_ptr = Q + offset_qk + array_d
     k_block_ptr = K + offset_qk + array_d
     v_block_ptr = V + offset_vo + array_e
     o_block_ptr = O + offset_vo + array_e
@@ -249,6 +276,12 @@ def _ilav_recurrence_bwd_do_dk_p(
     dk_block_ptr = DK + offset_qk + array_d
     dv_block_ptr = DV + offset_vo + array_e
     log_decay_block_ptr = LOG_DECAY + offset_log_decay
+    if USE_ALPHA:
+        alpha_block_ptr = ALPHA + offset_log_decay
+        dalpha_block_ptr = DALPHA + offset_log_decay
+    if USE_BETA:
+        beta_block_ptr = BETA + offset_log_decay
+        dbeta_block_ptr = DBETA + offset_log_decay
     kdk_block_ptr = KDK + offset_log_decay
     mask_d = array_d < D
     mask_e = array_e < E
@@ -265,15 +298,11 @@ def _ilav_recurrence_bwd_do_dk_p(
     else:
         dstate = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
-    if RMS_NORM:
-        c = D**0.5
-    else:
-        c = 1
-
     # compute
     for i in range(N):
         # update
-        q_block_ptr -= H * D
+        if USE_Q:
+            q_block_ptr -= H * D
         k_block_ptr -= H * D
         v_block_ptr -= H * E
         o_block_ptr -= H * E
@@ -282,33 +311,48 @@ def _ilav_recurrence_bwd_do_dk_p(
         dv_block_ptr -= H * E
         log_decay_block_ptr -= H
         kdk_block_ptr -= H
+        if USE_ALPHA:
+            alpha_block_ptr -= H
+        if USE_BETA:
+            beta_block_ptr -= H
+            dbeta_block_ptr -= H
 
         # load
-        dv = tl.load(dv_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
-        q = tl.load(q_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        do = tl.load(do_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        if USE_Q:
+            q = tl.load(q_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        else:
+            q = k
         v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        if USE_ALPHA:
+            alpha = tl.load(alpha_block_ptr).to(tl.float32)
+            q = q * alpha
+        if USE_BETA:
+            beta = tl.load(beta_block_ptr).to(tl.float32)
+            k = k * beta
         o = tl.load(o_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
         decay = tl.exp(log_decay)
 
         # compute p, do, dk
-        p = tl.sum(dstate * k[:, None], axis=0) / c
-        if NORMALIZE:
-            p *= 1 - decay
-        do = dv / c + p
-        dk = tl.sum(dstate * v[None, :], axis=-1) / c
-        if NORMALIZE:
-            dk *= 1 - decay
-
+        p = tl.sum(dstate * k[:, None], axis=0)
+        dv = do + p
+        dk = tl.sum(dstate * o[None, :], axis=-1)
         kdk = tl.sum(dk * k, axis=-1)
 
+        if USE_BETA:
+            dbeta = kdk / beta
+            dk = dk * beta
+
         # store
-        tl.store(do_block_ptr, do.to(do_block_ptr.dtype.element_ty), mask=mask_e)
         tl.store(dk_block_ptr, dk.to(dk_block_ptr.dtype.element_ty), mask=mask_d)
+        tl.store(dv_block_ptr, dv.to(dv_block_ptr.dtype.element_ty), mask=mask_e)
         tl.store(kdk_block_ptr, kdk.to(kdk_block_ptr.dtype.element_ty))
+        if USE_BETA:
+            tl.store(dbeta_block_ptr, dbeta.to(dbeta_block_ptr.dtype.element_ty))
         # compute dk
-        dstate = decay * (dstate - q[:, None] * do[None, :])
+        dstate = decay * (dstate - q[:, None] * dv[None, :])
 
     dinitial_state_block_ptr = (
         DINITIAL_STATE + offset_state + array_d[:, None] * E + array_e[None, :]
@@ -329,33 +373,38 @@ def _ilav_recurrence_bwd_do_dk_p(
     key=["B", "H", "D", "E", "USE_INITIAL_STATE", "USE_CU_SEQLENS"],
 )
 @triton.jit
-def _ilav_recurrence_bwd_dq(
+def _krcl_recurrence_bwd_dq(
     Q,  # B N H D
     K,  # B N H D
     V,  # B N H E
     O,  # B N H E
-    STATE,  # B H D E
-    CU_SEQLENS,  # M
-    FINAL_STATE,  # B H D E
     LOG_DECAY,  # B N H
-    DO,  # B N H E
-    DSTATE,  # B H D E
+    ALPHA,  # B N H
+    BETA,  # B N H
+    STATE,  # B H D E
+    FINAL_STATE,  # B H D E
     DQ,  # B N H D
     DK,  # B N H D
     DV,  # B N H E
+    DO,  # B N H E
+    DALPHA,  # B N H
+    DBETA,  # B N H
+    DSTATE,  # B H D E
+    DINITIAL_STATE,  # B H D E
     QDQ,  # B N H
     KDK,  # B N H
-    DINITIAL_STATE,  # B H D E
+    CU_SEQLENS,  # M
     B: tl.constexpr,
     N: tl.constexpr,
     H: tl.constexpr,
     D: tl.constexpr,
     E: tl.constexpr,
+    USE_Q: tl.constexpr,
+    USE_ALPHA: tl.constexpr,
+    USE_BETA: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_DFINAL_STATE: tl.constexpr,
-    NORMALIZE: tl.constexpr,
-    RMS_NORM: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
 ):
@@ -378,11 +427,18 @@ def _ilav_recurrence_bwd_dq(
     # compute block ptr
     array_d = tl.arange(0, BLOCK_D)
     array_e = tl.arange(0, BLOCK_E)
-    q_block_ptr = Q + offset_qk + array_d
+    if USE_Q:
+        q_block_ptr = Q + offset_qk + array_d
     k_block_ptr = K + offset_qk + array_d
-    v_block_ptr = V + offset_vo + array_e
+    o_block_ptr = O + offset_vo + array_e
     dq_block_ptr = DQ + offset_qk + array_d
-    do_block_ptr = DO + offset_vo + array_e
+    dv_block_ptr = DV + offset_vo + array_e
+    if USE_ALPHA:
+        alpha_block_ptr = ALPHA + offset_log_decay
+        dalpha_block_ptr = DALPHA + offset_log_decay
+    if USE_BETA:
+        beta_block_ptr = BETA + offset_log_decay
+        dbeta_block_ptr = DBETA + offset_log_decay
     mask_d = array_d < D
     mask_e = array_e < E
 
@@ -399,61 +455,74 @@ def _ilav_recurrence_bwd_dq(
     log_decay_block_ptr = LOG_DECAY + offset_log_decay
     qdq_block_ptr = QDQ + offset_log_decay
 
-    if RMS_NORM:
-        c = D**0.5
-    else:
-        c = 1
-
     # compute
     for i in range(N):
         # load
-        q = tl.load(q_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
         k = tl.load(k_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
-        v = tl.load(v_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
-        do = tl.load(do_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        if USE_Q:
+            q = tl.load(q_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        else:
+            q = k
+        if USE_ALPHA:
+            alpha = tl.load(alpha_block_ptr).to(tl.float32)
+            q = q * alpha
+        if USE_BETA:
+            beta = tl.load(beta_block_ptr).to(tl.float32)
+            k = k * beta
+        o = tl.load(o_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
+        dv = tl.load(dv_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
         decay = tl.exp(log_decay)
 
         # compute dq
-        dq = -decay * tl.sum(state * do[None, :], axis=-1)
+        dq = -decay * tl.sum(state * dv[None, :], axis=-1)
         qdq = tl.sum(dq * q, axis=-1)
+        if USE_ALPHA:
+            dalpha = qdq / alpha
+            dq = dq * alpha
 
         # save
         tl.store(dq_block_ptr, dq.to(dq_block_ptr.dtype.element_ty), mask=mask_d)
         tl.store(qdq_block_ptr, qdq.to(qdq_block_ptr.dtype.element_ty))
+        if USE_ALPHA:
+            tl.store(dalpha_block_ptr, dalpha.to(dalpha_block_ptr.dtype.element_ty))
 
         # update state
         state *= decay
-        state_ = k[:, None] * v[None, :] / c
-        if NORMALIZE:
-            state_ *= 1 - decay
+        state_ = k[:, None] * o[None, :]
         state += state_
 
         # update
-        q_block_ptr += H * D
+        if USE_Q:
+            q_block_ptr += H * D
         k_block_ptr += H * D
-        v_block_ptr += H * E
-        do_block_ptr += H * E
+        o_block_ptr += H * E
+        dv_block_ptr += H * E
         dq_block_ptr += H * D
         log_decay_block_ptr += H
         qdq_block_ptr += H
+        if USE_ALPHA:
+            alpha_block_ptr += H
+            dalpha_block_ptr += H
+        if USE_BETA:
+            beta_block_ptr += H
 
 
-def ilav_recurrence_bwd(
+def krcl_recurrence_bwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
     o: torch.Tensor,
+    do: torch.Tensor,
     ld: torch.Tensor,
+    alpha: torch.Tensor,
+    beta: torch.Tensor,
     initial_state: torch.Tensor,
     final_state: torch.Tensor,
-    dv: torch.Tensor,
     dfinal_state: torch.Tensor,
     cu_seqlens: torch.LongTensor,
-    normalize: bool = True,
-    rms_norm: bool = False,
 ):
-    b, n, h, d = q.shape
+    b, n, h, d = k.shape
     e = v.shape[-1]
 
     use_cu_seqlens = cu_seqlens is not None
@@ -461,78 +530,93 @@ def ilav_recurrence_bwd(
         b = cu_seqlens.shape[0] - 1
 
     use_initial_state = initial_state is not None
+    use_q = q is not None
+    use_alpha = alpha is not None
+    use_beta = beta is not None
     use_dfinal_state = dfinal_state is not None
     BLOCK_D = triton.next_power_of_2(d)
     BLOCK_E = triton.next_power_of_2(e)
 
-    dq = torch.empty_like(q)
+    dq = torch.empty_like(k)
     dk = torch.empty_like(k)
-    do = torch.empty_like(v)
+    dv = torch.empty_like(v)
     qdq = torch.empty_like(ld, dtype=torch.float32)
     kdk = torch.empty_like(ld, dtype=torch.float32)
+    dalpha = torch.empty_like(alpha) if alpha is not None else None
+    dbeta = torch.empty_like(beta) if beta is not None else None
     dinitial_state = torch.empty(b, h, d, e, device=q.device, dtype=torch.float32)
 
     def grid(meta):
         return (b, h)
 
-    _ilav_recurrence_bwd_do_dk_p[grid](
+    _krcl_recurrence_bwd_dk_dv_p[grid](
         Q=q,
         K=k,
         V=v,
         O=o,
-        STATE=initial_state,
-        CU_SEQLENS=cu_seqlens,
-        FINAL_STATE=final_state,
         LOG_DECAY=ld,
-        DO=do,
-        DSTATE=dfinal_state,
+        ALPHA=alpha,
+        BETA=beta,
+        STATE=initial_state,
+        FINAL_STATE=final_state,
         DQ=dq,
         DK=dk,
         DV=dv,
+        DO=do,
+        DALPHA=dalpha,
+        DBETA=dbeta,
+        DSTATE=dfinal_state,
+        DINITIAL_STATE=dinitial_state,
         QDQ=qdq,
         KDK=kdk,
-        DINITIAL_STATE=dinitial_state,
+        CU_SEQLENS=cu_seqlens,
         B=b,
         N=n,
         H=h,
         D=d,
         E=e,
+        USE_Q=use_q,
+        USE_ALPHA=use_alpha,
+        USE_BETA=use_beta,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
         USE_DFINAL_STATE=use_dfinal_state,
-        NORMALIZE=normalize,
-        RMS_NORM=rms_norm,
         BLOCK_D=BLOCK_D,
         BLOCK_E=BLOCK_E,
     )
 
-    _ilav_recurrence_bwd_dq[grid](
+    _krcl_recurrence_bwd_dq[grid](
         Q=q,
         K=k,
         V=v,
         O=o,
-        STATE=initial_state,
-        CU_SEQLENS=cu_seqlens,
-        FINAL_STATE=final_state,
         LOG_DECAY=ld,
-        DO=do,
-        DSTATE=dfinal_state,
+        ALPHA=alpha,
+        BETA=beta,
+        STATE=initial_state,
+        FINAL_STATE=final_state,
         DQ=dq,
         DK=dk,
         DV=dv,
+        DO=do,
+        DALPHA=dalpha,
+        DBETA=dbeta,
+        DSTATE=dfinal_state,
+        DINITIAL_STATE=dinitial_state,
         QDQ=qdq,
         KDK=kdk,
-        DINITIAL_STATE=dinitial_state,
+        CU_SEQLENS=cu_seqlens,
         B=b,
         N=n,
         H=h,
         D=d,
         E=e,
+        USE_Q=use_q,
+        USE_ALPHA=use_alpha,
+        USE_BETA=use_beta,
         USE_CU_SEQLENS=use_cu_seqlens,
         USE_INITIAL_STATE=use_initial_state,
         USE_DFINAL_STATE=use_dfinal_state,
-        NORMALIZE=normalize,
-        RMS_NORM=rms_norm,
         BLOCK_D=BLOCK_D,
         BLOCK_E=BLOCK_E,
     )
@@ -560,100 +644,91 @@ def ilav_recurrence_bwd(
         if dfinal_state is not None:
             dld = dld + dld_state
 
-    if normalize:
-        decay = torch.exp(ld.float())
-        dld_ = -(decay / (1 - decay)) * kdk
-        dld = dld + dld_
-
     dinitial_state = dinitial_state if use_initial_state else None
 
-    return dq, dk, do, dld, dinitial_state
+    return dq, dk, dv, dld, dalpha, dbeta, dinitial_state
 
 
-class IlavRecurrenceFunction(torch.autograd.Function):
+class KrclRecurrenceFunction(torch.autograd.Function):
     @staticmethod
     @contiguous
     def forward(
         ctx,
         q,
         k,
-        o,
+        v,
         ld,
+        alpha,
+        beta,
         initial_state=None,
         cu_seqlens=None,
-        normalize=True,
-        rms_norm=False,
     ):
         # Forward computation
-        v, final_state = ilav_recurrence_fwd(
+        o, final_state = krcl_recurrence_fwd(
             q=q,
             k=k,
-            o=o,
+            v=v,
             ld=ld,
+            alpha=alpha,
+            beta=beta,
             initial_state=initial_state,
             cu_seqlens=cu_seqlens,
-            normalize=normalize,
-            rms_norm=rms_norm,
         )
 
         # Save tensors needed for backward
-        ctx.save_for_backward(q, k, v, o, ld, initial_state, final_state, cu_seqlens)
-        ctx.normalize = normalize
-        ctx.rms_norm = rms_norm
+        ctx.save_for_backward(q, k, v, o, ld, alpha, beta, initial_state, final_state, cu_seqlens)
 
-        return v, final_state
+        return o, final_state
 
     @staticmethod
     @contiguous
-    def backward(ctx, dv, dfinal_state):
-        q, k, v, o, ld, initial_state, final_state, cu_seqlens = ctx.saved_tensors
-        normalize = ctx.normalize
-        rms_norm = ctx.rms_norm
+    def backward(ctx, do, dfinal_state):
+        q, k, v, o, ld, alpha, beta, initial_state, final_state, cu_seqlens = ctx.saved_tensors
 
-        dq, dk, do, dld, dinitial_state = ilav_recurrence_bwd(
+        dq, dk, dv, dld, dalpha, dbeta, dinitial_state = krcl_recurrence_bwd(
             q=q,
             k=k,
             v=v,
             o=o,
+            do=do,
             ld=ld,
+            alpha=alpha,
+            beta=beta,
             initial_state=initial_state,
             final_state=final_state,
-            dv=dv,
             dfinal_state=dfinal_state,
             cu_seqlens=cu_seqlens,
-            normalize=normalize,
-            rms_norm=rms_norm,
         )
 
-        return (dq, dk, do, dld, dinitial_state, None, None, None)
+        return (dq, dk, dv, dld, dalpha, dbeta, dinitial_state, None)
 
 
-def ilav_recurrence_triton(
+def krcl_recurrence_triton(
     q: torch.Tensor,
     k: torch.Tensor,
-    o: torch.Tensor,
+    v: torch.Tensor,
     ld: torch.Tensor,
+    alpha: Optional[torch.Tensor] = None,
+    beta: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
-    normalize: bool = True,
-    rms_norm: bool = False,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Apply Implicit Attention Recurrence with V in Triton.
+    Apply Kernel Regression with Causal Linear Recurrence in Triton.
 
     Args:
         q: Query tensor of shape (B, N, H, D)
         k: Key tensor of shape (B, N, H, D)
-        o: Output tensor of shape (B, N, H, E)
+        v: Value tensor of shape (B, N, H, E)
         ld: Logarithmic decay tensor of shape (B, N, H)
+        alpha: Alpha tensor of shape (B, N, H)
+        beta: Beta tensor of shape (B, N, H)
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
-        normalize: Whether to normalize the key
-        rms_norm: Whether to use RMS normalization for q and k
 
     Returns:
-        output: Tensor of shape (B, N, H, E)
+        o: Tensor of shape (B, N, H, E)
         state: Tensor of shape (B, H, D, E)
     """
     b = q.shape[0]
@@ -666,15 +741,15 @@ def ilav_recurrence_triton(
         if len(initial_state.shape) == 3:
             initial_state = repeat(initial_state, "h d e -> b h d e", b=b).contiguous()
 
-    return IlavRecurrenceFunction.apply(
+    return KrclRecurrenceFunction.apply(
         q,
         k,
-        o,
+        v,
         ld,
+        alpha,
+        beta,
         initial_state,
         cu_seqlens,
-        normalize,
-        rms_norm,
     )
 
 
@@ -688,10 +763,12 @@ if __name__ == "__main__":
     q = torch.randn(b, n, h, d, device=device, dtype=dtype).requires_grad_(True)
     k = torch.randn(b, n, h, d, device=device, dtype=dtype).requires_grad_(True)
     v = torch.randn(b, n, h, e, device=device, dtype=dtype).requires_grad_(True)
+    alpha = torch.randn(b, n, h, device=device, dtype=dtype).requires_grad_(True)
+    beta = torch.randn(b, n, h, device=device, dtype=dtype).requires_grad_(True)
     ld = F.logsigmoid(torch.randn(b, n, h, device=device))
     initial_state = torch.randn(b, h, d, e, device=device, dtype=dtype).requires_grad_(
         True
     )
-    output, final_state = ilav_recurrence_triton(q, k, v, ld, initial_state)
-    loss = output.sum() + final_state.sum()
+    o, final_state = krcl_recurrence_triton(q, k, v, ld, alpha, beta, initial_state)
+    loss = o.sum() + final_state.sum()
     loss.backward()

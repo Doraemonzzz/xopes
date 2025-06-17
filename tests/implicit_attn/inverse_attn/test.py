@@ -94,6 +94,7 @@ def test_ilav(
     q = (
         F.normalize(torch.randn((b, n, h, d), dtype=dtype, device=device), dim=-1) * c
     ).requires_grad_()  # !!! important
+    # q = None
     k = (
         F.normalize(torch.randn((b, n, h, d), dtype=dtype, device=device), dim=-1) * c
     ).requires_grad_()

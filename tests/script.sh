@@ -123,6 +123,9 @@ folder=implicit_attn/inverse_attn
 ##### ladd 250613
 folder=lightning_attn/delta_decay/inv
 
+##### krcl 250617
+folder=kernel_regression/causal_linear
+
 mkdir -p $folder/log
 
 
