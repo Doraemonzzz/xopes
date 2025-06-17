@@ -34,9 +34,9 @@ def krcl_torch(
         o: Tensor of shape (B, N, H, E)
         state: Tensor of shape (B, H, D, E)
     """
-    b, n, h, d = q.shape
+    b, n, h, d = k.shape
     e = v.shape[-1]
-    dtype = q.dtype
+    dtype = k.dtype
     if q is None:
         q = k
     if alpha is None:
@@ -49,7 +49,7 @@ def krcl_torch(
     ld = ld.float()
     alpha = alpha.float()
     beta = beta.float()
-    
+
     q = q * alpha.unsqueeze(-1)
     k = k * beta.unsqueeze(-1)
 

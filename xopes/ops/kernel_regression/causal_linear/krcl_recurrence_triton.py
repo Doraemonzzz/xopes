@@ -33,7 +33,7 @@ def _krcl_recurrence_fwd(
     LOG_DECAY,  # B N H
     ALPHA,  # B N H
     BETA,  # B N H
-    STATE, # B H D E
+    STATE,  # B H D E
     FINAL_STATE,  # B H D E
     CU_SEQLENS,  # M
     B: tl.constexpr,
@@ -150,7 +150,7 @@ def krcl_recurrence_fwd(
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
 ):
-    b, n, h, d = q.shape
+    b, n, h, d = k.shape
     e = v.shape[-1]
 
     use_cu_seqlens = cu_seqlens is not None
@@ -161,20 +161,17 @@ def krcl_recurrence_fwd(
     use_q = q is not None
     use_alpha = alpha is not None
     use_beta = beta is not None
-    final_state = torch.empty((b, h, d, e), dtype=torch.float32, device=q.device)
+    final_state = torch.empty((b, h, d, e), dtype=torch.float32, device=k.device)
     BLOCK_D = triton.next_power_of_2(d)
     BLOCK_E = triton.next_power_of_2(e)
 
     if use_cu_seqlens:
-        o = torch.empty((1, n, h, e), dtype=q.dtype, device=q.device)
+        o = torch.empty((1, n, h, e), dtype=k.dtype, device=k.device)
     else:
-        o = torch.empty((b, n, h, e), dtype=q.dtype, device=q.device)
+        o = torch.empty((b, n, h, e), dtype=k.dtype, device=k.device)
 
     def grid(meta):
         return (b, h)
-
-    print("aaa", torch.mean(alpha).item(), torch.mean(beta).item(), torch.norm(q).item(), torch.norm(k).item(), torch.norm(v).item())
-    print(torch.norm(q - k).item())
 
     _krcl_recurrence_fwd[grid](
         Q=q,
@@ -278,7 +275,7 @@ def _krcl_recurrence_bwd_dk_dv_p(
     log_decay_block_ptr = LOG_DECAY + offset_log_decay
     if USE_ALPHA:
         alpha_block_ptr = ALPHA + offset_log_decay
-        dalpha_block_ptr = DALPHA + offset_log_decay
+        DALPHA + offset_log_decay
     if USE_BETA:
         beta_block_ptr = BETA + offset_log_decay
         dbeta_block_ptr = DBETA + offset_log_decay
@@ -429,16 +426,19 @@ def _krcl_recurrence_bwd_dq(
     array_e = tl.arange(0, BLOCK_E)
     if USE_Q:
         q_block_ptr = Q + offset_qk + array_d
+        dq_block_ptr = DQ + offset_qk + array_d
+    else:
+        dq_block_ptr = DK + offset_qk + array_d
     k_block_ptr = K + offset_qk + array_d
     o_block_ptr = O + offset_vo + array_e
-    dq_block_ptr = DQ + offset_qk + array_d
+
     dv_block_ptr = DV + offset_vo + array_e
     if USE_ALPHA:
         alpha_block_ptr = ALPHA + offset_log_decay
         dalpha_block_ptr = DALPHA + offset_log_decay
     if USE_BETA:
         beta_block_ptr = BETA + offset_log_decay
-        dbeta_block_ptr = DBETA + offset_log_decay
+        DBETA + offset_log_decay
     mask_d = array_d < D
     mask_e = array_e < E
 
@@ -480,6 +480,9 @@ def _krcl_recurrence_bwd_dq(
         if USE_ALPHA:
             dalpha = qdq / alpha
             dq = dq * alpha
+
+        if not USE_Q:
+            dq = dq + tl.load(dq_block_ptr, mask=mask_d, other=0.0).to(tl.float32)
 
         # save
         tl.store(dq_block_ptr, dq.to(dq_block_ptr.dtype.element_ty), mask=mask_d)
@@ -537,14 +540,14 @@ def krcl_recurrence_bwd(
     BLOCK_D = triton.next_power_of_2(d)
     BLOCK_E = triton.next_power_of_2(e)
 
-    dq = torch.empty_like(k)
+    dq = torch.empty_like(k) if use_q else None
     dk = torch.empty_like(k)
     dv = torch.empty_like(v)
     qdq = torch.empty_like(ld, dtype=torch.float32)
     kdk = torch.empty_like(ld, dtype=torch.float32)
     dalpha = torch.empty_like(alpha) if alpha is not None else None
     dbeta = torch.empty_like(beta) if beta is not None else None
-    dinitial_state = torch.empty(b, h, d, e, device=q.device, dtype=torch.float32)
+    dinitial_state = torch.empty(b, h, d, e, device=k.device, dtype=torch.float32)
 
     def grid(meta):
         return (b, h)
@@ -676,14 +679,27 @@ class KrclRecurrenceFunction(torch.autograd.Function):
         )
 
         # Save tensors needed for backward
-        ctx.save_for_backward(q, k, v, o, ld, alpha, beta, initial_state, final_state, cu_seqlens)
+        ctx.save_for_backward(
+            q, k, v, o, ld, alpha, beta, initial_state, final_state, cu_seqlens
+        )
 
         return o, final_state
 
     @staticmethod
     @contiguous
     def backward(ctx, do, dfinal_state):
-        q, k, v, o, ld, alpha, beta, initial_state, final_state, cu_seqlens = ctx.saved_tensors
+        (
+            q,
+            k,
+            v,
+            o,
+            ld,
+            alpha,
+            beta,
+            initial_state,
+            final_state,
+            cu_seqlens,
+        ) = ctx.saved_tensors
 
         dq, dk, dv, dld, dalpha, dbeta, dinitial_state = krcl_recurrence_bwd(
             q=q,
@@ -731,7 +747,7 @@ def krcl_recurrence_triton(
         o: Tensor of shape (B, N, H, E)
         state: Tensor of shape (B, H, D, E)
     """
-    b = q.shape[0]
+    b = k.shape[0]
     use_cu_seqlens = cu_seqlens is not None
     if use_cu_seqlens:
         b = cu_seqlens.shape[0] - 1
