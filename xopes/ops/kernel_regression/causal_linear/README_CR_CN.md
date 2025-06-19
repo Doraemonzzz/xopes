@@ -34,11 +34,13 @@ $$
 
 \mathbf R_{ii}\mathbf O_i + \sum_{j=1}^{i-1} \mathbf R_{ij} \mathbf O_j &= \mathbf V_i, \\
 
-\mathbf O_i & = \mathbf R_{ii}^{-1}\mathbf V_i - \mathbf R_{ii}^{-1}\left( \sum_{j=1}^{i-1} \mathbf R_{ij} \mathbf O_j  \right), \\
+\mathbf O_i & = \mathbf R_{ii}^{-1}\mathbf V_i - \mathbf R_{ii}^{-1}\left( \sum_{j=1}^{i-1} \mathbf R_{ij} \mathbf O_j  \right) \\
+
+
 
 &=\mathbf R_{ii}^{-1} \left( \mathbf V_i -  \left( \sum_{j=1}^{i-1} [[\mathbf Q_i \mathbf K_j^\top] \odot \mathbf M_{ij}]  \mathbf O_j  \right)  \right)\\
 
-&\triangleq  \mathbf R_{ii}^{-1} (\mathbf U_i - \mathbf P_{i}).
+&\triangleq  \mathbf R_{ii}^{-1} (\mathbf V_i - \mathbf P_{i}).
 
 \end{aligned}
 $$
@@ -53,10 +55,12 @@ $$
 \tilde{\mathbf K}_i &=  \mathbf K_i \odot \bar \Lambda_i,  \\
 
 {\mathbf P}_i&=  \bar{\mathbf Q}_i  \mathbf S_{i-1} ,  \\
-\mathbf S_{i}&= \Lambda_{i, c} \mathbf S_{i-1}+ \tilde{\mathbf K}_{i} {\mathbf O}_{i}^\top.
+\mathbf O_i &=  \mathbf R_{ii}^{-1} (\mathbf V_i - \mathbf P_{i}),\\
+
+\mathbf S_{i}&= \Lambda_{i, c} \mathbf S_{i-1}+ \tilde{\mathbf K}_{i}^\top {\mathbf O}_{i}.
 \end{aligned}
 $$
-我们记改function为：
+我们记该function为：
 $$
 f(\mathbf Q, \mathbf K, \mathbf V, \Lambda)= [\mathbf I + \mathrm{tril}([(\mathbf Q\mathbf K^\top)\odot \mathbf M], -1) ]^{-1} \mathbf V.
 $$

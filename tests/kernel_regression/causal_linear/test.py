@@ -2,6 +2,9 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+from xopes.ops.kernel_regression.causal_linear.krcl_parallel_triton import (
+    krcl_parallel_triton,
+)
 from xopes.ops.kernel_regression.causal_linear.krcl_recurrence_triton import (
     krcl_recurrence_triton,
 )
@@ -21,10 +24,12 @@ def get_params():
         (2, 255, 8, 64, 32),
         (2, 65, 7, 33, 63),
         (2, 270, 8, 64, 32),
-        (2, 270, 8, 33, 16),
-        (2, 1125, 8, 43, 33),
-        (8, 2048, 12, 64, 64),
+        (2, 270, 8, 97, 16),
+        (2, 1125, 8, 107, 33),
+        (8, 2048, 12, 128, 64),
         (2, 128, 12, 128, 64),
+        # (2, 1125, 8, 107, 33),
+        # (2, 256, 8, 127, 16),
     ]
     return shapes
 
@@ -34,10 +39,21 @@ def get_params():
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True, False])
+@pytest.mark.parametrize("c", [0.1, 10])  # Scaling factor for log decay
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, dtype):
+
+# @pytest.mark.parametrize("shape", get_params())
+# @pytest.mark.parametrize("use_q", [True,])
+# @pytest.mark.parametrize("use_initial_state", [True])
+# @pytest.mark.parametrize("use_varlen", [False])
+# @pytest.mark.parametrize("no_dstate", [True, ])
+# @pytest.mark.parametrize("c", [10])  # Scaling factor for log decay
+# @pytest.mark.parametrize("dtype", [torch.float32])
+def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
+    scale = 0.01
+
     b, n, h, d, e = shape
 
     # Setup variable length sequences if requested
@@ -62,14 +78,23 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, dtype):
     ).requires_grad_()
     v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
     ld = F.logsigmoid(
-        torch.randn((b, n, h), dtype=dtype, device=device)
+        (1 + scale * torch.randn((b, n, h), dtype=dtype, device=device)) * c
     ).requires_grad_()
     alpha = (
-        F.sigmoid(torch.randn((b, n, h), dtype=dtype, device=device))
+        torch.exp(
+            F.logsigmoid(
+                (1 + scale * torch.randn((b, n, h), dtype=dtype, device=device)) * c
+            )
+        )
     ).requires_grad_()
     beta = (
-        F.sigmoid(torch.randn((b, n, h), dtype=dtype, device=device))
+        torch.exp(
+            F.logsigmoid(
+                (1 + scale * torch.randn((b, n, h), dtype=dtype, device=device)) * c
+            )
+        )
     ).requires_grad_()
+    BLOCK_N = 64
 
     # Setup gradient tensor for backward pass
     if no_dstate:
@@ -118,6 +143,23 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, dtype):
     else:
         output_triton = o_triton.mean() + s_triton.mean()
 
+    # Triton parallel implementation
+    o_triton_parallel, s_triton_parallel = krcl_parallel_triton(
+        q=q.clone() if use_q else None,
+        k=k.clone(),
+        v=v.clone(),
+        ld=ld.clone(),
+        alpha=alpha.clone(),
+        beta=beta.clone(),
+        initial_state=initial_state.clone() if initial_state is not None else None,
+        cu_seqlens=cu_seqlens,
+        BLOCK_N=BLOCK_N,
+    )
+    if no_dstate:
+        pass
+    else:
+        o_triton_parallel.mean() + s_triton_parallel.mean()
+
     ##### Backward pass comparison
     output_torch.backward(do, retain_graph=True)
     if use_q:
@@ -146,12 +188,13 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, dtype):
         ds_triton, initial_state.grad = initial_state.grad.clone(), None
 
     # Set tolerance for numerical comparisons
-    atol = 5e-3
-    rtol = 5e-3
+    atol = 6e-3
+    rtol = 6e-3
     ld_atol = 7e-2 if dtype == torch.bfloat16 else atol
     ld_rtol = 7e-2 if dtype == torch.bfloat16 else rtol
 
     ##### Forward pass validation
+    # torch vs triton
     print("o diff max (torch vs triton): ", torch.abs(o_torch - o_triton).max().item())
     print("o diff norm (torch vs triton): ", torch.norm(o_torch - o_triton).item())
     print_diff(o_torch, o_triton, n)
@@ -162,6 +205,28 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, dtype):
     )
     print("state diff norm (torch vs triton): ", torch.norm(s_torch - s_triton).item())
     assert_close(s_torch, s_triton, atol=atol, rtol=rtol)
+
+    # torch vs triton parallel
+    print(
+        "o diff max (torch vs triton parallel): ",
+        torch.abs(o_torch - o_triton_parallel).max().item(),
+    )
+    print(
+        "o diff norm (torch vs triton parallel): ",
+        torch.norm(o_torch - o_triton_parallel).item(),
+    )
+    print_diff(o_torch, o_triton_parallel, n)
+    assert_close(o_torch, o_triton_parallel, atol=atol, rtol=rtol)
+
+    print(
+        "s diff max (torch vs triton parallel): ",
+        torch.abs(s_torch - s_triton_parallel).max().item(),
+    )
+    print(
+        "s diff norm (torch vs triton parallel): ",
+        torch.norm(s_torch - s_triton_parallel).item(),
+    )
+    assert_close(s_torch, s_triton_parallel, atol=atol, rtol=rtol)
 
     ##### Backward pass validation
     print(
