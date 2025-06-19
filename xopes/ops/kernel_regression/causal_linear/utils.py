@@ -372,14 +372,24 @@ def _krcl_parallel_chunk_loop(
     ld_block_ptr = LOG_DECAY + offset_ld
 
     for j in range(NUM_BLOCK_N):
-        inv_block_ptr = tl.make_block_ptr(
-            base=INV + offset_inv + (off_block_n + j * stride) * BLOCK_N * BLOCK_N,
-            shape=(BLOCK_N, BLOCK_N),
-            strides=(BLOCK_N, 1),
-            offsets=(0, 0),
-            block_shape=(BLOCK_N, BLOCK_N),
-            order=(1, 0),
-        )
+        if REVERSE:
+            inv_block_ptr = tl.make_block_ptr(
+                base=INV + offset_inv + (off_block_n + j * stride) * BLOCK_N * BLOCK_N,
+                shape=(BLOCK_N, BLOCK_N),
+                strides=(1, BLOCK_N),
+                offsets=(0, 0),
+                block_shape=(BLOCK_N, BLOCK_N),
+                order=(0, 1),
+            )
+        else:
+            inv_block_ptr = tl.make_block_ptr(
+                base=INV + offset_inv + (off_block_n + j * stride) * BLOCK_N * BLOCK_N,
+                shape=(BLOCK_N, BLOCK_N),
+                strides=(BLOCK_N, 1),
+                offsets=(0, 0),
+                block_shape=(BLOCK_N, BLOCK_N),
+                order=(1, 0),
+            )
 
         k = tl.load(k_block_ptr, boundary_check=(0, 1), padding_option="zero")
         v = tl.load(v_block_ptr, boundary_check=(0, 1), padding_option="zero")

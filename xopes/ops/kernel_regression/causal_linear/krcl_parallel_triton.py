@@ -102,8 +102,6 @@ def krcl_parallel_chunk_loop(
     final_state = torch.empty((b, h, d, e), device=k.device, dtype=k.dtype)
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
 
-    print("aaa", NUM_BLOCK_N, BLOCK_N)
-
     def grid(meta):
         return (b * h, triton.cdiv(e, meta["BLOCK_E"]))
 
@@ -183,40 +181,53 @@ def krcl_parallel_fwd(
         BLOCK_N=BLOCK_N,
     )
 
-    # tmp = []
-    # b, n, h, d = k.shape
-    # l = (n + BLOCK_N - 1) // BLOCK_N
-    # for i in range(l):
-    #     start = i * BLOCK_N
-    #     end = min(start + BLOCK_N, n)
-    #     vi = v[:, start:end]
-    #     inv_i = inv[:, :, i]
-    #     print(vi.shape, inv_i.shape, start, end)
-    #     oi = torch.einsum("bhnm,bmhe->bnhe", inv_i, vi)
-    #     tmp.append(oi)
-
-    # tmp = torch.cat(tmp, dim=1)
-    # print("aaa", torch.norm(o - tmp).item())
-
-    return o, final_state
+    return inv, o, final_state
 
 
 ########## Bwd start ##########
-def krcl_recurrence_bwd(
+def krcl_parallel_bwd(
+    inv: torch.Tensor,
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    o: torch.Tensor,
     do: torch.Tensor,
     ld: torch.Tensor,
-    alpha: torch.Tensor,
-    beta: torch.Tensor,
-    initial_state: torch.Tensor,
-    final_state: torch.Tensor,
-    dfinal_state: torch.Tensor,
-    cu_seqlens: torch.LongTensor,
+    alpha: Optional[torch.Tensor] = None,
+    beta: Optional[torch.Tensor] = None,
+    initial_state: Optional[torch.Tensor] = None,
+    final_state: Optional[torch.Tensor] = None,
+    dfinal_state: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    BLOCK_N: int = 128,
+    **kwargs,
 ):
-    pass
+    ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=True, chunk_size=BLOCK_N)
+
+    dv, _ = krcl_parallel_chunk_loop(
+        q=k if q is not None else None,
+        k=q if q is not None else k,
+        v=do,
+        ld=ld,
+        inv=inv,
+        alpha=alpha,
+        beta=beta,
+        initial_state=dfinal_state,
+        ld_cumsum=ld_cumsum,
+        cu_seqlens=cu_seqlens,
+        reverse=True,
+        BLOCK_N=BLOCK_N,
+    )
+
+    dq = torch.empty_like(q) if q is not None else None
+    dk = torch.empty_like(k)
+    dld = torch.empty_like(ld)
+    dalpha = torch.empty_like(alpha) if alpha is not None else None
+    dbeta = torch.empty_like(beta) if beta is not None else None
+    dinitial_state = (
+        torch.empty_like(initial_state) if initial_state is not None else None
+    )
+
+    return dq, dk, dv, dld, dalpha, dbeta, dinitial_state
 
 
 class KrclParallelFunction(torch.autograd.Function):
@@ -235,7 +246,7 @@ class KrclParallelFunction(torch.autograd.Function):
         BLOCK_N: int = 128,
     ):
         # Forward computation
-        o, final_state = krcl_parallel_fwd(
+        inv, o, final_state = krcl_parallel_fwd(
             q=q,
             k=k,
             v=v,
@@ -249,8 +260,9 @@ class KrclParallelFunction(torch.autograd.Function):
 
         # Save tensors needed for backward
         ctx.save_for_backward(
-            q, k, v, o, ld, alpha, beta, initial_state, final_state, cu_seqlens
+            q, k, v, ld, alpha, beta, inv, initial_state, final_state, cu_seqlens
         )
+        ctx.BLOCK_N = BLOCK_N
 
         return o, final_state
 
@@ -261,20 +273,21 @@ class KrclParallelFunction(torch.autograd.Function):
             q,
             k,
             v,
-            o,
             ld,
             alpha,
             beta,
+            inv,
             initial_state,
             final_state,
             cu_seqlens,
         ) = ctx.saved_tensors
+        BLOCK_N = ctx.BLOCK_N
 
         dq, dk, dv, dld, dalpha, dbeta, dinitial_state = krcl_parallel_bwd(
+            inv=inv,
             q=q,
             k=k,
             v=v,
-            o=o,
             do=do,
             ld=ld,
             alpha=alpha,
@@ -283,9 +296,10 @@ class KrclParallelFunction(torch.autograd.Function):
             final_state=final_state,
             dfinal_state=dfinal_state,
             cu_seqlens=cu_seqlens,
+            BLOCK_N=BLOCK_N,
         )
 
-        return (dq, dk, dv, dld, dalpha, dbeta, dinitial_state, None)
+        return (dq, dk, dv, dld, dalpha, dbeta, dinitial_state, None, None, None)
 
 
 def krcl_parallel_triton(
