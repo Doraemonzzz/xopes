@@ -601,7 +601,7 @@ def _krcl_parallel_intra_inter(
     offset_ld = off_b * N * H + off_h
     offset_block_n = off_block_n * BLOCK_N
     offset_block_n * H * D
-    offset_block_vo = offset_block_n * H * E
+    offset_block_n * H * E
     offset_block_ld = offset_block_n * H
     offset_block_e = off_block_e * BLOCK_E
 
@@ -609,9 +609,6 @@ def _krcl_parallel_intra_inter(
     offset_block_state = off_block_n * D * E
 
     # compute block ptr and mask
-    tl.arange(0, BLOCK_E)
-    tl.arange(0, BLOCK_D)
-
     q_block_ptr = tl.make_block_ptr(
         base=Q + offset_qk,
         shape=(N, D),
@@ -746,7 +743,6 @@ def _krcl_parallel_intra_inter(
         o -= o_
         ##### inter end #####
 
-        # tl.static_print("ddd", o, state_block_ptr)
         q_block_ptr = tl.advance(q_block_ptr, (0, BLOCK_D))
         k_trans_block_ptr = tl.advance(k_trans_block_ptr, (BLOCK_D, 0))
         state_block_ptr = tl.advance(state_block_ptr, (BLOCK_D, 0))
@@ -754,7 +750,7 @@ def _krcl_parallel_intra_inter(
     # compute dld
     if USE_Q:
         x_block_ptr = tl.make_block_ptr(
-            base=X + offset_vo + offset_block_vo,
+            base=X + offset_vo,
             shape=(N, E),
             strides=(H * E, 1),
             offsets=(offset_block_n, offset_block_e),
@@ -767,10 +763,10 @@ def _krcl_parallel_intra_inter(
 
     if COMPUTE_DQ:
         if USE_ALPHA:
-            x *= alpha
+            o *= alpha
     else:
         if USE_BETA:
-            x *= beta
+            o *= beta
 
     # N D -> N
     dld = tl.sum(x * o, axis=-1)
@@ -787,13 +783,7 @@ def _krcl_parallel_intra_inter(
 
     tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty), mask=mask)
 
-    if COMPUTE_DQ:
-        if USE_ALPHA:
-            o *= alpha
-    else:
-        if USE_BETA:
-            o *= beta
-
+    # save o
     if SHARE_QK:
         o_ = tl.load(o_block_ptr, boundary_check=(0, 1), padding_option="zero")
         o += o_
@@ -803,3 +793,158 @@ def _krcl_parallel_intra_inter(
         o.to(o_block_ptr.dtype.element_ty),
         boundary_check=(0, 1),
     )
+
+
+##### dld, dalpha, dbeta #####
+@triton.autotune(
+    generate_configs(
+        {
+            "num_warps": [4, 8, 16, 32],
+            "BLOCK_N": [32, 64, 128],
+        }
+    ),
+    key=["B", "N", "H", "D", "E", "USE_FINAL_STATE"],
+)
+@triton.jit
+def _compute_dld_cumsum_kernel(
+    DLD_Q,  # B N H F
+    DLD_K,  # B N H F
+    DLD,  # B N H F or B N H
+    FINAL_STATE,  # B H D E
+    DFINAL_STATE,  # B H D E
+    DLD_STATE,  # B H or B H F
+    ALPHA,  # B H
+    BETA,  # B H
+    DALPHA,  # B H
+    DBETA,  # B H
+    CU_SEQLENS,  # M
+    SUM_OPTION: tl.constexpr,
+    B: tl.constexpr,
+    N: tl.constexpr,
+    H: tl.constexpr,
+    D: tl.constexpr,
+    E: tl.constexpr,
+    F: tl.constexpr,
+    USE_FINAL_STATE: tl.constexpr,
+    USE_CU_SEQLENS: tl.constexpr,
+    USE_ALPHA: tl.constexpr,
+    USE_BETA: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
+    BLOCK_F: tl.constexpr,
+    NUM_BLOCK_D: tl.constexpr,
+    NUM_BLOCK_E: tl.constexpr,
+):
+    NUM_BLOCK_N = triton.cdiv(N, BLOCK_N)
+    # Calculate program ID and offsets
+    off_b = tl.program_id(0)
+    off_h = tl.program_id(1)
+
+    offset_b = off_b * N * H * F
+    offset_h = off_h * F
+    if SUM_OPTION == -1:
+        offset_b_dld = off_b * N * H
+        offset_h_dld = off_h
+    offset_b_alpha_beta = off_b * N * H
+    offset_h_alpha_beta = off_h
+
+    # Calculate pointers for DLD_Q and DLD_K
+    array_n = N - 1 - tl.arange(0, BLOCK_N)
+    array_f = tl.arange(0, BLOCK_F)
+    mask_f = array_f < F
+
+    # If using final_state, calculate additional term
+    if USE_FINAL_STATE:
+        if SUM_OPTION == -1:
+            dld_state = tl.load(DLD_STATE + off_b * H + offset_h_dld).to(tl.float32)
+        else:
+            dld_state = tl.load(
+                DLD_STATE + off_b * H * F + offset_h + tl.arange(0, BLOCK_F),
+                mask=mask_f,
+            ).to(tl.float32)
+
+    if SUM_OPTION == -1:
+        dld_cumsum = tl.zeros((1,), dtype=tl.float32)
+    else:
+        dld_cumsum = tl.zeros((BLOCK_F,), dtype=tl.float32)
+
+    for i in range(NUM_BLOCK_N):
+        dld_q_block_ptr = (
+            DLD_Q + offset_b + array_n[:, None] * H * F + offset_h + array_f[None, :]
+        )
+        dld_k_block_ptr = (
+            DLD_K + offset_b + array_n[:, None] * H * F + offset_h + array_f[None, :]
+        )
+        if SUM_OPTION == -1:
+            dld_block_ptr = DLD + offset_b_dld + array_n[:, None] * H + offset_h_dld
+        else:
+            dld_block_ptr = (
+                DLD + offset_b + array_n[:, None] * H * F + offset_h + array_f[None, :]
+            )
+        mask_n = array_n >= 0
+        mask = mask_n[:, None] & mask_f[None, :]
+
+        # Load values from DLD_Q and DLD_K
+        dld_q = tl.load(dld_q_block_ptr, mask=mask, other=0.0).to(tl.float32)
+        dld_k = tl.load(dld_k_block_ptr, mask=mask, other=0.0).to(tl.float32)
+        dld = dld_q - dld_k
+
+        if USE_ALPHA:
+            alpha_block_ptr = (
+                ALPHA + offset_b_alpha_beta + array_n * H + offset_h_alpha_beta
+            )
+            alpha = tl.load(alpha_block_ptr, mask=mask_n, other=0.0).to(tl.float32)
+
+            dalpha_block_ptr = (
+                DALPHA + offset_b_alpha_beta + array_n * H + offset_h_alpha_beta
+            )
+            dalpha = tl.sum(dld_q / alpha[:, None], axis=-1)
+            tl.store(
+                dalpha_block_ptr,
+                dalpha.to(dalpha_block_ptr.dtype.element_ty),
+                mask=mask_n,
+            )
+
+        if USE_BETA:
+            beta_block_ptr = (
+                BETA + offset_b_alpha_beta + array_n * H + offset_h_alpha_beta
+            )
+            beta = tl.load(beta_block_ptr, mask=mask_n, other=0.0).to(tl.float32)
+
+            dbeta_block_ptr = (
+                DBETA + offset_b_alpha_beta + array_n * H + offset_h_alpha_beta
+            )
+            dbeta = tl.sum(dld_k / beta[:, None], axis=-1)
+            tl.store(
+                dbeta_block_ptr, dbeta.to(dbeta_block_ptr.dtype.element_ty), mask=mask_n
+            )
+
+        if SUM_OPTION == -1:
+            # BLOCK_N, BLOCK_F -> BLOCK_N, 1
+            dld_ = tl.sum(dld, axis=-1, keep_dims=True)
+            # BLOCK_N, 1 -> BLOCK_N, 1
+            dld__ = tl.cumsum(dld_, axis=0) + dld_cumsum
+            # BLOCK_N, 1 -> 1
+            dld_cumsum += tl.sum(dld_, axis=0)
+
+            if USE_FINAL_STATE:
+                dld__ += dld_state
+
+            # Store result
+            tl.store(
+                dld_block_ptr,
+                dld__.to(dld_block_ptr.dtype.element_ty),
+                mask=mask_n[:, None],
+            )
+        else:
+            dld_ = tl.cumsum(dld, axis=0) + dld_cumsum
+            dld_cumsum += tl.sum(dld, axis=0)
+
+            if USE_FINAL_STATE:
+                dld_ += dld_state
+
+            # Store result
+            tl.store(dld_block_ptr, dld_.to(dld_block_ptr.dtype.element_ty), mask=mask)
+
+        array_n -= BLOCK_N

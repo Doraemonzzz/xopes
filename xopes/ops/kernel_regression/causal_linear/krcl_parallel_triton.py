@@ -7,9 +7,13 @@ import triton
 
 from xopes.ops.cumsum import chunk_cumsum_decay_fn
 from xopes.ops.kernel_regression.causal_linear.utils import (
+    _compute_dld_cumsum_kernel,
     _krcl_parallel_chunk_loop,
     _krcl_parallel_intra_inter,
     _krcl_parallel_inverse,
+)
+from xopes.ops.lightning_attn.log_decay.log_decay_with_cumsum.dld_with_cumsum_triton import (
+    _compute_dld_state,
 )
 from xopes.utils import contiguous
 from xopes.utils.constant import XOPES_DEBUG
@@ -253,6 +257,161 @@ def krcl_parallel_intra_inter(
     return o, dld
 
 
+@contiguous
+def compute_dld(
+    dld_q: torch.Tensor,  # B N H F
+    dld_k: torch.Tensor,  # B N H F
+    alpha: Optional[torch.Tensor] = None,  # B H
+    beta: Optional[torch.Tensor] = None,  # B H
+    final_state: Optional[torch.Tensor] = None,  # B H D E
+    dfinal_state: Optional[torch.Tensor] = None,  # B H D E
+    cu_seqlens: Optional[torch.Tensor] = None,  # M
+    sum_option: Optional[int] = -1,
+):
+    """
+    Compute the derivative of the log decay using Triton with cumsum.
+
+    Args:
+        dld_q: The derivative of the log decay with respect to the query of shape (B, N, H, F), F could be D or E or NUM_FEATURES.
+        dld_k: The derivative of the log decay with respect to the key of shape (B, N, H, F), F could be D or E or NUM_FEATURES.
+        alpha: The alpha of shape (B, H).
+        beta: The beta of shape (B, H).
+        final_state: The final state of the recurrence of shape (B, H, D, E).
+        dfinal_state: The derivative of the final state of the recurrence of shape (B, H, D, E).
+        cu_seqlens: The cumulative sequence lengths of the query of shape (M,).
+        sum_option: The option to sum the derivative of the log decay over the dimension,
+            -1: for dld_q and dld_k, sum over the last dimension,
+            0: for final_state and dfinal_state, sum over the e dimension,
+            1: for dfinal_state and dld_k, sum over the d dimension.
+
+    Returns:
+        dld: The derivative of the log decay.
+    """
+    b, n, h, f = dld_q.shape
+
+    # Create output tensor
+    if sum_option == -1:
+        dld = torch.empty(b, n, h, device=dld_q.device, dtype=dld_q.dtype)
+    else:
+        dld = torch.empty_like(dld_q, dtype=dld_q.dtype)
+
+    # Determine if using final_state
+    use_final_state = final_state is not None and dfinal_state is not None
+
+    if use_final_state:
+        d, e = final_state.shape[-2], final_state.shape[-1]
+        if sum_option == -1:
+            dld_state = torch.empty(
+                (
+                    b,
+                    h,
+                ),
+                dtype=dld_q.dtype,
+                device=dld_q.device,
+            )
+        elif sum_option == 0:
+            dld_state = torch.empty(
+                (
+                    b,
+                    h,
+                    d,
+                ),
+                dtype=dld_q.dtype,
+                device=dld_q.device,
+            )
+        elif sum_option == 1:
+            dld_state = torch.empty(
+                (
+                    b,
+                    h,
+                    e,
+                ),
+                dtype=dld_q.dtype,
+                device=dld_q.device,
+            )
+        else:
+            raise ValueError(f"Invalid sum_option: {sum_option}")
+    else:
+        d = f
+        e = f
+        dld_state = None
+
+    # Determine if using cu_seqlens
+    use_cu_seqlens = cu_seqlens is not None
+
+    BLOCK_D = min(128, triton.next_power_of_2(d))
+    NUM_BLOCK_D = triton.cdiv(d, BLOCK_D)
+    BLOCK_E = min(128, triton.next_power_of_2(e))
+    NUM_BLOCK_E = triton.cdiv(e, BLOCK_E)
+    BLOCK_F = triton.next_power_of_2(f)
+
+    if use_final_state:
+        grid = (b, h)
+
+        _compute_dld_state[grid](
+            FINAL_STATE=final_state,
+            DFINAL_STATE=dfinal_state,
+            DLD_STATE=dld_state,
+            CU_SEQLENS=cu_seqlens,
+            SUM_OPTION=sum_option,
+            B=b,
+            N=n,
+            H=h,
+            D=d,
+            E=e,
+            USE_CU_SEQLENS=use_cu_seqlens,
+            BLOCK_D=BLOCK_D,
+            BLOCK_E=BLOCK_E,
+            NUM_BLOCK_D=NUM_BLOCK_D,
+            NUM_BLOCK_E=NUM_BLOCK_E,
+        )
+
+    def grid(meta):
+        return (
+            b,
+            h,
+        )
+
+    use_alpha = alpha is not None
+    if use_alpha:
+        dalpha = torch.empty_like(alpha, dtype=dld_q.dtype, device=dld_q.device)
+    use_beta = beta is not None
+    if use_beta:
+        dbeta = torch.empty_like(beta, dtype=dld_q.dtype, device=dld_q.device)
+
+    _compute_dld_cumsum_kernel[grid](
+        DLD_Q=dld_q,
+        DLD_K=dld_k,
+        DLD=dld,
+        ALPHA=alpha,
+        BETA=beta,
+        DALPHA=dalpha,
+        DBETA=dbeta,
+        FINAL_STATE=final_state,
+        DFINAL_STATE=dfinal_state,
+        DLD_STATE=dld_state,
+        CU_SEQLENS=cu_seqlens,
+        SUM_OPTION=sum_option,
+        B=b,
+        N=n,
+        H=h,
+        D=d,
+        E=e,
+        F=f,
+        USE_FINAL_STATE=use_final_state,
+        USE_CU_SEQLENS=use_cu_seqlens,
+        USE_ALPHA=use_alpha,
+        USE_BETA=use_beta,
+        BLOCK_D=BLOCK_D,
+        BLOCK_E=BLOCK_E,
+        BLOCK_F=BLOCK_F,
+        NUM_BLOCK_D=NUM_BLOCK_D,
+        NUM_BLOCK_E=NUM_BLOCK_E,
+    )
+
+    return dld, dalpha, dbeta
+
+
 ########## Fwd start ##########
 @contiguous
 def krcl_parallel_fwd(
@@ -402,9 +561,20 @@ def krcl_parallel_bwd(
         dk = dq
         dq = None
 
-    dld = torch.empty_like(ld)
-    dalpha = torch.empty_like(alpha) if alpha is not None else None
-    dbeta = torch.empty_like(beta) if beta is not None else None
+    if ld is not None and ld.requires_grad:
+        dld, dalpha, dbeta = compute_dld(
+            dld_q=dld_q,  # B N H F
+            dld_k=dld_k,  # B N H F
+            final_state=final_state,  # B H D E
+            dfinal_state=dfinal_state,  # B H D E
+            alpha=alpha,
+            beta=beta,
+            cu_seqlens=cu_seqlens,
+            sum_option=-1,
+        )
+    else:
+        dld = None
+
     dinitial_state = (
         torch.empty_like(initial_state) if initial_state is not None else None
     )
