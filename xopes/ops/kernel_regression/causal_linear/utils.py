@@ -108,7 +108,9 @@ def _krcl_parallel_inverse(
             block_shape=(BLOCK_N, 1),
             order=(1, 0),
         )
-        alpha = tl.load(alpha_block_ptr, boundary_check=(0, 1)).to(tl.float32)
+        alpha = tl.load(
+            alpha_block_ptr, boundary_check=(0, 1), padding_option="zero"
+        ).to(tl.float32)
 
     if USE_BETA:
         beta_trans_block_ptr = tl.make_block_ptr(
@@ -119,12 +121,14 @@ def _krcl_parallel_inverse(
             block_shape=(BLOCK_N, 1),
             order=(1, 0),
         )
-        beta = tl.load(beta_trans_block_ptr, boundary_check=(0, 1)).to(tl.float32)
+        beta = tl.load(
+            beta_trans_block_ptr, boundary_check=(0, 1), padding_option="zero"
+        ).to(tl.float32)
 
     for i in range(NUM_BLOCK_D):
-        k = tl.load(k_block_ptr, boundary_check=(0, 1))
+        k = tl.load(k_block_ptr, boundary_check=(0, 1), padding_option="zero")
         if USE_Q:
-            q = tl.load(q_block_ptr, boundary_check=(0, 1))
+            q = tl.load(q_block_ptr, boundary_check=(0, 1), padding_option="zero")
         else:
             q = k
         if USE_ALPHA:
@@ -193,6 +197,7 @@ def _krcl_parallel_chunk_loop(
     BETA,  # B N H
     INITIAL_STATE,  # B H D E
     FINAL_STATE,  # B H D E
+    STATES,  # B H NUM_BLOCK_N + 1 D E
     USE_Q: tl.constexpr,
     USE_ALPHA: tl.constexpr,
     USE_BETA: tl.constexpr,
@@ -205,6 +210,7 @@ def _krcl_parallel_chunk_loop(
     E: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
     REVERSE: tl.constexpr,
+    SAVE_STATES: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_D: tl.constexpr,
     BLOCK_E: tl.constexpr,
@@ -226,12 +232,13 @@ def _krcl_parallel_chunk_loop(
         + off_h * NUM_BLOCK_N * BLOCK_N * BLOCK_N
     )
     offset_state = off_b * H * D * E + off_h * D * E
+    offset_states = off_bh * NUM_BLOCK_N * D * E
     offset_block_e = off_block_e * BLOCK_E
 
     if REVERSE:
         off_block_n = NUM_BLOCK_N - 1
         stride = -1
-        offset_ld_sum = 0
+        offset_ld_sum = (NUM_BLOCK_N - 1) * BLOCK_N
     else:
         off_block_n = 0
         stride = 1
@@ -379,7 +386,7 @@ def _krcl_parallel_chunk_loop(
                 strides=(1, BLOCK_N),
                 offsets=(0, 0),
                 block_shape=(BLOCK_N, BLOCK_N),
-                order=(0, 1),
+                order=(1, 0),
             )
         else:
             inv_block_ptr = tl.make_block_ptr(
@@ -390,6 +397,38 @@ def _krcl_parallel_chunk_loop(
                 block_shape=(BLOCK_N, BLOCK_N),
                 order=(1, 0),
             )
+
+        if SAVE_STATES:
+            states_block_ptr = tl.make_block_ptr(
+                base=STATES + offset_states + (off_block_n + j * stride) * D * E,
+                shape=(D, E),
+                strides=(E, 1),
+                offsets=(0, offset_block_e),
+                block_shape=(BLOCK_D, BLOCK_E),
+                order=(1, 0),
+            )
+
+            tl.store(
+                states_block_ptr,
+                state.to(states_block_ptr.dtype.element_ty),
+                boundary_check=(0, 1),
+            )
+
+            if D > BLOCK_D:
+                states1_block_ptr = tl.make_block_ptr(
+                    base=STATES + offset_states + (off_block_n + j * stride) * D * E,
+                    shape=(D, E),
+                    strides=(E, 1),
+                    offsets=(BLOCK_D, offset_block_e),
+                    block_shape=(BLOCK_D, BLOCK_E),
+                    order=(1, 0),
+                )
+
+                tl.store(
+                    states1_block_ptr,
+                    state1.to(states1_block_ptr.dtype.element_ty),
+                    boundary_check=(0, 1),
+                )
 
         k = tl.load(k_block_ptr, boundary_check=(0, 1), padding_option="zero")
         v = tl.load(v_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -423,7 +462,7 @@ def _krcl_parallel_chunk_loop(
         q = (q * tl.exp(log_decay[:, None])).to(q.dtype)
         k = (k * tl.exp(log_k_decay[:, None])).to(k.dtype)
         k_trans = tl.trans(k)
-        p = tl.dot(q, state)
+        p = tl.dot(q, state.to(q.dtype))
 
         if D > BLOCK_D:
             k1 = tl.load(k1_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -442,10 +481,10 @@ def _krcl_parallel_chunk_loop(
             k1 = (k1 * tl.exp(log_k_decay[:, None])).to(k1.dtype)
             k1_trans = tl.trans(k1)
 
-            p1 = tl.dot(q1, state1)
+            p1 = tl.dot(q1, state1.to(q1.dtype))
             p += p1
 
-        o = tl.dot(inv, v - p)
+        o = tl.dot(inv, (v - p).to(inv.dtype)).to(q.dtype)
 
         state *= tl.exp(log_decay_sum)
         state += tl.dot(k_trans, o)
@@ -493,3 +532,274 @@ def _krcl_parallel_chunk_loop(
             state1.to(final_state1_block_ptr.dtype.element_ty),
             boundary_check=(0, 1),
         )
+
+
+@triton.heuristics(
+    {
+        "MAX_BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+    }
+)
+@triton.autotune(
+    generate_configs(
+        {
+            "num_warps": [4, 8, 16, 32],
+        }
+    ),
+    key=[
+        "B",
+        "MAX_BLOCK_N",
+        "H",
+        "D",
+        "E",
+        "USE_CU_SEQLENS",
+    ],
+)
+@triton.jit
+def _krcl_parallel_intra_inter(
+    Q,  # B N H D
+    K,  # B N H D
+    V,  # B N H E
+    O,  # B N H E
+    ALPHA,  # B N H
+    BETA,  # B N H
+    STATES,  # B H L D E if not trans_states, B H L E D if trans_states
+    LOG_DECAY,  # B N H
+    LOG_DECAY_REVERSE,  # B N H
+    X,  # B N H E
+    DLOG_DECAY,  # B N H NUM_BLOCK_E
+    CU_SEQLENS,  # M
+    USE_Q: tl.constexpr,
+    USE_ALPHA: tl.constexpr,
+    USE_BETA: tl.constexpr,
+    COMPUTE_DQ: tl.constexpr,
+    SHARE_QK: tl.constexpr,
+    B: tl.constexpr,
+    N: tl.constexpr,
+    H: tl.constexpr,
+    D: tl.constexpr,
+    E: tl.constexpr,
+    USE_CU_SEQLENS: tl.constexpr,
+    REVERSE: tl.constexpr,
+    TRANS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_E: tl.constexpr,
+    NUM_BLOCK_N: tl.constexpr,
+    NUM_BLOCK_D: tl.constexpr,
+    NUM_BLOCK_E: tl.constexpr,
+    MAX_BLOCK_N: tl.constexpr,
+):
+    off_bh = tl.program_id(0)
+    off_b = off_bh // H
+    off_h = off_bh % H
+    off_block_n = tl.program_id(1)
+    off_block_e = tl.program_id(2)
+
+    # compute offset
+    offset_qk = off_b * N * H * D + off_h * D
+    offset_vo = off_b * N * H * E + off_h * E
+    offset_ld = off_b * N * H + off_h
+    offset_block_n = off_block_n * BLOCK_N
+    offset_block_n * H * D
+    offset_block_vo = offset_block_n * H * E
+    offset_block_ld = offset_block_n * H
+    offset_block_e = off_block_e * BLOCK_E
+
+    offset_state = off_bh * NUM_BLOCK_N * D * E
+    offset_block_state = off_block_n * D * E
+
+    # compute block ptr and mask
+    tl.arange(0, BLOCK_E)
+    tl.arange(0, BLOCK_D)
+
+    q_block_ptr = tl.make_block_ptr(
+        base=Q + offset_qk,
+        shape=(N, D),
+        strides=(H * D, 1),
+        offsets=(offset_block_n, 0),
+        block_shape=(BLOCK_N, BLOCK_D),
+        order=(1, 0),
+    )
+
+    k_trans_block_ptr = tl.make_block_ptr(
+        base=K + offset_qk,
+        shape=(D, N),
+        strides=(1, H * D),
+        offsets=(0, offset_block_n),
+        block_shape=(BLOCK_D, BLOCK_N),
+        order=(0, 1),
+    )
+
+    v_block_ptr = tl.make_block_ptr(
+        base=V + offset_vo,
+        shape=(N, E),
+        strides=(H * E, 1),
+        offsets=(offset_block_n, offset_block_e),
+        block_shape=(BLOCK_N, BLOCK_E),
+        order=(1, 0),
+    )
+
+    o_block_ptr = tl.make_block_ptr(
+        base=O + offset_vo,
+        shape=(N, E),
+        strides=(H * E, 1),
+        offsets=(offset_block_n, offset_block_e),
+        block_shape=(BLOCK_N, BLOCK_E),
+        order=(1, 0),
+    )
+
+    if TRANS:
+        # if trans_states, the states are stored in the shape of B H L E D, we need to load a block of shape (D, E)
+        state_block_ptr = tl.make_block_ptr(
+            base=STATES + offset_state + offset_block_state,
+            shape=(D, E),
+            strides=(1, D),
+            offsets=(0, offset_block_e),
+            block_shape=(BLOCK_D, BLOCK_E),
+            order=(1, 0),
+        )
+    else:
+        state_block_ptr = tl.make_block_ptr(
+            base=STATES + offset_state + offset_block_state,
+            shape=(D, E),
+            strides=(E, 1),
+            offsets=(0, offset_block_e),
+            block_shape=(BLOCK_D, BLOCK_E),
+            order=(1, 0),
+        )
+
+    if USE_ALPHA:
+        alpha_block_ptr = tl.make_block_ptr(
+            base=ALPHA + offset_ld,
+            shape=(N, 1),
+            strides=(H, 1),
+            offsets=(offset_block_n, 0),
+            block_shape=(BLOCK_N, 1),
+            order=(1, 0),
+        )
+
+    if USE_BETA:
+        beta_trans_block_ptr = tl.make_block_ptr(
+            base=BETA + offset_ld,
+            shape=(N, 1),
+            strides=(H, 1),
+            offsets=(offset_block_n, 0),
+            block_shape=(BLOCK_N, 1),
+            order=(1, 0),
+        )
+
+    if REVERSE:
+        stride = -1
+    else:
+        stride = 1
+
+    # init
+    v = tl.load(v_block_ptr, boundary_check=(0, 1), padding_option="zero")
+    o = tl.zeros((BLOCK_N, BLOCK_E), dtype=tl.float32)
+    if USE_ALPHA:
+        alpha = tl.load(alpha_block_ptr, boundary_check=(0, 1), padding_option="zero")
+    if USE_BETA:
+        beta = tl.load(
+            beta_trans_block_ptr, boundary_check=(0, 1), padding_option="zero"
+        )
+
+    if COMPUTE_DQ:
+        if USE_BETA:
+            v *= beta
+    else:
+        if USE_ALPHA:
+            v *= alpha
+
+    # setup decay
+    array = tl.arange(0, BLOCK_N)
+    mask = (offset_block_n + array) < N
+    ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
+    ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
+    diff = (ld[:, None] - ld[None, :]) * stride  # !!! important
+    if REVERSE:  # triu
+        diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
+    else:  # tril
+        diff = tl.where(array[:, None] > array[None, :], diff, -float("inf"))
+    decay = tl.exp(diff)
+
+    if REVERSE:
+        ldq_sum_block_ptr = LOG_DECAY_REVERSE + offset_ld + offset_block_ld + array * H
+    else:
+        ldq_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
+    ldq = tl.load(ldq_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
+    q_decay = tl.exp(ldq)
+
+    for i in range(NUM_BLOCK_D):
+        q = tl.load(q_block_ptr, boundary_check=(0, 1), padding_option="zero")
+        k_trans = tl.load(
+            k_trans_block_ptr, boundary_check=(0, 1), padding_option="zero"
+        )
+
+        score = tl.dot(q, k_trans)
+        score *= decay
+        o -= tl.dot(score.to(v.dtype), v)
+
+        ##### inter start #####
+        state = tl.load(state_block_ptr, boundary_check=(0, 1), padding_option="zero")
+        o_ = tl.dot(q, state)
+        o_ *= q_decay[:, None]
+        o -= o_
+        ##### inter end #####
+
+        # tl.static_print("ddd", o, state_block_ptr)
+        q_block_ptr = tl.advance(q_block_ptr, (0, BLOCK_D))
+        k_trans_block_ptr = tl.advance(k_trans_block_ptr, (BLOCK_D, 0))
+        state_block_ptr = tl.advance(state_block_ptr, (BLOCK_D, 0))
+
+    # compute dld
+    if USE_Q:
+        x_block_ptr = tl.make_block_ptr(
+            base=X + offset_vo + offset_block_vo,
+            shape=(N, E),
+            strides=(H * E, 1),
+            offsets=(offset_block_n, offset_block_e),
+            block_shape=(BLOCK_N, BLOCK_E),
+            order=(1, 0),
+        )
+        x = tl.load(x_block_ptr, boundary_check=(0, 1), padding_option="zero")
+    else:
+        x = v
+
+    if COMPUTE_DQ:
+        if USE_ALPHA:
+            x *= alpha
+    else:
+        if USE_BETA:
+            x *= beta
+
+    # N D -> N
+    dld = tl.sum(x * o, axis=-1)
+
+    offset_dld = off_b * N * H * NUM_BLOCK_E + off_h * NUM_BLOCK_E
+    offset_block_dld = offset_block_n * H * NUM_BLOCK_E
+    dld_block_ptr = (
+        DLOG_DECAY
+        + offset_dld
+        + offset_block_dld
+        + array * H * NUM_BLOCK_E
+        + off_block_e
+    )
+
+    tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty), mask=mask)
+
+    if COMPUTE_DQ:
+        if USE_ALPHA:
+            o *= alpha
+    else:
+        if USE_BETA:
+            o *= beta
+
+    if SHARE_QK:
+        o_ = tl.load(o_block_ptr, boundary_check=(0, 1), padding_option="zero")
+        o += o_
+
+    tl.store(
+        o_block_ptr,
+        o.to(o_block_ptr.dtype.element_ty),
+        boundary_check=(0, 1),
+    )

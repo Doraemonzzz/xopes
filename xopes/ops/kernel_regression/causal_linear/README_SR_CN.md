@@ -78,7 +78,7 @@ $$
 &= \lambda_{t+1} \mathbf{ds}_{t+1} - \lambda_{t+1}  \mathbf q_{t+1} (\mathbf p_{t+1} + \mathbf {do}_{t+1})^\top \\
 
 &= \lambda_{t+1} \mathbf{ds}_{t+1} - \lambda_{t+1}\mathbf {q}_{t+1} \mathbf {dv}_{t+1}^\top  ,\\
-&t=1,\ldots, n- 1, \\
+t&=1,\ldots, n- 1, \\
 
 \mathbf {ds}_0&=  \lambda_1 (\mathbf I -  \mathbf q_{1} \mathbf k_{1}^\top ) \mathbf {ds}_1 \\
 

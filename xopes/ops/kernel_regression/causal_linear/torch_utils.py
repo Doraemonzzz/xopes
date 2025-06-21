@@ -65,9 +65,6 @@ def krcl_inverse_torch(
         score = torch.exp(diff) * score
         score = torch.where(mask_, 0, score)
 
-        if reverse:
-            score = rearrange(score, "b h n m -> b h m n")
-
         # jacobian method
         b1 = torch.eye(m, device=k.device)
         inv = torch.eye(m, device=k.device)
@@ -75,9 +72,6 @@ def krcl_inverse_torch(
         # C = (I + A) ^ -1, Ck = -A * Ck + I
         for i in range(m):
             inv = torch.einsum("...ij,...jk->...ik", L, inv) + b1
-
-        if reverse:
-            inv = rearrange(inv, "b h m n -> b h n m")
 
         inv_list.append(inv.unsqueeze(2))
 

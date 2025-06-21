@@ -31,9 +31,11 @@ def get_params():
 
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("use_q", [True, False])
+@pytest.mark.parametrize("reverse", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
+@pytest.mark.parametrize("c", [10])  # Scaling factor for log decay
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_krcl(shape, use_q, use_varlen, dtype):
+def test_krcl(shape, use_q, reverse, use_varlen, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     b, n, h, d = shape
@@ -62,6 +64,7 @@ def test_krcl(shape, use_q, use_varlen, dtype):
     ld = F.logsigmoid(
         torch.randn((b, n, h), dtype=dtype, device=device)
     ).requires_grad_()
+
     alpha = (
         F.sigmoid(torch.randn((b, n, h), dtype=dtype, device=device))
     ).requires_grad_()
@@ -79,6 +82,7 @@ def test_krcl(shape, use_q, use_varlen, dtype):
         alpha=alpha.clone(),
         beta=beta.clone(),
         cu_seqlens=cu_seqlens,
+        reverse=reverse,
         BLOCK_N=BLOCK_N,
     )
 
@@ -90,6 +94,7 @@ def test_krcl(shape, use_q, use_varlen, dtype):
         alpha=alpha.clone(),
         beta=beta.clone(),
         cu_seqlens=cu_seqlens,
+        reverse=reverse,
         BLOCK_N=BLOCK_N,
     )
 

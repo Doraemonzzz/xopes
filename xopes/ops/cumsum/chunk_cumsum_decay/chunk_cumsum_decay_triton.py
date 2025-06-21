@@ -34,6 +34,7 @@ def _chunk_cumsum_decay(
     BLOCK_C: tl.constexpr,
     BLOCK_H: tl.constexpr,
     REVERSE: tl.constexpr,  # if True, o[i] = x[n] + x[n-1] + ... + x[n - i + 1]
+    USE_OFFSET: tl.constexpr,
 ):
     off_b = tl.program_id(0)
     off_h = tl.program_id(1)
@@ -49,7 +50,10 @@ def _chunk_cumsum_decay(
         array_o = (
             offset_c + BLOCK_C - 1 - tl.arange(0, BLOCK_C) - (BLOCK_C - C) % BLOCK_C
         )
-        array_x = array_o + 1
+        if USE_OFFSET:
+            array_x = array_o + 1
+        else:
+            array_x = array_o
         mask_o = (array_o >= offset_c) & (array_o < N)
         mask_x = (array_x >= offset_c) & (array_x < N)
     else:
@@ -81,6 +85,7 @@ def chunk_cumsum_decay_triton(
     x: torch.Tensor,
     reverse: bool = False,
     chunk_size: int = 128,
+    use_offset: bool = True,
     **kwargs,
 ) -> torch.Tensor:
     """
@@ -115,6 +120,7 @@ def chunk_cumsum_decay_triton(
         C=chunk_size,
         BLOCK_C=BLOCK_C,
         REVERSE=reverse,
+        USE_OFFSET=use_offset,
     )
 
     return o

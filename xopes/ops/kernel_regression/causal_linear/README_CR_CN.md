@@ -187,13 +187,9 @@ $$
 那么可以恢复成并行版本：
 $$
 \begin{aligned}
-\mathbf {dQ} +  \mathrm{tril}([\mathbf {dV} \mathbf O^\top ]\odot \mathbf M)   \mathbf K &= \mathbf 0, \\
-(\mathbf I + \mathrm{tril}([\mathbf {dV} \mathbf O^\top ]\odot \mathbf M)  ) \mathbf K &= \mathbf {dQ}  + \mathbf {K}.
+\mathbf {dQ} +  \mathrm{tril}([\mathbf {dV} \mathbf O^\top ]\odot \mathbf M, -1)   \mathbf K &= \mathbf 0, \\
+\mathbf {dQ}= -\mathrm{tril}([\mathbf {dV} \mathbf O^\top ]\odot \mathbf M, -1)   \mathbf K.
 \end{aligned}
-$$
-那么：
-$$
-\mathbf {dQ}= f(\mathbf {dV}, \mathbf O, \mathbf K, \Lambda)-\mathbf {K}。
 $$
 
 
@@ -205,7 +201,7 @@ $$
 $$
 那么可以恢复成并行版本：
 $$
-\mathbf {dK} = -\mathrm{triu}([\mathbf O \mathbf Q^\top]\odot \mathbf M, -1) \mathbf {dV}.
+\mathbf {dK} = -\mathrm{triu}([\mathbf O \mathbf {dV}^\top]\odot \mathbf M^\top, -1) \mathbf {Q}.
 $$
 
 
@@ -223,8 +219,8 @@ $$
 那么可以恢复成并行版本：
 $$
 \begin{aligned}
-\mathbf {dV} - \mathbf {dO} & = -\mathrm{triu}([\mathbf K \mathbf Q^\top]\odot \mathbf M, -1) \mathbf {dV}, \\
-(\mathbf I + \mathrm{triu}([\mathbf K \mathbf Q^\top]\odot \mathbf M, -1)) \mathbf {dV} & = \mathbf {dO}.
+\mathbf {dV} - \mathbf {dO} & = -\mathrm{triu}([\mathbf K \mathbf Q^\top]\odot \mathbf M^\top, -1) \mathbf {dV}, \\
+(\mathbf I + \mathrm{triu}([\mathbf K \mathbf Q^\top]\odot \mathbf M^\top, -1)) \mathbf {dV} & = \mathbf {dO}.
 
 \end{aligned}
 $$

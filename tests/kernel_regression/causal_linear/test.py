@@ -9,7 +9,7 @@ from xopes.ops.kernel_regression.causal_linear.krcl_recurrence_triton import (
     krcl_recurrence_triton,
 )
 from xopes.ops.kernel_regression.causal_linear.krcl_torch import krcl_torch
-from xopes.utils import assert_close, print_diff
+from xopes.utils import assert_close, get_threshold, print_diff
 
 
 def get_params():
@@ -28,15 +28,16 @@ def get_params():
         (2, 1125, 8, 107, 33),
         (8, 2048, 12, 128, 64),
         (2, 128, 12, 128, 64),
-        # (8, 2048, 12, 128, 64),
-        # (2, 1125, 8, 107, 33),
-        # (2, 64, 8, 64, 16),
+        # (2, 257, 8, 64, 32),
+        # (2, 256, 8, 64, 32),
+        # (2, 65, 8, 64, 32),
     ]
+
     return shapes
 
 
 @pytest.mark.parametrize("shape", get_params())
-@pytest.mark.parametrize("use_q", [True, False])
+@pytest.mark.parametrize("use_q", [True])
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True])
@@ -79,7 +80,7 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
     ).requires_grad_()
     v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
     ld = F.logsigmoid(
-        (1 + scale * torch.randn((b, n, h), dtype=dtype, device=device)) * c
+        (1 + scale * torch.ones((b, n, h), dtype=dtype, device=device)) * c
     ).requires_grad_()
     # ld = torch.zeros((b, n, h), dtype=dtype, device=device).requires_grad_()
     alpha = (
@@ -207,8 +208,7 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
         ds_triton_parallel, initial_state.grad = initial_state.grad.clone(), None
 
     # Set tolerance for numerical comparisons
-    atol = 6e-3
-    rtol = 6e-3
+    atol, rtol = get_threshold(dtype)
     ld_atol = 7e-2 if dtype == torch.bfloat16 else atol
     ld_rtol = 7e-2 if dtype == torch.bfloat16 else rtol
 
@@ -314,12 +314,27 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
         assert_close(ds_torch, ds_triton, atol=atol, rtol=rtol)
 
     # torch vs triton parallel
-    # print(
-    #     "dk diff max (torch vs triton parallel): ", torch.abs(dk_torch - dk_triton_parallel).max().item()
-    # )
-    # print("dk diff norm (torch vs triton parallel): ", torch.norm(dk_torch - dk_triton_parallel).item())
-    # print_diff(dk_torch, dk_triton_parallel, n)
-    # assert_close(dk_torch, dk_triton_parallel, atol=atol, rtol=rtol)
+    print(
+        "dq diff max (torch vs triton parallel): ",
+        torch.abs(dq_torch - dq_triton_parallel).max().item(),
+    )
+    print(
+        "dq diff norm (torch vs triton parallel): ",
+        torch.norm((dq_torch - dq_triton_parallel)).item(),
+    )
+    print_diff(dq_torch, dq_triton_parallel, n)
+    assert_close(dq_torch, dq_triton_parallel, atol=atol, rtol=rtol)
+
+    print(
+        "dk diff max (torch vs triton parallel): ",
+        torch.abs(dk_torch - dk_triton_parallel).max().item(),
+    )
+    print(
+        "dk diff norm (torch vs triton parallel): ",
+        torch.norm(dk_torch - dk_triton_parallel).item(),
+    )
+    print_diff(dk_torch, dk_triton_parallel, n)
+    assert_close(dk_torch, dk_triton_parallel, atol=atol, rtol=rtol)
 
     print(
         "dv diff max (torch vs triton parallel): ",

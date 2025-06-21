@@ -53,5 +53,8 @@ def chunk_cumsum_decay_fn(
     x: torch.Tensor,
     reverse: bool = False,
     chunk_size: int = 128,
+    use_offset: bool = True,
 ):
-    return chunk_cumsum_decay_triton(x=x, reverse=reverse, chunk_size=chunk_size)
+    return chunk_cumsum_decay_triton(
+        x=x, reverse=reverse, chunk_size=chunk_size, use_offset=use_offset
+    )
