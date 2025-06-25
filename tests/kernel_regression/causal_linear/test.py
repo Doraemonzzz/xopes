@@ -71,6 +71,7 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
     ld = F.logsigmoid(
         (1 + scale * torch.ones((b, n, h), dtype=dtype, device=device)) * c
     ).requires_grad_()
+    # ld = torch.zeros_like(ld).requires_grad_()
     alpha = (
         torch.exp(
             F.logsigmoid(

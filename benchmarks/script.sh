@@ -90,12 +90,15 @@ folder=lightning_attention
 # ##### inverse 250504
 # folder=inverse
 
-##### poly_attn 250611
-folder=poly_attn
+# ##### poly_attn 250611
+# folder=poly_attn
+
+# ##### kernel_regression 250624
+folder=kernel_regression
 
 mkdir -p $folder/log
 
 export CUDA_VISIBLE_DEVICES=0
-export CUDA_VISIBLE_DEVICES=1
+# export CUDA_VISIBLE_DEVICES=1
 
 python $folder/${file}.py  2>&1 | tee -a $folder/log/${date}.log

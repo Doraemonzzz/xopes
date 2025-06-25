@@ -7,12 +7,15 @@ import torch.nn.functional as F
 import triton
 from einops import rearrange
 
+from xopes.ops.kernel_regression.causal_linear import krcl_parallel_triton
 from xopes.ops.lightning_attn.baseline import (
     chunk_gla_wrapper,
     chunk_hgrn_fla_wrapper,
     chunk_linear_attn_wrapper,
     chunk_simple_gla_wrapper,
+    delta_rule_wrapper,
     flash_attn_wrapper,
+    gated_delta_rule_wrapper,
     lightning_attn_no_decay_wrapper,
     lightning_attn_wrapper,
     mamba2_wrapper,
@@ -113,6 +116,26 @@ def mlstm(q, k, v, **kwargs):
     return mlstm_wrapper(q, k, v, i=kwargs["i"], ld3=kwargs["ld3"])[0]
 
 
+def delta_rule(q, k, v, **kwargs):
+    return delta_rule_wrapper(q, k, v, beta=kwargs["beta"])[0]
+
+
+def gated_delta_rule(q, k, v, **kwargs):
+    return gated_delta_rule_wrapper(q, k, v, ld3=kwargs["ld3"], beta=kwargs["beta"])[0]
+
+
+def krcl(q, k, v, **kwargs):
+    return krcl_parallel_triton(
+        q=None,
+        k=k,
+        v=v,
+        ld=kwargs["ld3"],
+        alpha=kwargs["alpha"],
+        beta=kwargs["beta"],
+        BLOCK_N=64,
+    )[0]
+
+
 module_map = {
     "lacd_r": lacd_recurrence,
     "lacd_p": lacd_parallel,
@@ -133,13 +156,19 @@ module_map = {
     "fla_linear": chunk_linear_attn,
     "mamba2": mamba2,
     "mlstm": mlstm,
+    "krcl": krcl,
+    "delta_rule": delta_rule,
+    "gated_delta_rule": gated_delta_rule,
 }
 
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        # x_vals=[2**i for i in range(8, 17)],
-        x_vals=[2**i for i in range(8, 11)],
+        x_vals=[2**i for i in range(8, 17)],
+        # x_vals=[2**i for i in range(8, 11)],
+        # x_vals=[2**i for i in range(9, 10)],
+        # x_vals=[2**i for i in range(10, 13)],
+        # x_vals=[2**i for i in range(10, 12)],
         # x_vals=[2**i for i in range(8, 18)],
         # x_vals=[2**i for i in range(17, 18)],
         xlabel="Sequence Length",
@@ -150,38 +179,44 @@ configs = [
             # "lacd_p",
             # "land_p",
             # "lacd_pl",
-            # "lasd_p",
-            "lavd_k_p",
+            "lasd_p",
+            # "lavd_k_p",
             # "lavd_kv_p",
             # "laer_r",
             # "laer_p",
             # "flash",
             # "lightning_p",
             # "lightning_c",
-            "gla_k",
+            # "gla_k",
             # "gla_s_k",
             # "fla_laer",
             # "mamba2",
             # "mlstm",
+            "krcl",
+            "delta_rule",
+            "gated_delta_rule",
         ],
         line_names=[
             # "LACD_R",
             # "LACD_P",
             # "LAND_P",
             # "LACD_PL",
-            # "LASD_P",
-            "LAVD_K_P",
+            "LASD_P",
+            # "LAVD_K_P",
             # "LAVD_KV_P",
             # "LAER_R",
             # "LAER_P",
             # "Flash",
             # "LP",
             # "LC",
-            "GLA_K",
+            # "GLA_K",
             # "GLA_S_K",
             # "FLA_LAER",
             # "MAMBA2",
             # "MLSTM",
+            "KRCL",
+            "DR",
+            "GDR",
         ],
         styles=[
             ("red", "-"),
@@ -201,6 +236,18 @@ configs = [
             ("black", "-"),
             ("red", "--"),
             ("blue", "--"),
+            ("green", "--"),
+            ("orange", "--"),
+            ("purple", "--"),
+            ("pink", "--"),
+            ("yellow", "--"),
+            ("cyan", "--"),
+            ("brown", "--"),
+            ("magenta", "--"),
+            ("gray", "--"),
+            ("lime", "--"),
+            ("olive", "--"),
+            ("teal", "--"),
         ],
         plot_name=f"la-{bench_type}-{mode}-batch{b}-head{h}-dim{d}-{dtype_name}",
         args={
@@ -249,8 +296,12 @@ def benchmark(
         shape = (b, n, h, d)
     else:
         shape = (b, n, h * d)
-    q = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
-    k = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
+    q = F.normalize(
+        torch.randn(shape, dtype=dtype, device=device), dim=-1
+    ).requires_grad_()
+    k = F.normalize(
+        torch.randn(shape, dtype=dtype, device=device), dim=-1
+    ).requires_grad_()
     v = torch.randn(shape, dtype=dtype, device=device).requires_grad_()
     if provider == "lacd_pl":
         ld = F.logsigmoid(torch.randn(h, dtype=dtype, device=device)).requires_grad_()
@@ -268,6 +319,9 @@ def benchmark(
         torch.randn(b, n, h, dtype=dtype, device=device)
     ).requires_grad_()
     A = torch.randn(h, dtype=dtype, device=device).requires_grad_()
+    # for kernel regression
+    alpha = torch.randn(b, n, h, dtype=dtype, device=device).requires_grad_()
+    beta = torch.randn(b, n, h, dtype=dtype, device=device).requires_grad_()
 
     module = module_map[provider]
 
@@ -279,7 +333,20 @@ def benchmark(
         i, ld3 = map(lambda x: rearrange(x, "b n h -> b h n"), (i, ld3))
 
     try:
-        fn = lambda: module(q, k, v, ld=ld, ld3=ld3, ldk=ldk, ldv=ldv, dt=dt, A=A, i=i)
+        fn = lambda: module(
+            q,
+            k,
+            v,
+            ld=ld,
+            ld3=ld3,
+            ldk=ldk,
+            ldv=ldv,
+            dt=dt,
+            A=A,
+            i=i,
+            alpha=alpha,
+            beta=beta,
+        )
     except Exception as e:
         print(f"Error setting up {provider}: {e}")
         fn = None
@@ -294,11 +361,13 @@ def benchmark(
             fn = None
 
     if bench_type == "speed":
-        try:
-            ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-        except Exception as e:
-            print(f"Error setting up {provider}: {e}")
-            ms = -1
+        # try:
+        #     ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        # except Exception as e:
+        #     print(f"Error setting up {provider}: {e}")
+        #     ms = -1
+
+        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
 
         return ms
     else:

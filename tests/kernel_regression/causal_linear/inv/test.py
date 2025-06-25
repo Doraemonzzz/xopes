@@ -33,7 +33,7 @@ def get_params():
 @pytest.mark.parametrize("use_q", [True, False])
 @pytest.mark.parametrize("reverse", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
-@pytest.mark.parametrize("c", [10])  # Scaling factor for log decay
+@pytest.mark.parametrize("c", [0.1, 10])  # Scaling factor for log decay
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_krcl(shape, use_q, reverse, use_varlen, c, dtype):
     torch.manual_seed(2024)
@@ -108,6 +108,25 @@ def test_krcl(shape, use_q, reverse, use_varlen, c, dtype):
     print("o diff max (torch vs triton): ", torch.abs(o_torch - o_triton).max().item())
     print("o diff norm (torch vs triton): ", torch.norm(o_torch - o_triton).item())
     m = o_torch.shape[2]
+    print(o_torch[0, 0, 0, :4, :4])
     for i in range(m):
         print(i, torch.norm(o_torch[:, :, i] - o_triton[:, :, i]).item())
+        l = o_torch[:, :, i].shape[-1]
+        for j in range(4):
+            k = l // 4
+            start = j * k
+            end = (j + 1) * k
+            print(
+                i,
+                j,
+                torch.norm(
+                    o_torch[:, :, i, start:end] - o_triton[:, :, i, start:end]
+                ).item(),
+                torch.norm(
+                    o_torch[:, :, i, start:end, :k] - o_triton[:, :, i, start:end, :k]
+                ).item(),
+                torch.norm(
+                    o_torch[:, :, i, start:end, k:] - o_triton[:, :, i, start:end, k:]
+                ).item(),
+            )
     assert_close(o_torch, o_triton, atol=atol, rtol=rtol)

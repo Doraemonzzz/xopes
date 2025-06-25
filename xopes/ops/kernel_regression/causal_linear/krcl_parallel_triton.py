@@ -1,4 +1,5 @@
 # krcl: kernel regression with causal linear
+import math
 from typing import Optional, Tuple
 
 import torch
@@ -10,7 +11,9 @@ from xopes.ops.kernel_regression.causal_linear.utils import (
     _compute_dld_cumsum_kernel,
     _krcl_parallel_chunk_loop,
     _krcl_parallel_intra_inter,
-    _krcl_parallel_inverse,
+    _krcl_parallel_inverse_attention,
+    _krcl_parallel_inverse_diag,
+    _krcl_parallel_inverse_merge,
 )
 from xopes.ops.lightning_attn.log_decay.log_decay_with_cumsum.dld_with_cumsum_triton import (
     _compute_dld_state,
@@ -42,22 +45,24 @@ def krcl_parallel_inverse(
     use_beta = beta is not None
 
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
-    inv = torch.empty(
-        (b, h, NUM_BLOCK_N, BLOCK_N, BLOCK_N), device=k.device, dtype=k.dtype
+    attention = torch.empty(
+        (b, h, NUM_BLOCK_N, BLOCK_N, BLOCK_N), device=k.device, dtype=torch.float16
     )
-
-    def grid(meta):
-        return (b, h, NUM_BLOCK_N)
+    NUM_BLOCK_M = 4
+    BLOCK_M = BLOCK_N // NUM_BLOCK_M
 
     if ld_cumsum is None:
         ld_cumsum = chunk_cumsum_decay_fn(
             ld, reverse=reverse, chunk_size=BLOCK_N, use_offset=False
         )
 
-    _krcl_parallel_inverse[grid](
+    def grid(meta):
+        return (b, h, NUM_BLOCK_N)
+
+    _krcl_parallel_inverse_attention[grid](
         Q=q,
         K=k,
-        INV=inv,
+        ATTENTION=attention,
         LOG_DECAY=ld_cumsum,
         ALPHA=alpha,
         BETA=beta,
@@ -73,6 +78,66 @@ def krcl_parallel_inverse(
         REVERSE=reverse,
         BLOCK_N=BLOCK_N,
         NUM_BLOCK_N=NUM_BLOCK_N,
+    )
+
+    inv = torch.zeros(
+        (b, h, NUM_BLOCK_N, BLOCK_N, BLOCK_N), device=k.device, dtype=k.dtype
+    )
+
+    def grid(meta):
+        return (b * h, NUM_BLOCK_N, NUM_BLOCK_M)
+
+    _krcl_parallel_inverse_diag[grid](
+        Q=q,
+        K=k,
+        ATTENTION=attention,
+        INV=inv,
+        LOG_DECAY=ld_cumsum,
+        ALPHA=alpha,
+        BETA=beta,
+        USE_Q=use_q,
+        USE_ALPHA=use_alpha,
+        USE_BETA=use_beta,
+        B=b,
+        N=n,
+        H=h,
+        D=d,
+        CU_SEQLENS=cu_seqlens,
+        USE_CU_SEQLENS=use_cu_seqlens,
+        REVERSE=reverse,
+        BLOCK_N=BLOCK_N,
+        BLOCK_M=BLOCK_M,
+        NUM_LOOP_M=int(math.log2(BLOCK_M)),
+        NUM_BLOCK_N=NUM_BLOCK_N,
+        USE_ATTENTION=True,
+    )
+
+    def grid(meta):
+        return (b, h, NUM_BLOCK_N)
+
+    _krcl_parallel_inverse_merge[grid](
+        Q=q,
+        K=k,
+        ATTENTION=attention,
+        INV=inv,
+        LOG_DECAY=ld_cumsum,
+        ALPHA=alpha,
+        BETA=beta,
+        USE_Q=use_q,
+        USE_ALPHA=use_alpha,
+        USE_BETA=use_beta,
+        B=b,
+        N=n,
+        H=h,
+        D=d,
+        CU_SEQLENS=cu_seqlens,
+        USE_CU_SEQLENS=use_cu_seqlens,
+        REVERSE=reverse,
+        BLOCK_N=BLOCK_N,
+        BLOCK_M=BLOCK_M,
+        NUM_BLOCK_N=NUM_BLOCK_N,
+        NUM_BLOCK_M=NUM_BLOCK_M,
+        USE_ATTENTION=True,
     )
 
     return inv
@@ -93,6 +158,7 @@ def krcl_parallel_chunk_loop(
     reverse: bool = False,
     save_states: bool = False,
     BLOCK_N: int = 128,
+    state_stride: int = 2,
     **kwargs,
 ):
     b, n, h, d = k.shape
@@ -107,10 +173,12 @@ def krcl_parallel_chunk_loop(
     use_initial_state = initial_state is not None
     use_pad = n % BLOCK_N != 0
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
+    BLOCK_STATE = BLOCK_N * state_stride
+    NUM_STATES = triton.cdiv(n, BLOCK_STATE)
 
     o = torch.empty((b, n, h, e), device=k.device, dtype=k.dtype)
     if save_states:
-        states = torch.empty((b, h, NUM_BLOCK_N, d, e), dtype=k.dtype, device=k.device)
+        states = torch.empty((b, h, NUM_STATES, d, e), dtype=k.dtype, device=k.device)
     else:
         states = None
     final_state = torch.empty((b, h, d, e), device=k.device, dtype=k.dtype)
@@ -148,8 +216,10 @@ def krcl_parallel_chunk_loop(
         USE_PAD=use_pad,
         REVERSE=reverse,
         SAVE_STATES=save_states,
+        STATE_STRIDE=state_stride,
         BLOCK_N=BLOCK_N,
         NUM_BLOCK_N=NUM_BLOCK_N,
+        NUM_STATES=NUM_STATES,
     )
 
     return o, states, final_state
@@ -188,6 +258,8 @@ def krcl_parallel_intra_inter(
     initial_state is not None
     use_pad = n % BLOCK_N != 0
     NUM_BLOCK_N = triton.cdiv(n, BLOCK_N)
+    MAX_BLOCK_D = triton.next_power_of_2(d)
+    MAX_BLOCK_E = triton.next_power_of_2(e)
 
     if XOPES_DEBUG:
         BLOCK_D = 32
@@ -474,6 +546,7 @@ def krcl_parallel_bwd(
     dfinal_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     BLOCK_N: int = 128,
+    state_stride: int = 2,
     **kwargs,
 ):
     ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=False, chunk_size=BLOCK_N)
@@ -495,6 +568,7 @@ def krcl_parallel_bwd(
         reverse=False,
         save_states=True,
         BLOCK_N=BLOCK_N,
+        state_stride=state_stride,
     )
 
     dv, dstates, _ = krcl_parallel_chunk_loop(
@@ -511,13 +585,21 @@ def krcl_parallel_bwd(
         reverse=True,
         save_states=True,
         BLOCK_N=BLOCK_N,
+        state_stride=state_stride,
+    )
+
+    ld_cumsum = chunk_cumsum_decay_fn(
+        ld, reverse=False, chunk_size=BLOCK_N * state_stride
+    )
+    ld_reverse_cumsum = chunk_cumsum_decay_fn(
+        ld, reverse=True, chunk_size=BLOCK_N * state_stride, use_offset=True
     )
 
     use_q = q is not None
     dk, dld_k = krcl_parallel_intra_inter(
         q=o,
         k=dv,
-        v=q,
+        v=q if q is not None else k,
         states=dstates,
         ld=ld,
         ld_cumsum=ld_cumsum,
@@ -532,7 +614,7 @@ def krcl_parallel_bwd(
         share_qk=False,
         reverse=True,
         trans=True,
-        BLOCK_N=BLOCK_N,
+        BLOCK_N=BLOCK_N * state_stride,
     )
 
     dq, dld_q = krcl_parallel_intra_inter(
@@ -554,7 +636,7 @@ def krcl_parallel_bwd(
         share_qk=q is None,
         reverse=False,
         trans=True,
-        BLOCK_N=BLOCK_N,
+        BLOCK_N=BLOCK_N * state_stride,
     )
 
     if not use_q:

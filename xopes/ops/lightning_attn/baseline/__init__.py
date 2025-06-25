@@ -45,6 +45,16 @@ try:
 except:
     mlstm_chunkwise__xl_chunk = lambda x: None
 
+try:
+    from fla.ops.delta_rule import chunk_delta_rule
+except:
+    chunk_delta_rule = lambda x: None
+
+try:
+    from fla.ops.gated_delta_rule import chunk_gated_delta_rule
+except:
+    chunk_gated_delta_rule = lambda x: None
+
 from xopes.ops.cumsum import chunk_cumsum_decay_fn
 
 
@@ -176,6 +186,31 @@ def mlstm_wrapper(q, k, v, **kwargs):
         f=kwargs["ld3"],
         return_last_states=False,
         chunk_size=256,
+    )
+
+    return o
+
+
+def delta_rule_wrapper(q, k, v, **kwargs):
+    o = chunk_delta_rule(
+        q=q,
+        k=k,
+        v=v,
+        beta=kwargs["beta"],
+        output_final_state=True,
+    )
+
+    return o
+
+
+def gated_delta_rule_wrapper(q, k, v, **kwargs):
+    o = chunk_gated_delta_rule(
+        q=q,
+        k=k,
+        v=v,
+        g=kwargs["ld3"],
+        beta=kwargs["beta"],
+        output_final_state=True,
     )
 
     return o

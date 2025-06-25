@@ -2,13 +2,10 @@ from typing import Optional, Tuple
 
 import torch
 
-from .krcl_parallel_triton import krcl_parallel_triton
-from .krcl_recurrence_triton import krcl_recurrence_triton
-from .krcl_torch import krcl_torch
-from .torch_utils import krcl_inverse_torch
+from .causal_linear import krcl_fn
 
 
-def krcl_fn(
+def kernel_regression_fn(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -18,10 +15,11 @@ def krcl_fn(
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
     BLOCK_N: int = 128,
+    kernel_type: str = "causal_linear",
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Apply Kernel Regression with Causal Linear in Pytorch.
+    Apply Kernel Regressionin Pytorch.
 
     Args:
         q: Query tensor of shape (B, N, H, D)
@@ -33,15 +31,16 @@ def krcl_fn(
         initial_state: Initial state tensor of shape (B, H, D, E)
         cu_seqlens: Cumulative sequence lengths tensor, this is used for varlen training
         BLOCK_N: Block size for parallelization
+        kernel_type: Kernel type, one of "causal_linear"
 
     Returns:
         o: Tensor of shape (B, N, H, E)
         state: Tensor of shape (B, H, D, E)
     """
-    if q.shape[1] > 1:
-        fn = krcl_parallel_triton
+    if kernel_type == "causal_linear":
+        fn = krcl_fn
     else:
-        fn = krcl_recurrence_triton
+        raise ValueError(f"Kernel type {kernel_type} not supported")
 
     return fn(
         q=q,
