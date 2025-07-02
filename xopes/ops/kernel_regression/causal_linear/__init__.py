@@ -17,7 +17,7 @@ def krcl_fn(
     beta: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
-    BLOCK_N: int = 128,
+    BLOCK_N: int = 64,
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -38,7 +38,7 @@ def krcl_fn(
         o: Tensor of shape (B, N, H, E)
         state: Tensor of shape (B, H, D, E)
     """
-    if q.shape[1] > 1:
+    if k.shape[1] > 1:
         fn = krcl_parallel_triton
     else:
         fn = krcl_recurrence_triton

@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from xopes.ops.implicit_attn.inverse_attn import ilav_torch
+from xopes.ops.kernel_regression.causal_linear.krcl_torch import krcl_torch
 from xopes.ops.lightning_attn.delta_decay import ladd_torch
 from xopes.ops.lightning_attn.scalar_decay import lasd_torch
 from xopes.utils import assert_close
@@ -21,6 +22,19 @@ def ladd_composed_torch(
     **kwargs,
 ):
     v_, state1 = ilav_torch(k, k * beta.unsqueeze(-1), v, ld, normalize=False)
+    o, state2 = lasd_torch(q, k * beta.unsqueeze(-1), v_, ld)
+
+    return o, state2
+
+
+def krcl_composed_torch(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    ld: torch.Tensor,
+    beta: torch.Tensor,
+):
+    v_, state1 = krcl_torch(None, k, v, ld, beta=beta)
     o, state2 = lasd_torch(q, k * beta.unsqueeze(-1), v_, ld)
 
     return o, state2
@@ -163,6 +177,14 @@ def test_lasd(
         beta=beta.clone(),
     )
 
+    o_comp_krcl, s_comp_krcl = krcl_composed_torch(
+        q=q.clone(),
+        k=k.clone(),
+        v=v.clone(),
+        ld=ld.clone(),
+        beta=beta.clone(),
+    )
+
     # inverse
     v_inv, s_inv = ilav_torch(
         q=k.clone(),
@@ -196,6 +218,16 @@ def test_lasd(
         torch.norm(o_torch - o_comp).item(),
     )
     assert_close(o_torch, o_comp, atol=atol, rtol=rtol)
+
+    print(
+        "o diff max (torch vs composed krcl): ",
+        torch.abs(o_torch - o_comp_krcl).max().item(),
+    )
+    print(
+        "o diff norm (torch vs composed krcl): ",
+        torch.norm(o_torch - o_comp_krcl).item(),
+    )
+    assert_close(o_torch, o_comp_krcl, atol=atol, rtol=rtol)
 
     print(
         "v diff max (inv vs delta): ",

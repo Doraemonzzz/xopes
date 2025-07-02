@@ -8,6 +8,8 @@ from xopes.ops.inverse.jacobian.inverse_jacobian_triton import inverse_jacobian_
 from xopes.ops.inverse.utils import construct_lower_triangular_matrix
 from xopes.utils import get_threshold
 
+# !!! important, the torch version use jacobian iteration, triton version use forward substitution, so the result is different
+
 
 def get_params():
     # Test with different matrix sizes

@@ -164,11 +164,11 @@ module_map = {
 configs = [
     triton.testing.Benchmark(
         x_names=["n"],
-        x_vals=[2**i for i in range(8, 17)],
+        # x_vals=[2**i for i in range(8, 17)],
         # x_vals=[2**i for i in range(8, 11)],
         # x_vals=[2**i for i in range(9, 10)],
         # x_vals=[2**i for i in range(10, 13)],
-        # x_vals=[2**i for i in range(10, 12)],
+        x_vals=[2**i for i in range(10, 11)],
         # x_vals=[2**i for i in range(8, 18)],
         # x_vals=[2**i for i in range(17, 18)],
         xlabel="Sequence Length",
@@ -262,7 +262,7 @@ configs = [
     )
     for bench_type in [
         "speed",
-        "memory",
+        # "memory",
     ]
     for mode in [
         "fwd",
@@ -361,13 +361,11 @@ def benchmark(
             fn = None
 
     if bench_type == "speed":
-        # try:
-        #     ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-        # except Exception as e:
-        #     print(f"Error setting up {provider}: {e}")
-        #     ms = -1
-
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        try:
+            ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        except Exception as e:
+            print(f"Error setting up {provider}: {e}")
+            ms = -1
 
         return ms
     else:

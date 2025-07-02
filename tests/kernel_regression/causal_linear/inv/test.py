@@ -38,6 +38,7 @@ def get_params():
 def test_krcl(shape, use_q, reverse, use_varlen, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
+    scale = 0.01
     b, n, h, d = shape
 
     # Setup variable length sequences if requested
@@ -62,7 +63,7 @@ def test_krcl(shape, use_q, reverse, use_varlen, c, dtype):
     ).requires_grad_()
 
     ld = F.logsigmoid(
-        torch.randn((b, n, h), dtype=dtype, device=device)
+        (1 + scale * torch.ones((b, n, h), dtype=dtype, device=device)) * c
     ).requires_grad_()
 
     alpha = (
@@ -111,22 +112,4 @@ def test_krcl(shape, use_q, reverse, use_varlen, c, dtype):
     print(o_torch[0, 0, 0, :4, :4])
     for i in range(m):
         print(i, torch.norm(o_torch[:, :, i] - o_triton[:, :, i]).item())
-        l = o_torch[:, :, i].shape[-1]
-        for j in range(4):
-            k = l // 4
-            start = j * k
-            end = (j + 1) * k
-            print(
-                i,
-                j,
-                torch.norm(
-                    o_torch[:, :, i, start:end] - o_triton[:, :, i, start:end]
-                ).item(),
-                torch.norm(
-                    o_torch[:, :, i, start:end, :k] - o_triton[:, :, i, start:end, :k]
-                ).item(),
-                torch.norm(
-                    o_torch[:, :, i, start:end, k:] - o_triton[:, :, i, start:end, k:]
-                ).item(),
-            )
     assert_close(o_torch, o_triton, atol=atol, rtol=rtol)

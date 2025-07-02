@@ -94,7 +94,7 @@ folder=lightning_attention
 # folder=poly_attn
 
 # ##### kernel_regression 250624
-folder=kernel_regression
+# folder=kernel_regression
 
 mkdir -p $folder/log
 

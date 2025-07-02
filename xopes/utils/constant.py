@@ -11,7 +11,7 @@ MIN_BLOCK = 16
 THRESHOLD_DICT = {
     torch.float32: [1e-2, 1e-2],
     torch.float16: [5e-2, 1e-2],
-    torch.bfloat16: [2e-1, 2e-1],
+    torch.bfloat16: [5e-2, 5e-2],
 }
 
 ACT_SET = set(

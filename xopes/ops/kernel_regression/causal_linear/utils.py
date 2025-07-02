@@ -117,7 +117,7 @@ def _krcl_parallel_inverse(
             )
             alpha = tl.load(
                 alpha_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
         if USE_BETA:
             beta_trans_block_ptr = tl.make_block_ptr(
@@ -130,7 +130,7 @@ def _krcl_parallel_inverse(
             )
             beta = tl.load(
                 beta_trans_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
         for i in range(NUM_BLOCK_D):
             k = tl.load(k_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -279,11 +279,11 @@ def _krcl_parallel_inverse(
 
             alpha1 = tl.load(
                 alpha1_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
             alpha2 = tl.load(
                 alpha2_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
         if USE_BETA:
             beta1_block_ptr = tl.make_block_ptr(
@@ -310,11 +310,11 @@ def _krcl_parallel_inverse(
 
             beta1 = tl.load(
                 beta1_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
             beta2 = tl.load(
                 beta2_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
         for i in range(NUM_BLOCK_D):
             k1 = tl.load(k1_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -327,12 +327,12 @@ def _krcl_parallel_inverse(
                 q2 = k2
 
             if USE_ALPHA:
-                q1 = q1 * alpha1
-                q2 = q2 * alpha2
+                q1 = (q1 * alpha1).to(q1.dtype)
+                q2 = (q2 * alpha2).to(q2.dtype)
 
             if USE_BETA:
-                k1 = k1 * beta1
-                k2 = k2 * beta2
+                k1 = (k1 * beta1).to(k1.dtype)
+                k2 = (k2 * beta2).to(k2.dtype)
 
             k1_trans = tl.trans(k1)
             k2_trans = tl.trans(k2)
@@ -705,19 +705,19 @@ def _krcl_parallel_inverse(
 
             alpha1 = tl.load(
                 alpha1_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
             alpha2 = tl.load(
                 alpha2_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
             alpha3 = tl.load(
                 alpha3_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
             alpha4 = tl.load(
                 alpha4_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
         if USE_BETA:
             beta1_block_ptr = tl.make_block_ptr(
@@ -766,19 +766,19 @@ def _krcl_parallel_inverse(
 
             beta1 = tl.load(
                 beta1_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
             beta2 = tl.load(
                 beta2_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
             beta3 = tl.load(
                 beta3_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
             beta4 = tl.load(
                 beta4_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
         for i in range(NUM_BLOCK_D):
             k1 = tl.load(k1_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -797,16 +797,16 @@ def _krcl_parallel_inverse(
                 q4 = k4
 
             if USE_ALPHA:
-                q1 = q1 * alpha1
-                q2 = q2 * alpha2
-                q3 = q3 * alpha3
-                q4 = q4 * alpha4
+                q1 = (q1 * alpha1).to(q1.dtype)
+                q2 = (q2 * alpha2).to(q2.dtype)
+                q3 = (q3 * alpha3).to(q3.dtype)
+                q4 = (q4 * alpha4).to(q4.dtype)
 
             if USE_BETA:
-                k1 = k1 * beta1
-                k2 = k2 * beta2
-                k3 = k3 * beta3
-                k4 = k4 * beta4
+                k1 = (k1 * beta1).to(k1.dtype)
+                k2 = (k2 * beta2).to(k2.dtype)
+                k3 = (k3 * beta3).to(k3.dtype)
+                k4 = (k4 * beta4).to(k4.dtype)
 
             k1_trans = tl.trans(k1)
             k2_trans = tl.trans(k2)
@@ -1063,6 +1063,7 @@ def _krcl_parallel_inverse_diag(
     NUM_BLOCK_N: tl.constexpr,
     MAX_BLOCK_N: tl.constexpr,
     USE_ATTENTION: tl.constexpr,
+    USE_PAD: tl.constexpr,
 ):
     NUM_BLOCK_D = tl.cdiv(D, BLOCK_D)
     off_bh = tl.program_id(0)
@@ -1124,7 +1125,7 @@ def _krcl_parallel_inverse_diag(
             )
             alpha = tl.load(
                 alpha_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
         if USE_BETA:
             beta_trans_block_ptr = tl.make_block_ptr(
@@ -1137,7 +1138,7 @@ def _krcl_parallel_inverse_diag(
             )
             beta = tl.load(
                 beta_trans_block_ptr, boundary_check=(0, 1), padding_option="zero"
-            ).to(tl.float32)
+            )
 
         for i in range(NUM_BLOCK_D):
             k = tl.load(k_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -1168,7 +1169,6 @@ def _krcl_parallel_inverse_diag(
         else:  # tril
             diff = tl.where(array[:, None] > array[None, :], diff, -float("inf"))
         a *= tl.exp(diff)
-        a = a.to(tl.float16)
     else:
         a_block_ptr = tl.make_block_ptr(
             base=ATTENTION + offset_inv,
@@ -1179,21 +1179,66 @@ def _krcl_parallel_inverse_diag(
             order=(1, 0),
         )
         a = tl.load(a_block_ptr, boundary_check=(0, 1), padding_option="zero").to(
-            tl.float16
+            tl.float32
         )
-        # a = tl.load(a_block_ptr, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
 
-    # 1 + x + ... + x ^ (2 ^ n) = prod (1 + x ^ (2 ^ i)), i = 1, ... , n - 1
+    # # todo: no use, for reference only
+    # # 1 + x + ... + x ^ (2 ^ n) = prod (1 + x ^ (2 ^ i)), i = 1, ... , n - 1
+    # eye = (array[:, None] == array[None, :]).to(a.dtype)
+    # a_inv = eye - a
+    # for i in range(NUM_LOOP_M - 1):
+    #     # a_inv = (1 + a ^ (2 ^ i)) * a_inv
+    #     a = tl.dot(a, a)
+    #     a_inv += tl.dot(a_inv, a)
+
+    # tl.store(
+    #     inv_block_ptr, a_inv.to(inv_block_ptr.dtype.element_ty), boundary_check=(0, 1)
+    # )
+
     eye = (array[:, None] == array[None, :]).to(a.dtype)
-    a_inv = eye - a
-    for i in range(NUM_LOOP_M - 1):
-        # a_inv = (1 + a ^ (2 ^ i)) * a_inv
-        a = tl.dot(a, a).to(tl.float16)
-        a_inv += tl.dot(a_inv, a).to(tl.float16)
+    # todo: update BLOCK_M
+    if offset_block_n >= N:
+        L = 0
+    elif offset_block_n + BLOCK_M >= N:
+        L = N - offset_block_n
+    else:
+        L = BLOCK_M
 
-    tl.store(
-        inv_block_ptr, a_inv.to(inv_block_ptr.dtype.element_ty), boundary_check=(0, 1)
-    )
+    # for i in range(BLOCK_M):
+    for i in range(L):
+        if REVERSE:
+            j = BLOCK_M - 1 - i
+        else:
+            j = i
+
+        if USE_ATTENTION:
+            # n 1
+            index_i = array == j
+            ai_block_ptr = (
+                ATTENTION
+                + offset_inv
+                + offset_block_m * BLOCK_N
+                + offset_block_m
+                + j * BLOCK_N
+                + array
+            )
+            ai = tl.load(ai_block_ptr).to(tl.float32)
+        else:
+            # n 1
+            index_i = array == j
+            # n
+            ai = tl.sum(tl.where(index_i[:, None], a, 0), axis=0)
+
+        # compute
+        if REVERSE:
+            index_i_ = array > j
+        else:
+            index_i_ = array < j
+        a_ = tl.where(index_i_[:, None], a, 0)
+        ai_ = index_i - tl.sum(ai[:, None] * a_, axis=0)
+        a = tl.where(index_i[:, None], ai_, a)
+
+    tl.store(inv_block_ptr, a.to(inv_block_ptr.dtype.element_ty), boundary_check=(0, 1))
 
 
 @triton.heuristics(
@@ -1399,11 +1444,11 @@ def _krcl_parallel_inverse_merge(
 
                 beta1 = tl.load(
                     beta1_block_ptr, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                )
 
                 beta2 = tl.load(
                     beta2_block_ptr, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                )
 
             for i in range(NUM_BLOCK_D):
                 k1 = tl.load(k1_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -1418,10 +1463,10 @@ def _krcl_parallel_inverse_merge(
                     q2 = k2
 
                 if USE_ALPHA:
-                    q2 = q2 * alpha2
+                    q2 = (q2 * alpha2).to(q2.dtype)
 
                 if USE_BETA:
-                    k1 = k1 * beta1
+                    k1 = (k1 * beta1).to(k1.dtype)
 
                 k1_trans = tl.trans(k1)
 
@@ -1723,19 +1768,19 @@ def _krcl_parallel_inverse_merge(
 
                 alpha1 = tl.load(
                     alpha1_block_ptr, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                )
 
                 alpha2 = tl.load(
                     alpha2_block_ptr, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                )
 
                 alpha3 = tl.load(
                     alpha3_block_ptr, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                )
 
                 alpha4 = tl.load(
                     alpha4_block_ptr, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                )
 
             if USE_BETA:
                 beta1_block_ptr = tl.make_block_ptr(
@@ -1784,19 +1829,19 @@ def _krcl_parallel_inverse_merge(
 
                 beta1 = tl.load(
                     beta1_block_ptr, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                )
 
                 beta2 = tl.load(
                     beta2_block_ptr, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                )
 
                 beta3 = tl.load(
                     beta3_block_ptr, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                )
 
                 beta4 = tl.load(
                     beta4_block_ptr, boundary_check=(0, 1), padding_option="zero"
-                ).to(tl.float32)
+                )
 
             for i in range(NUM_BLOCK_D):
                 k1 = tl.load(k1_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -1824,21 +1869,20 @@ def _krcl_parallel_inverse_merge(
                     q4 = k4
 
                 if USE_ALPHA:
-                    q1 = q1 * alpha1
-                    q2 = q2 * alpha2
-                    q3 = q3 * alpha3
-                    q4 = q4 * alpha4
+                    q1 = (q1 * alpha1).to(q1.dtype)
+                    q2 = (q2 * alpha2).to(q2.dtype)
+                    q3 = (q3 * alpha3).to(q3.dtype)
+                    q4 = (q4 * alpha4).to(q4.dtype)
 
                 if USE_BETA:
-                    k1 = k1 * beta1
-                    k2 = k2 * beta2
-                    k3 = k3 * beta3
-                    k4 = k4 * beta4
+                    k1 = (k1 * beta1).to(k1.dtype)
+                    k2 = (k2 * beta2).to(k2.dtype)
+                    k3 = (k3 * beta3).to(k3.dtype)
+                    k4 = (k4 * beta4).to(k4.dtype)
 
                 k1_trans = tl.trans(k1)
                 k2_trans = tl.trans(k2)
                 k3_trans = tl.trans(k3)
-                tl.trans(k4)
 
                 a21 += tl.dot(q2, k1_trans)
                 a31 += tl.dot(q3, k1_trans)
@@ -2429,6 +2473,7 @@ def _krcl_parallel_chunk_loop(
     ld_block_ptr = LOG_DECAY + offset_ld
 
     for j in range(NUM_BLOCK_N):
+        # todo
         if REVERSE:
             inv_block_ptr = tl.make_block_ptr(
                 base=INV + offset_inv + (off_block_n + j * stride) * BLOCK_N * BLOCK_N,
@@ -2436,7 +2481,8 @@ def _krcl_parallel_chunk_loop(
                 strides=(1, BLOCK_N),
                 offsets=(0, 0),
                 block_shape=(BLOCK_N, BLOCK_N),
-                order=(1, 0),
+                # order=(1, 0),
+                order=(0, 1),
             )
         else:
             inv_block_ptr = tl.make_block_ptr(
@@ -2449,14 +2495,9 @@ def _krcl_parallel_chunk_loop(
             )
 
         if SAVE_STATES:
-            # if (j == 0) or (j % STATE_STRIDE == NUM_BLOCK_N % STATE_STRIDE): # !!! important
             if REVERSE:
                 if (j == 0) or (j % STATE_STRIDE == NUM_BLOCK_N % STATE_STRIDE):
                     flag = True
-                    # if j == 0:
-                    #     k = 0
-                    # else:
-                    #     k = (j - NUM_BLOCK_N % STATE_STRIDE) // STATE_STRIDE
                 else:
                     flag = False
 
@@ -2505,6 +2546,7 @@ def _krcl_parallel_chunk_loop(
                         state1.to(states1_block_ptr.dtype.element_ty),
                         boundary_check=(0, 1),
                     )
+                tl.debug_barrier()
 
         k = tl.load(k_block_ptr, boundary_check=(0, 1), padding_option="zero")
         v = tl.load(v_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -2532,6 +2574,11 @@ def _krcl_parallel_chunk_loop(
         log_decay = tl.load(ld_block_ptr + array * H, mask=mask, other=0.0).to(
             tl.float32
         )
+        if REVERSE:
+            offset_ld_sum = max(0, offset_ld_sum)
+        else:
+            offset_ld_sum = min(offset_ld_sum, N - 1)
+
         log_decay_sum = tl.load(ld_block_ptr + offset_ld_sum * H).to(tl.float32)
         log_k_decay = log_decay_sum - log_decay
 
@@ -2586,10 +2633,6 @@ def _krcl_parallel_chunk_loop(
         array += stride * BLOCK_N
         offset_ld_sum += stride * BLOCK_N
         offset_block_n += stride * BLOCK_N
-        if REVERSE:
-            offset_ld_sum = max(0, offset_ld_sum)
-        else:
-            offset_ld_sum = min(offset_ld_sum, N - 1)
 
         if D > BLOCK_D:
             k1_block_ptr = tl.advance(k1_block_ptr, (BLOCK_N * stride, 0))
@@ -2722,14 +2765,24 @@ def _krcl_parallel_intra_inter(
     )
 
     if TRANS:
+        # todo
         # if trans_states, the states are stored in the shape of B H L E D, we need to load a block of shape (D, E)
+        # state_block_ptr = tl.make_block_ptr(
+        #     base=STATES + offset_state + offset_block_state,
+        #     shape=(D, E),
+        #     strides=(1, D),
+        #     offsets=(0, offset_block_e),
+        #     block_shape=(BLOCK_D, BLOCK_E),
+        #     order=(1, 0),
+        # )
+
         state_block_ptr = tl.make_block_ptr(
             base=STATES + offset_state + offset_block_state,
             shape=(D, E),
             strides=(1, D),
             offsets=(0, offset_block_e),
             block_shape=(BLOCK_D, BLOCK_E),
-            order=(1, 0),
+            order=(0, 1),
         )
     else:
         state_block_ptr = tl.make_block_ptr(
@@ -2762,12 +2815,15 @@ def _krcl_parallel_intra_inter(
         )
 
     if REVERSE:
-        stride = -1
+        pass
     else:
-        stride = 1
+        pass
 
     # init
-    v = tl.load(v_block_ptr, boundary_check=(0, 1), padding_option="zero")
+    v_ = tl.load(
+        v_block_ptr, boundary_check=(0, 1), padding_option="zero"
+    )  # for dalpha
+    v = v_
     o = tl.zeros((BLOCK_N, BLOCK_E), dtype=tl.float32)
     if USE_ALPHA:
         alpha = tl.load(alpha_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -2786,21 +2842,21 @@ def _krcl_parallel_intra_inter(
     # setup decay
     array = tl.arange(0, BLOCK_N)
     mask = (offset_block_n + array) < N
-    ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
+
+    if REVERSE:
+        ld_sum_block_ptr = LOG_DECAY_REVERSE + offset_ld + offset_block_ld + array * H
+    else:
+        ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
     ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
-    diff = (ld[:, None] - ld[None, :]) * stride  # !!! important
+    diff = ld[:, None] - ld[None, :]
+
     if REVERSE:  # triu
         diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
     else:  # tril
         diff = tl.where(array[:, None] > array[None, :], diff, -float("inf"))
     decay = tl.exp(diff)
 
-    if REVERSE:
-        ldq_sum_block_ptr = LOG_DECAY_REVERSE + offset_ld + offset_block_ld + array * H
-    else:
-        ldq_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
-    ldq = tl.load(ldq_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
-    q_decay = tl.exp(ldq)
+    q_decay = tl.exp(ld)
 
     for i in range(NUM_BLOCK_D):
         q = tl.load(q_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -2811,7 +2867,6 @@ def _krcl_parallel_intra_inter(
         score = tl.dot(q, k_trans)
         score *= decay
         o -= tl.dot(score.to(v.dtype), v)
-
         ##### inter start #####
         state = tl.load(state_block_ptr, boundary_check=(0, 1), padding_option="zero")
         o_ = tl.dot(q, state)
@@ -2835,14 +2890,14 @@ def _krcl_parallel_intra_inter(
         )
         x = tl.load(x_block_ptr, boundary_check=(0, 1), padding_option="zero")
     else:
-        x = v
+        x = v_
 
     if COMPUTE_DQ:
         if USE_ALPHA:
-            o *= alpha
+            x *= alpha
     else:
         if USE_BETA:
-            o *= beta
+            x *= beta
 
     # N D -> N
     dld = tl.sum(x * o, axis=-1)
@@ -2860,6 +2915,13 @@ def _krcl_parallel_intra_inter(
     tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty), mask=mask)
 
     # save o
+    if COMPUTE_DQ:
+        if USE_ALPHA:
+            o *= alpha
+    else:
+        if USE_BETA:
+            o *= beta
+
     if SHARE_QK:
         o_ = tl.load(o_block_ptr, boundary_check=(0, 1), padding_option="zero")
         o += o_

@@ -5,7 +5,7 @@ import torch
 from .causal_linear import krcl_fn
 
 
-def kernel_regression_fn(
+def kernel_regression_func(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -14,7 +14,7 @@ def kernel_regression_fn(
     beta: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.LongTensor] = None,
-    BLOCK_N: int = 128,
+    BLOCK_N: int = 64,
     kernel_type: str = "causal_linear",
     **kwargs,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
