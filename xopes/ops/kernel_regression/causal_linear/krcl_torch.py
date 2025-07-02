@@ -10,7 +10,7 @@ def krcl_torch(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
     alpha: Optional[torch.Tensor] = None,
     beta: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
@@ -43,6 +43,8 @@ def krcl_torch(
         alpha = torch.ones(b, n, h, device=q.device, dtype=dtype)
     if beta is None:
         beta = torch.ones(b, n, h, device=q.device, dtype=dtype)
+    if ld is None:
+        ld = torch.zeros(b, n, h, device=q.device, dtype=dtype)
     q = q.float()
     k = k.float()
     v = v.float()

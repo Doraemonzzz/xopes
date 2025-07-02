@@ -26,7 +26,7 @@ from xopes.utils.constant import XOPES_DEBUG
 def krcl_parallel_inverse(
     q: torch.Tensor,
     k: torch.Tensor,
-    ld: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
     alpha: Optional[torch.Tensor] = None,
     beta: Optional[torch.Tensor] = None,
     ld_cumsum: Optional[torch.Tensor] = None,
@@ -41,6 +41,7 @@ def krcl_parallel_inverse(
         b = cu_seqlens.shape[0] - 1
 
     use_q = q is not None
+    use_ld = ld is not None
     use_alpha = alpha is not None
     use_beta = beta is not None
     use_pad = n % BLOCK_N != 0
@@ -51,8 +52,9 @@ def krcl_parallel_inverse(
     NUM_BLOCK_M = 4
     BLOCK_M = BLOCK_N // NUM_BLOCK_M
 
-    if ld_cumsum is None:
-        ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=reverse, chunk_size=BLOCK_N)
+    if use_ld:
+        if ld_cumsum is None:
+            ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=reverse, chunk_size=BLOCK_N)
 
     def grid(meta):
         return (b, h, NUM_BLOCK_N)
@@ -65,6 +67,7 @@ def krcl_parallel_inverse(
         ALPHA=alpha,
         BETA=beta,
         USE_Q=use_q,
+        USE_LD=use_ld,
         USE_ALPHA=use_alpha,
         USE_BETA=use_beta,
         B=b,
@@ -94,6 +97,7 @@ def krcl_parallel_inverse(
         ALPHA=alpha,
         BETA=beta,
         USE_Q=use_q,
+        USE_LD=use_ld,
         USE_ALPHA=use_alpha,
         USE_BETA=use_beta,
         B=b,
@@ -123,6 +127,7 @@ def krcl_parallel_inverse(
         ALPHA=alpha,
         BETA=beta,
         USE_Q=use_q,
+        USE_LD=use_ld,
         USE_ALPHA=use_alpha,
         USE_BETA=use_beta,
         B=b,
@@ -167,6 +172,7 @@ def krcl_parallel_chunk_loop(
         b = cu_seqlens.shape[0] - 1
 
     use_q = q is not None
+    use_ld = ld is not None
     use_alpha = alpha is not None
     use_beta = beta is not None
     use_initial_state = initial_state is not None
@@ -185,8 +191,9 @@ def krcl_parallel_chunk_loop(
     def grid(meta):
         return (b * h, triton.cdiv(e, meta["BLOCK_E"]))
 
-    if ld_cumsum is None:
-        ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=reverse, chunk_size=BLOCK_N)
+    if use_ld:
+        if ld_cumsum is None:
+            ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=reverse, chunk_size=BLOCK_N)
 
     _krcl_parallel_chunk_loop[grid](
         Q=q,
@@ -201,6 +208,7 @@ def krcl_parallel_chunk_loop(
         FINAL_STATE=final_state,
         STATES=states,
         USE_Q=use_q,
+        USE_LD=use_ld,
         USE_ALPHA=use_alpha,
         USE_BETA=use_beta,
         USE_INITIAL_STATE=use_initial_state,
@@ -252,6 +260,7 @@ def krcl_parallel_intra_inter(
         b = cu_seqlens.shape[0] - 1
 
     use_alpha = alpha is not None
+    use_ld = ld is not None
     use_beta = beta is not None
     initial_state is not None
     use_pad = n % BLOCK_N != 0
@@ -283,11 +292,12 @@ def krcl_parallel_intra_inter(
             NUM_BLOCK_E,
         )
 
-    if ld_cumsum is None:
-        ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=False, chunk_size=BLOCK_N)
+    if use_ld:
+        if ld_cumsum is None:
+            ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=False, chunk_size=BLOCK_N)
 
-    if ld_reverse_cumsum is None and reverse:
-        ld_reverse_cumsum = chunk_cumsum_decay_fn(ld, reverse=True, chunk_size=BLOCK_N)
+        if ld_reverse_cumsum is None and reverse:
+            ld_reverse_cumsum = chunk_cumsum_decay_fn(ld, reverse=True, chunk_size=BLOCK_N)
 
     _krcl_parallel_intra_inter[grid](
         Q=q,
@@ -303,6 +313,7 @@ def krcl_parallel_intra_inter(
         DLOG_DECAY=dld,
         CU_SEQLENS=cu_seqlens,
         USE_Q=use_q,
+        USE_LD=use_ld,
         USE_ALPHA=use_alpha,
         USE_BETA=use_beta,
         COMPUTE_DQ=compute_dq,
@@ -336,6 +347,7 @@ def compute_dld(
     dfinal_state: Optional[torch.Tensor] = None,  # B H D E
     cu_seqlens: Optional[torch.Tensor] = None,  # M
     sum_option: Optional[int] = -1,
+    use_ld: bool = True,
 ):
     """
     Compute the derivative of the log decay using Triton with cumsum.
@@ -352,21 +364,25 @@ def compute_dld(
             -1: for dld_q and dld_k, sum over the last dimension,
             0: for final_state and dfinal_state, sum over the e dimension,
             1: for dfinal_state and dld_k, sum over the d dimension.
+        use_ld: Whether to use the log decay.
 
     Returns:
         dld: The derivative of the log decay.
     """
     b, n, h, f = dld_q.shape
 
-    # Create output tensor
-    if sum_option == -1:
-        dld = torch.empty(b, n, h, device=dld_q.device, dtype=dld_q.dtype)
+    if use_ld:
+        # Create output tensor
+        if sum_option == -1:
+            dld = torch.empty(b, n, h, device=dld_q.device, dtype=dld_q.dtype)
+        else:
+            dld = torch.empty_like(dld_q, dtype=dld_q.dtype)
     else:
-        dld = torch.empty_like(dld_q, dtype=dld_q.dtype)
+        dld = None
 
     # Determine if using final_state
     # todo use_final_state = final_state is not None and dfinal_state is not None
-    use_final_state = False
+    use_final_state = False and use_ld
 
     if use_final_state:
         d, e = final_state.shape[-2], final_state.shape[-1]
@@ -424,6 +440,7 @@ def compute_dld(
             DLD_STATE=dld_state,
             CU_SEQLENS=cu_seqlens,
             SUM_OPTION=sum_option,
+            USE_LD=use_ld,
             B=b,
             N=n,
             H=h,
@@ -473,6 +490,7 @@ def compute_dld(
         F=f,
         USE_FINAL_STATE=use_final_state,
         USE_CU_SEQLENS=use_cu_seqlens,
+        USE_LD=use_ld,
         USE_ALPHA=use_alpha,
         USE_BETA=use_beta,
         BLOCK_D=BLOCK_D,
@@ -491,7 +509,7 @@ def krcl_parallel_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
     alpha: Optional[torch.Tensor] = None,
     beta: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,
@@ -499,7 +517,10 @@ def krcl_parallel_fwd(
     BLOCK_N: int = 64,
     **kwargs,
 ):
-    ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=False, chunk_size=BLOCK_N)
+    if ld is not None:
+        ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=False, chunk_size=BLOCK_N)
+    else:
+        ld_cumsum = None
 
     inv = krcl_parallel_inverse(
         q=q,
@@ -550,12 +571,17 @@ def krcl_parallel_bwd(
     state_stride: int = 2,
     **kwargs,
 ):
-    ld_cumsum = chunk_cumsum_decay_fn(
-        ld, reverse=False, chunk_size=BLOCK_N * state_stride
-    )
-    ld_reverse_cumsum = chunk_cumsum_decay_fn(
-        ld, reverse=True, chunk_size=BLOCK_N * state_stride
-    )
+    use_ld = ld is not None
+    if use_ld:
+        ld_cumsum = chunk_cumsum_decay_fn(
+            ld, reverse=False, chunk_size=BLOCK_N * state_stride
+        )
+        ld_reverse_cumsum = chunk_cumsum_decay_fn(
+            ld, reverse=True, chunk_size=BLOCK_N * state_stride
+        )
+    else:
+        ld_cumsum = None
+        ld_reverse_cumsum = None
 
     o, states, _ = krcl_parallel_chunk_loop(
         q=q,
@@ -648,6 +674,7 @@ def krcl_parallel_bwd(
         beta=beta,
         cu_seqlens=cu_seqlens,
         sum_option=-1,
+        use_ld=use_ld,
     )
 
     dinitial_state = (
@@ -733,7 +760,7 @@ def krcl_parallel_triton(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ld: torch.Tensor,
+    ld: Optional[torch.Tensor] = None,
     alpha: Optional[torch.Tensor] = None,
     beta: Optional[torch.Tensor] = None,
     initial_state: Optional[torch.Tensor] = None,

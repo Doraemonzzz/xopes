@@ -36,12 +36,13 @@ def get_params():
 
 @pytest.mark.parametrize("shape", get_params())
 @pytest.mark.parametrize("use_q", [True])
+@pytest.mark.parametrize("use_ld", [True, False])
 @pytest.mark.parametrize("use_initial_state", [True, False])
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True])
 @pytest.mark.parametrize("c", [0.1, 10])  # Scaling factor for log decay
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
-def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
+def test_krcl(shape, use_q, use_ld, use_initial_state, use_varlen, no_dstate, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
     scale = 0.01
@@ -69,9 +70,12 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
         F.normalize(torch.randn((b, n, h, d), dtype=dtype, device=device), dim=-1)
     ).requires_grad_()
     v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
-    ld = F.logsigmoid(
-        (1 + scale * torch.ones((b, n, h), dtype=dtype, device=device)) * c
-    ).requires_grad_()
+    if use_ld:
+        ld = F.logsigmoid(
+            (1 + scale * torch.ones((b, n, h), dtype=dtype, device=device)) * c
+        ).requires_grad_()
+    else:
+        ld = None
     alpha = (
         torch.exp(
             F.logsigmoid(
@@ -117,7 +121,7 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
         q=q.clone() if use_q else None,
         k=k.clone(),
         v=v.clone(),
-        ld=ld.clone(),
+        ld=ld.clone() if use_ld else None,
         alpha=alpha.clone(),
         beta=beta.clone(),
         initial_state=initial_state.clone() if initial_state is not None else None,
@@ -133,7 +137,7 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
         q=q.clone() if use_q else None,
         k=k.clone(),
         v=v.clone(),
-        ld=ld.clone(),
+        ld=ld.clone() if use_ld else None,
         alpha=alpha.clone(),
         beta=beta.clone(),
         initial_state=initial_state.clone() if initial_state is not None else None,
@@ -149,7 +153,7 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
         q=q.clone() if use_q else None,
         k=k.clone(),
         v=v.clone(),
-        ld=ld.clone(),
+        ld=ld.clone() if use_ld else None,
         alpha=alpha.clone(),
         beta=beta.clone(),
         initial_state=initial_state.clone() if initial_state is not None else None,
@@ -169,7 +173,10 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
         dq_torch = None
     dk_torch, k.grad = k.grad.clone(), None
     dv_torch, v.grad = v.grad.clone(), None
-    dld_torch, ld.grad = ld.grad.clone(), None
+    if use_ld:
+        dld_torch, ld.grad = ld.grad.clone(), None
+    else:
+        dld_torch = None
     dalpha_torch, alpha.grad = alpha.grad.clone(), None
     dbeta_torch, beta.grad = beta.grad.clone(), None
     if use_initial_state:
@@ -183,7 +190,10 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
         dq_triton = None
     dk_triton, k.grad = k.grad.clone(), None
     dv_triton, v.grad = v.grad.clone(), None
-    dld_triton, ld.grad = ld.grad.clone(), None
+    if use_ld:
+        dld_triton, ld.grad = ld.grad.clone(), None
+    else:
+        dld_triton = None
     dalpha_triton, alpha.grad = alpha.grad.clone(), None
     dbeta_triton, beta.grad = beta.grad.clone(), None
     if use_initial_state:
@@ -197,7 +207,10 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
         pass
     dk_triton_parallel, k.grad = k.grad.clone(), None
     dv_triton_parallel, v.grad = v.grad.clone(), None
-    dld_triton_parallel, ld.grad = ld.grad.clone(), None
+    if use_ld:
+        dld_triton_parallel, ld.grad = ld.grad.clone(), None
+    else:
+        dld_triton_parallel = None
     dalpha_triton_parallel, alpha.grad = alpha.grad.clone(), None
     dbeta_triton_parallel, beta.grad = beta.grad.clone(), None
     if use_initial_state:
@@ -269,14 +282,15 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
         print_diff(dq_torch, dq_triton, n)
         assert_close(dq_torch, dq_triton, atol=atol, rtol=rtol)
 
-    print(
-        "dld diff max (torch vs triton): ",
-        torch.abs(dld_torch - dld_triton).max().item(),
-    )
-    print(
-        "dld diff norm (torch vs triton): ", torch.norm(dld_torch - dld_triton).item()
-    )
-    assert_close(dld_torch, dld_triton, atol=ld_atol, rtol=ld_rtol)
+    if use_ld:
+        print(
+            "dld diff max (torch vs triton): ",
+            torch.abs(dld_torch - dld_triton).max().item(),
+        )
+        print(
+            "dld diff norm (torch vs triton): ", torch.norm(dld_torch - dld_triton).item()
+        )
+        assert_close(dld_torch, dld_triton, atol=ld_atol, rtol=ld_rtol)
 
     print(
         "dalpha diff max (torch vs triton): ",
@@ -364,14 +378,15 @@ def test_krcl(shape, use_q, use_initial_state, use_varlen, no_dstate, c, dtype):
     )
     assert_close(dbeta_torch, dbeta_triton, atol=atol, rtol=rtol)
 
-    print(
-        "dld diff max (torch vs triton parallel): ",
-        torch.abs(dld_torch - dld_triton_parallel).max().item(),
-    )
-    print(
-        "dld diff norm (torch vs triton parallel): ",
-        torch.norm(dld_torch - dld_triton_parallel).item(),
-    )
-    for i in range(n):
-        print(i, torch.norm((dld_torch - dld_triton_parallel)[:, i]))
-    assert_close(dld_torch, dld_triton_parallel, atol=ld_atol, rtol=ld_rtol)
+    if use_ld:
+        print(
+            "dld diff max (torch vs triton parallel): ",
+            torch.abs(dld_torch - dld_triton_parallel).max().item(),
+        )
+        print(
+            "dld diff norm (torch vs triton parallel): ",
+            torch.norm(dld_torch - dld_triton_parallel).item(),
+        )
+        for i in range(n):
+            print(i, torch.norm((dld_torch - dld_triton_parallel)[:, i]))
+        assert_close(dld_torch, dld_triton_parallel, atol=ld_atol, rtol=ld_rtol)

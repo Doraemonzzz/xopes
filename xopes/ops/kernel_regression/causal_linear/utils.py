@@ -1048,6 +1048,7 @@ def _krcl_parallel_inverse_diag(
     BETA,  # B N H
     CU_SEQLENS,
     USE_Q: tl.constexpr,  # bool
+    USE_LD: tl.constexpr,  # bool
     USE_ALPHA: tl.constexpr,  # bool
     USE_BETA: tl.constexpr,  # bool
     B: tl.constexpr,
@@ -1159,16 +1160,23 @@ def _krcl_parallel_inverse_diag(
             if USE_Q:
                 q_block_ptr = tl.advance(q_block_ptr, (0, BLOCK_D))
 
-        # add decay
-        ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
-        mask = (offset_block_n + array) < N
-        ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
-        diff = ld[:, None] - ld[None, :]
-        if REVERSE:  # triu
-            diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
-        else:  # tril
-            diff = tl.where(array[:, None] > array[None, :], diff, -float("inf"))
-        a *= tl.exp(diff)
+        if USE_LD:
+            # add decay
+            ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
+            mask = (offset_block_n + array) < N
+            ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
+            diff = ld[:, None] - ld[None, :]
+            if REVERSE:  # triu
+                diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
+            else:  # tril
+                diff = tl.where(array[:, None] > array[None, :], diff, -float("inf"))
+            attn_mask = tl.exp(diff)
+        else:
+            if REVERSE:  # triu
+                attn_mask = tl.where(array[:, None] < array[None, :], 1, 0)
+            else:  # tril
+                attn_mask = tl.where(array[:, None] > array[None, :], 1, 0)
+        a *= attn_mask
     else:
         a_block_ptr = tl.make_block_ptr(
             base=ATTENTION + offset_inv,
@@ -1271,6 +1279,7 @@ def _krcl_parallel_inverse_merge(
     BETA,  # B N H
     CU_SEQLENS,
     USE_Q: tl.constexpr,  # bool
+    USE_LD: tl.constexpr,  # bool
     USE_ALPHA: tl.constexpr,  # bool
     USE_BETA: tl.constexpr,  # bool
     B: tl.constexpr,
@@ -1486,23 +1495,35 @@ def _krcl_parallel_inverse_merge(
             else:
                 array1 = tl.arange(0, BLOCK_M)
                 array2 = tl.arange(0, BLOCK_M) + BLOCK_M
-            ld1_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array1 * H
-            ld2_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array2 * H
-            mask1 = (offset_block_n + array1) < N
-            mask2 = (offset_block_n + array2) < N
-            ld1 = tl.load(ld1_sum_block_ptr, mask=mask1, other=0.0).to(tl.float32)
-            ld2 = tl.load(ld2_sum_block_ptr, mask=mask2, other=0.0).to(tl.float32)
-            diff21 = ld2[:, None] - ld1[None, :]
-            if REVERSE:  # triu
-                diff21 = tl.where(
-                    array2[:, None] < array1[None, :], diff21, -float("inf")
-                )
-            else:  # tril
-                diff21 = tl.where(
-                    array2[:, None] > array1[None, :], diff21, -float("inf")
-                )
 
-            a21 *= tl.exp(diff21)
+            if USE_LD:
+                ld1_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array1 * H
+                ld2_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array2 * H
+                mask1 = (offset_block_n + array1) < N
+                mask2 = (offset_block_n + array2) < N
+                ld1 = tl.load(ld1_sum_block_ptr, mask=mask1, other=0.0).to(tl.float32)
+                ld2 = tl.load(ld2_sum_block_ptr, mask=mask2, other=0.0).to(tl.float32)
+                diff21 = ld2[:, None] - ld1[None, :]
+                if REVERSE:  # triu
+                    diff21 = tl.where(
+                        array2[:, None] < array1[None, :], diff21, -float("inf")
+                    )
+                else:  # tril
+                    diff21 = tl.where(
+                        array2[:, None] > array1[None, :], diff21, -float("inf")
+                    )
+                attn_mask21 = tl.exp(diff21)
+            else:
+                if REVERSE:  # triu
+                    attn_mask21 = tl.where(
+                        array2[:, None] < array1[None, :], 1, 0
+                    )
+                else:  # tril
+                    attn_mask21 = tl.where(
+                        array2[:, None] > array1[None, :], 1, 0
+                    )
+
+            a21 *= attn_mask21
         else:
             a21_block_ptr = tl.make_block_ptr(
                 base=ATTENTION + offset_inv,
@@ -1917,66 +1938,114 @@ def _krcl_parallel_inverse_merge(
             ld2_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array2 * H
             ld3_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array3 * H
             ld4_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array4 * H
-            mask1 = (offset_block_n + array1) < N
-            mask2 = (offset_block_n + array2) < N
-            mask3 = (offset_block_n + array3) < N
-            mask4 = (offset_block_n + array4) < N
-            ld1 = tl.load(ld1_sum_block_ptr, mask=mask1, other=0.0).to(tl.float32)
-            ld2 = tl.load(ld2_sum_block_ptr, mask=mask2, other=0.0).to(tl.float32)
-            ld3 = tl.load(ld3_sum_block_ptr, mask=mask3, other=0.0).to(tl.float32)
-            ld4 = tl.load(ld4_sum_block_ptr, mask=mask4, other=0.0).to(tl.float32)
-            diff21 = ld2[:, None] - ld1[None, :]
-            diff31 = ld3[:, None] - ld1[None, :]
-            diff32 = ld3[:, None] - ld2[None, :]
-            diff41 = ld4[:, None] - ld1[None, :]
-            diff42 = ld4[:, None] - ld2[None, :]
-            diff43 = ld4[:, None] - ld3[None, :]
 
-            if REVERSE:  # triu
-                diff21 = tl.where(
-                    array2[:, None] < array1[None, :], diff21, -float("inf")
-                )
-                diff31 = tl.where(
-                    array3[:, None] < array1[None, :], diff31, -float("inf")
-                )
-                diff32 = tl.where(
-                    array3[:, None] < array2[None, :], diff32, -float("inf")
-                )
-                diff41 = tl.where(
-                    array4[:, None] < array1[None, :], diff41, -float("inf")
-                )
-                diff42 = tl.where(
-                    array4[:, None] < array2[None, :], diff42, -float("inf")
-                )
-                diff43 = tl.where(
-                    array4[:, None] < array3[None, :], diff43, -float("inf")
-                )
-            else:  # tril
-                diff21 = tl.where(
-                    array2[:, None] > array1[None, :], diff21, -float("inf")
-                )
-                diff31 = tl.where(
-                    array3[:, None] > array1[None, :], diff31, -float("inf")
-                )
-                diff32 = tl.where(
-                    array3[:, None] > array2[None, :], diff32, -float("inf")
-                )
-                diff41 = tl.where(
-                    array4[:, None] > array1[None, :], diff41, -float("inf")
-                )
-                diff42 = tl.where(
-                    array4[:, None] > array2[None, :], diff42, -float("inf")
-                )
-                diff43 = tl.where(
-                    array4[:, None] > array3[None, :], diff43, -float("inf")
-                )
+            if USE_LD:
+                mask1 = (offset_block_n + array1) < N
+                mask2 = (offset_block_n + array2) < N
+                mask3 = (offset_block_n + array3) < N
+                mask4 = (offset_block_n + array4) < N
+                ld1 = tl.load(ld1_sum_block_ptr, mask=mask1, other=0.0).to(tl.float32)
+                ld2 = tl.load(ld2_sum_block_ptr, mask=mask2, other=0.0).to(tl.float32)
+                ld3 = tl.load(ld3_sum_block_ptr, mask=mask3, other=0.0).to(tl.float32)
+                ld4 = tl.load(ld4_sum_block_ptr, mask=mask4, other=0.0).to(tl.float32)
+                diff21 = ld2[:, None] - ld1[None, :]
+                diff31 = ld3[:, None] - ld1[None, :]
+                diff32 = ld3[:, None] - ld2[None, :]
+                diff41 = ld4[:, None] - ld1[None, :]
+                diff42 = ld4[:, None] - ld2[None, :]
+                diff43 = ld4[:, None] - ld3[None, :]
 
-            a21 *= tl.exp(diff21)
-            a31 *= tl.exp(diff31)
-            a32 *= tl.exp(diff32)
-            a41 *= tl.exp(diff41)
-            a42 *= tl.exp(diff42)
-            a43 *= tl.exp(diff43)
+                if REVERSE:  # triu
+                    diff21 = tl.where(
+                        array2[:, None] < array1[None, :], diff21, -float("inf")
+                    )
+                    diff31 = tl.where(
+                        array3[:, None] < array1[None, :], diff31, -float("inf")
+                    )
+                    diff32 = tl.where(
+                        array3[:, None] < array2[None, :], diff32, -float("inf")
+                    )
+                    diff41 = tl.where(
+                        array4[:, None] < array1[None, :], diff41, -float("inf")
+                    )
+                    diff42 = tl.where(
+                        array4[:, None] < array2[None, :], diff42, -float("inf")
+                    )
+                    diff43 = tl.where(
+                        array4[:, None] < array3[None, :], diff43, -float("inf")
+                    )
+                else:  # tril
+                    diff21 = tl.where(
+                        array2[:, None] > array1[None, :], diff21, -float("inf")
+                    )
+                    diff31 = tl.where(
+                        array3[:, None] > array1[None, :], diff31, -float("inf")
+                    )
+                    diff32 = tl.where(
+                        array3[:, None] > array2[None, :], diff32, -float("inf")
+                    )
+                    diff41 = tl.where(
+                        array4[:, None] > array1[None, :], diff41, -float("inf")
+                    )
+                    diff42 = tl.where(
+                        array4[:, None] > array2[None, :], diff42, -float("inf")
+                    )
+                    diff43 = tl.where(
+                        array4[:, None] > array3[None, :], diff43, -float("inf")
+                    )
+                
+                attn_mask21 = tl.exp(diff21)
+                attn_mask31 = tl.exp(diff31)
+                attn_mask32 = tl.exp(diff32)
+                attn_mask41 = tl.exp(diff41)
+                attn_mask42 = tl.exp(diff42)
+                attn_mask43 = tl.exp(diff43)
+            else:
+                if REVERSE:  # triu
+                    attn_mask21 = tl.where(
+                        array2[:, None] < array1[None, :], 1, 0
+                    )
+                    attn_mask31 = tl.where(
+                        array3[:, None] < array1[None, :], 1, 0
+                    )
+                    attn_mask32 = tl.where(
+                        array3[:, None] < array2[None, :], 1, 0
+                    )
+                    attn_mask41 = tl.where(
+                        array4[:, None] < array1[None, :], 1, 0
+                    )
+                    attn_mask42 = tl.where(
+                        array4[:, None] < array2[None, :], 1, 0
+                    )
+                    attn_mask43 = tl.where(
+                        array4[:, None] < array3[None, :], 1, 0
+                    )
+                else:  # tril
+                    attn_mask21 = tl.where(
+                        array2[:, None] > array1[None, :], 1, 0
+                    )
+                    attn_mask31 = tl.where(
+                        array3[:, None] > array1[None, :], 1, 0
+                    )
+                    attn_mask32 = tl.where(
+                        array3[:, None] > array2[None, :], 1, 0
+                    )
+                    attn_mask41 = tl.where(
+                        array4[:, None] > array1[None, :], 1, 0
+                    )
+                    attn_mask42 = tl.where(
+                        array4[:, None] > array2[None, :], 1, 0
+                    )
+                    attn_mask43 = tl.where(
+                        array4[:, None] > array3[None, :], 1, 0
+                    )
+
+            a21 *= attn_mask21
+            a31 *= attn_mask31
+            a32 *= attn_mask32
+            a41 *= attn_mask41
+            a42 *= attn_mask42
+            a43 *= attn_mask43
         else:
             a21_block_ptr = tl.make_block_ptr(
                 base=ATTENTION + offset_inv,
@@ -2139,6 +2208,7 @@ def _krcl_parallel_inverse_attention(
     BETA,  # B N H
     CU_SEQLENS,
     USE_Q: tl.constexpr,  # bool
+    USE_LD: tl.constexpr,  # bool
     USE_ALPHA: tl.constexpr,  # bool
     USE_BETA: tl.constexpr,  # bool
     B: tl.constexpr,
@@ -2241,15 +2311,23 @@ def _krcl_parallel_inverse_attention(
             q_block_ptr = tl.advance(q_block_ptr, (0, BLOCK_D))
 
     # add decay
-    ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
-    mask = (offset_block_n + array) < N
-    ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
-    diff = ld[:, None] - ld[None, :]
-    if REVERSE:  # triu
-        diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
-    else:  # tril
-        diff = tl.where(array[:, None] > array[None, :], diff, -float("inf"))
-    a *= tl.exp(diff)
+    if USE_LD:
+        ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
+        mask = (offset_block_n + array) < N
+        ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
+        diff = ld[:, None] - ld[None, :]
+        if REVERSE:  # triu
+            diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
+        else:  # tril
+            diff = tl.where(array[:, None] > array[None, :], diff, -float("inf"))
+        attn_mask = tl.exp(diff)
+    else:
+        if REVERSE:  # triu
+            attn_mask = tl.where(array[:, None] < array[None, :], 1, 0)
+        else:  # tril
+            attn_mask = tl.where(array[:, None] > array[None, :], 1, 0)
+
+    a *= attn_mask
 
     tl.store(a_block_ptr, a.to(a_block_ptr.dtype.element_ty), boundary_check=(0, 1))
 
@@ -2289,6 +2367,7 @@ def _krcl_parallel_chunk_loop(
     FINAL_STATE,  # B H D E
     STATES,  # B H (NUM_BLOCK_N // STATE_STRIDE) D E
     USE_Q: tl.constexpr,
+    USE_LD: tl.constexpr,
     USE_ALPHA: tl.constexpr,
     USE_BETA: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
@@ -2470,7 +2549,8 @@ def _krcl_parallel_chunk_loop(
         )
 
     array = offset_block_n + tl.arange(0, BLOCK_N)
-    ld_block_ptr = LOG_DECAY + offset_ld
+    if USE_LD:
+        ld_block_ptr = LOG_DECAY + offset_ld
 
     for j in range(NUM_BLOCK_N):
         # todo
@@ -2481,7 +2561,6 @@ def _krcl_parallel_chunk_loop(
                 strides=(1, BLOCK_N),
                 offsets=(0, 0),
                 block_shape=(BLOCK_N, BLOCK_N),
-                # order=(1, 0),
                 order=(0, 1),
             )
         else:
@@ -2546,7 +2625,7 @@ def _krcl_parallel_chunk_loop(
                         state1.to(states1_block_ptr.dtype.element_ty),
                         boundary_check=(0, 1),
                     )
-                tl.debug_barrier()
+                # tl.debug_barrier()
 
         k = tl.load(k_block_ptr, boundary_check=(0, 1), padding_option="zero")
         v = tl.load(v_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -2570,20 +2649,22 @@ def _krcl_parallel_chunk_loop(
 
         inv = tl.load(inv_block_ptr, boundary_check=(0, 1))
 
-        mask = (array < N) & (array >= 0)
-        log_decay = tl.load(ld_block_ptr + array * H, mask=mask, other=0.0).to(
-            tl.float32
-        )
-        if REVERSE:
-            offset_ld_sum = max(0, offset_ld_sum)
-        else:
-            offset_ld_sum = min(offset_ld_sum, N - 1)
+        if USE_LD:
+            mask = (array < N) & (array >= 0)
+            log_decay = tl.load(ld_block_ptr + array * H, mask=mask, other=0.0).to(
+                tl.float32
+            )
+            if REVERSE:
+                offset_ld_sum = max(0, offset_ld_sum)
+            else:
+                offset_ld_sum = min(offset_ld_sum, N - 1)
 
-        log_decay_sum = tl.load(ld_block_ptr + offset_ld_sum * H).to(tl.float32)
-        log_k_decay = log_decay_sum - log_decay
+            log_decay_sum = tl.load(ld_block_ptr + offset_ld_sum * H).to(tl.float32)
+            log_k_decay = log_decay_sum - log_decay
 
-        q = (q * tl.exp(log_decay[:, None])).to(q.dtype)
-        k = (k * tl.exp(log_k_decay[:, None])).to(k.dtype)
+            q = (q * tl.exp(log_decay[:, None])).to(q.dtype)
+            k = (k * tl.exp(log_k_decay[:, None])).to(k.dtype)
+
         k_trans = tl.trans(k)
         p = tl.dot(q, state.to(q.dtype))
 
@@ -2600,8 +2681,9 @@ def _krcl_parallel_chunk_loop(
             if USE_BETA:
                 k1 = k1 * beta
 
-            q1 = (q1 * tl.exp(log_decay[:, None])).to(q1.dtype)
-            k1 = (k1 * tl.exp(log_k_decay[:, None])).to(k1.dtype)
+            if USE_LD:
+                q1 = (q1 * tl.exp(log_decay[:, None])).to(q1.dtype)
+                k1 = (k1 * tl.exp(log_k_decay[:, None])).to(k1.dtype)
             k1_trans = tl.trans(k1)
 
             p1 = tl.dot(q1, state1.to(q1.dtype))
@@ -2609,11 +2691,13 @@ def _krcl_parallel_chunk_loop(
 
         o = tl.dot(inv, (v - p).to(inv.dtype)).to(q.dtype)
 
-        state *= tl.exp(log_decay_sum)
+        if USE_LD:
+            state *= tl.exp(log_decay_sum)
         state += tl.dot(k_trans, o)
 
         if D > BLOCK_D:
-            state1 *= tl.exp(log_decay_sum)
+            if USE_LD:
+                state1 *= tl.exp(log_decay_sum)
             state1 += tl.dot(k1_trans, o)
 
         tl.store(o_block_ptr, o.to(o_block_ptr.dtype.element_ty), boundary_check=(0, 1))
@@ -2688,6 +2772,7 @@ def _krcl_parallel_intra_inter(
     DLOG_DECAY,  # B N H NUM_BLOCK_E
     CU_SEQLENS,  # M
     USE_Q: tl.constexpr,
+    USE_LD: tl.constexpr,
     USE_ALPHA: tl.constexpr,
     USE_BETA: tl.constexpr,
     COMPUTE_DQ: tl.constexpr,
@@ -2765,17 +2850,6 @@ def _krcl_parallel_intra_inter(
     )
 
     if TRANS:
-        # todo
-        # if trans_states, the states are stored in the shape of B H L E D, we need to load a block of shape (D, E)
-        # state_block_ptr = tl.make_block_ptr(
-        #     base=STATES + offset_state + offset_block_state,
-        #     shape=(D, E),
-        #     strides=(1, D),
-        #     offsets=(0, offset_block_e),
-        #     block_shape=(BLOCK_D, BLOCK_E),
-        #     order=(1, 0),
-        # )
-
         state_block_ptr = tl.make_block_ptr(
             base=STATES + offset_state + offset_block_state,
             shape=(D, E),
@@ -2814,11 +2888,6 @@ def _krcl_parallel_intra_inter(
             order=(1, 0),
         )
 
-    if REVERSE:
-        pass
-    else:
-        pass
-
     # init
     v_ = tl.load(
         v_block_ptr, boundary_check=(0, 1), padding_option="zero"
@@ -2843,20 +2912,28 @@ def _krcl_parallel_intra_inter(
     array = tl.arange(0, BLOCK_N)
     mask = (offset_block_n + array) < N
 
-    if REVERSE:
-        ld_sum_block_ptr = LOG_DECAY_REVERSE + offset_ld + offset_block_ld + array * H
-    else:
-        ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
-    ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
-    diff = ld[:, None] - ld[None, :]
+    if USE_LD:
+        if REVERSE:
+            ld_sum_block_ptr = LOG_DECAY_REVERSE + offset_ld + offset_block_ld + array * H
+        else:
+            ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
+        ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
+        diff = ld[:, None] - ld[None, :]
 
-    if REVERSE:  # triu
-        diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
-    else:  # tril
-        diff = tl.where(array[:, None] > array[None, :], diff, -float("inf"))
+        if REVERSE:  # triu
+            diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
+        else:  # tril
+            diff = tl.where(array[:, None] > array[None, :], diff, -float("inf"))
+    else:
+        if REVERSE:  # triu
+            diff = tl.where(array[:, None] < array[None, :], 0, -float("inf"))
+        else:  # tril
+            diff = tl.where(array[:, None] > array[None, :], 0, -float("inf"))
+                
     decay = tl.exp(diff)
 
-    q_decay = tl.exp(ld)
+    if USE_LD:
+        q_decay = tl.exp(ld)
 
     for i in range(NUM_BLOCK_D):
         q = tl.load(q_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -2870,7 +2947,8 @@ def _krcl_parallel_intra_inter(
         ##### inter start #####
         state = tl.load(state_block_ptr, boundary_check=(0, 1), padding_option="zero")
         o_ = tl.dot(q, state)
-        o_ *= q_decay[:, None]
+        if USE_LD:
+            o_ *= q_decay[:, None]
         o -= o_
         ##### inter end #####
 
@@ -2878,41 +2956,42 @@ def _krcl_parallel_intra_inter(
         k_trans_block_ptr = tl.advance(k_trans_block_ptr, (BLOCK_D, 0))
         state_block_ptr = tl.advance(state_block_ptr, (BLOCK_D, 0))
 
-    # compute dld
-    if USE_Q:
-        x_block_ptr = tl.make_block_ptr(
-            base=X + offset_vo,
-            shape=(N, E),
-            strides=(H * E, 1),
-            offsets=(offset_block_n, offset_block_e),
-            block_shape=(BLOCK_N, BLOCK_E),
-            order=(1, 0),
+    if USE_LD:
+        # compute dld
+        if USE_Q:
+            x_block_ptr = tl.make_block_ptr(
+                base=X + offset_vo,
+                shape=(N, E),
+                strides=(H * E, 1),
+                offsets=(offset_block_n, offset_block_e),
+                block_shape=(BLOCK_N, BLOCK_E),
+                order=(1, 0),
+            )
+            x = tl.load(x_block_ptr, boundary_check=(0, 1), padding_option="zero")
+        else:
+            x = v_
+
+        if COMPUTE_DQ:
+            if USE_ALPHA:
+                x *= alpha
+        else:
+            if USE_BETA:
+                x *= beta
+
+        # N D -> N
+        dld = tl.sum(x * o, axis=-1)
+
+        offset_dld = off_b * N * H * NUM_BLOCK_E + off_h * NUM_BLOCK_E
+        offset_block_dld = offset_block_n * H * NUM_BLOCK_E
+        dld_block_ptr = (
+            DLOG_DECAY
+            + offset_dld
+            + offset_block_dld
+            + array * H * NUM_BLOCK_E
+            + off_block_e
         )
-        x = tl.load(x_block_ptr, boundary_check=(0, 1), padding_option="zero")
-    else:
-        x = v_
 
-    if COMPUTE_DQ:
-        if USE_ALPHA:
-            x *= alpha
-    else:
-        if USE_BETA:
-            x *= beta
-
-    # N D -> N
-    dld = tl.sum(x * o, axis=-1)
-
-    offset_dld = off_b * N * H * NUM_BLOCK_E + off_h * NUM_BLOCK_E
-    offset_block_dld = offset_block_n * H * NUM_BLOCK_E
-    dld_block_ptr = (
-        DLOG_DECAY
-        + offset_dld
-        + offset_block_dld
-        + array * H * NUM_BLOCK_E
-        + off_block_e
-    )
-
-    tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty), mask=mask)
+        tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty), mask=mask)
 
     # save o
     if COMPUTE_DQ:
@@ -2965,6 +3044,7 @@ def _compute_dld_cumsum_kernel(
     F: tl.constexpr,
     USE_FINAL_STATE: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
+    USE_LD: tl.constexpr,
     USE_ALPHA: tl.constexpr,
     USE_BETA: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -3014,12 +3094,13 @@ def _compute_dld_cumsum_kernel(
         dld_k_block_ptr = (
             DLD_K + offset_b + array_n[:, None] * H * F + offset_h + array_f[None, :]
         )
-        if SUM_OPTION == -1:
-            dld_block_ptr = DLD + offset_b_dld + array_n[:, None] * H + offset_h_dld
-        else:
-            dld_block_ptr = (
-                DLD + offset_b + array_n[:, None] * H * F + offset_h + array_f[None, :]
-            )
+        if USE_LD:
+            if SUM_OPTION == -1:
+                dld_block_ptr = DLD + offset_b_dld + array_n[:, None] * H + offset_h_dld
+            else:
+                dld_block_ptr = (
+                    DLD + offset_b + array_n[:, None] * H * F + offset_h + array_f[None, :]
+                )
         mask_n = array_n >= 0
         mask = mask_n[:, None] & mask_f[None, :]
 
@@ -3058,31 +3139,32 @@ def _compute_dld_cumsum_kernel(
                 dbeta_block_ptr, dbeta.to(dbeta_block_ptr.dtype.element_ty), mask=mask_n
             )
 
-        if SUM_OPTION == -1:
-            # BLOCK_N, BLOCK_F -> BLOCK_N, 1
-            dld_ = tl.sum(dld, axis=-1, keep_dims=True)
-            # BLOCK_N, 1 -> BLOCK_N, 1
-            dld__ = tl.cumsum(dld_, axis=0) + dld_cumsum
-            # BLOCK_N, 1 -> 1
-            dld_cumsum += tl.sum(dld_, axis=0)
+        if USE_LD:
+            if SUM_OPTION == -1:
+                # BLOCK_N, BLOCK_F -> BLOCK_N, 1
+                dld_ = tl.sum(dld, axis=-1, keep_dims=True)
+                # BLOCK_N, 1 -> BLOCK_N, 1
+                dld__ = tl.cumsum(dld_, axis=0) + dld_cumsum
+                # BLOCK_N, 1 -> 1
+                dld_cumsum += tl.sum(dld_, axis=0)
 
-            if USE_FINAL_STATE:
-                dld__ += dld_state
+                if USE_FINAL_STATE:
+                    dld__ += dld_state
 
-            # Store result
-            tl.store(
-                dld_block_ptr,
-                dld__.to(dld_block_ptr.dtype.element_ty),
-                mask=mask_n[:, None],
-            )
-        else:
-            dld_ = tl.cumsum(dld, axis=0) + dld_cumsum
-            dld_cumsum += tl.sum(dld, axis=0)
+                # Store result
+                tl.store(
+                    dld_block_ptr,
+                    dld__.to(dld_block_ptr.dtype.element_ty),
+                    mask=mask_n[:, None],
+                )
+            else:
+                dld_ = tl.cumsum(dld, axis=0) + dld_cumsum
+                dld_cumsum += tl.sum(dld, axis=0)
 
-            if USE_FINAL_STATE:
-                dld_ += dld_state
+                if USE_FINAL_STATE:
+                    dld_ += dld_state
 
-            # Store result
-            tl.store(dld_block_ptr, dld_.to(dld_block_ptr.dtype.element_ty), mask=mask)
+                # Store result
+                tl.store(dld_block_ptr, dld_.to(dld_block_ptr.dtype.element_ty), mask=mask)
 
         array_n -= BLOCK_N

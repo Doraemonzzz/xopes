@@ -42,6 +42,7 @@ def _krcl_recurrence_fwd(
     D: tl.constexpr,
     E: tl.constexpr,
     USE_Q: tl.constexpr,
+    USE_LD: tl.constexpr,
     USE_ALPHA: tl.constexpr,
     USE_BETA: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
@@ -73,7 +74,8 @@ def _krcl_recurrence_fwd(
     k_block_ptr = K + offset_qk + array_d
     v_block_ptr = V + offset_vo + array_e
     o_block_ptr = O + offset_vo + array_e
-    log_decay_block_ptr = LOG_DECAY + offset_log_decay
+    if USE_LD:
+        log_decay_block_ptr = LOG_DECAY + offset_log_decay
     if USE_ALPHA:
         alpha_block_ptr = ALPHA + offset_log_decay
     if USE_BETA:
@@ -110,11 +112,13 @@ def _krcl_recurrence_fwd(
         if USE_BETA:
             beta = tl.load(beta_block_ptr).to(tl.float32)
             k = k * beta
-        log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
-        decay = tl.exp(log_decay)
+        
+        if USE_LD:
+            log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
+            decay = tl.exp(log_decay)
+            # update state
+            state *= decay
 
-        # update state
-        state *= decay
         o = v - tl.sum(q[:, None] * state, axis=0)
         state_ = k[:, None] * o[None, :]
         state += state_
@@ -127,7 +131,8 @@ def _krcl_recurrence_fwd(
         k_block_ptr += H * D
         v_block_ptr += H * E
         o_block_ptr += H * E
-        log_decay_block_ptr += H
+        if USE_LD:
+            log_decay_block_ptr += H
         if USE_ALPHA:
             alpha_block_ptr += H
         if USE_BETA:
@@ -158,6 +163,7 @@ def krcl_recurrence_fwd(
         b = cu_seqlens.shape[0] - 1
 
     use_initial_state = initial_state is not None
+    use_ld = ld is not None
     use_q = q is not None
     use_alpha = alpha is not None
     use_beta = beta is not None
@@ -190,6 +196,7 @@ def krcl_recurrence_fwd(
         D=d,
         E=e,
         USE_Q=use_q,
+        USE_LD=use_ld,
         USE_ALPHA=use_alpha,
         USE_BETA=use_beta,
         USE_CU_SEQLENS=use_cu_seqlens,
@@ -237,6 +244,7 @@ def _krcl_recurrence_bwd_dk_dv_p(
     D: tl.constexpr,
     E: tl.constexpr,
     USE_Q: tl.constexpr,
+    USE_LD: tl.constexpr,
     USE_ALPHA: tl.constexpr,
     USE_BETA: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
@@ -272,14 +280,16 @@ def _krcl_recurrence_bwd_dk_dv_p(
     do_block_ptr = DO + offset_vo + array_e
     dk_block_ptr = DK + offset_qk + array_d
     dv_block_ptr = DV + offset_vo + array_e
-    log_decay_block_ptr = LOG_DECAY + offset_log_decay
+    if USE_LD:
+        log_decay_block_ptr = LOG_DECAY + offset_log_decay
+        kdk_block_ptr = KDK + offset_log_decay
     if USE_ALPHA:
         alpha_block_ptr = ALPHA + offset_log_decay
         DALPHA + offset_log_decay
     if USE_BETA:
         beta_block_ptr = BETA + offset_log_decay
         dbeta_block_ptr = DBETA + offset_log_decay
-    kdk_block_ptr = KDK + offset_log_decay
+    
     mask_d = array_d < D
     mask_e = array_e < E
 
@@ -306,8 +316,9 @@ def _krcl_recurrence_bwd_dk_dv_p(
         do_block_ptr -= H * E
         dk_block_ptr -= H * D
         dv_block_ptr -= H * E
-        log_decay_block_ptr -= H
-        kdk_block_ptr -= H
+        if USE_LD:
+            log_decay_block_ptr -= H
+            kdk_block_ptr -= H
         if USE_ALPHA:
             alpha_block_ptr -= H
         if USE_BETA:
@@ -329,8 +340,9 @@ def _krcl_recurrence_bwd_dk_dv_p(
             beta = tl.load(beta_block_ptr).to(tl.float32)
             k = k * beta
         o = tl.load(o_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
-        log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
-        decay = tl.exp(log_decay)
+        if USE_LD:
+            log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
+            decay = tl.exp(log_decay)
 
         # compute p, do, dk
         p = tl.sum(dstate * k[:, None], axis=0)
@@ -345,11 +357,15 @@ def _krcl_recurrence_bwd_dk_dv_p(
         # store
         tl.store(dk_block_ptr, dk.to(dk_block_ptr.dtype.element_ty), mask=mask_d)
         tl.store(dv_block_ptr, dv.to(dv_block_ptr.dtype.element_ty), mask=mask_e)
-        tl.store(kdk_block_ptr, kdk.to(kdk_block_ptr.dtype.element_ty))
+        if USE_LD:
+            tl.store(kdk_block_ptr, kdk.to(kdk_block_ptr.dtype.element_ty))
         if USE_BETA:
             tl.store(dbeta_block_ptr, dbeta.to(dbeta_block_ptr.dtype.element_ty))
         # compute dk
-        dstate = decay * (dstate - q[:, None] * dv[None, :])
+        if USE_LD:
+            dstate = decay * (dstate - q[:, None] * dv[None, :])
+        else:
+            dstate = dstate - q[:, None] * dv[None, :]
 
     dinitial_state_block_ptr = (
         DINITIAL_STATE + offset_state + array_d[:, None] * E + array_e[None, :]
@@ -397,6 +413,7 @@ def _krcl_recurrence_bwd_dq(
     D: tl.constexpr,
     E: tl.constexpr,
     USE_Q: tl.constexpr,
+    USE_LD: tl.constexpr,
     USE_ALPHA: tl.constexpr,
     USE_BETA: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
@@ -452,8 +469,9 @@ def _krcl_recurrence_bwd_dq(
     else:
         state = tl.zeros((BLOCK_D, BLOCK_E), dtype=tl.float32)
 
-    log_decay_block_ptr = LOG_DECAY + offset_log_decay
-    qdq_block_ptr = QDQ + offset_log_decay
+    if USE_LD:
+        log_decay_block_ptr = LOG_DECAY + offset_log_decay
+        qdq_block_ptr = QDQ + offset_log_decay
 
     # compute
     for i in range(N):
@@ -471,11 +489,15 @@ def _krcl_recurrence_bwd_dq(
             k = k * beta
         o = tl.load(o_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
         dv = tl.load(dv_block_ptr, mask=mask_e, other=0.0).to(tl.float32)
-        log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
-        decay = tl.exp(log_decay)
+        if USE_LD:
+            log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
+            decay = tl.exp(log_decay)
 
         # compute dq
-        dq = -decay * tl.sum(state * dv[None, :], axis=-1)
+        if USE_LD:
+            dq = -decay * tl.sum(state * dv[None, :], axis=-1)
+        else:
+            dq = -tl.sum(state * dv[None, :], axis=-1)
         qdq = tl.sum(dq * q, axis=-1)
         if USE_ALPHA:
             dalpha = qdq / alpha
@@ -486,12 +508,14 @@ def _krcl_recurrence_bwd_dq(
 
         # save
         tl.store(dq_block_ptr, dq.to(dq_block_ptr.dtype.element_ty), mask=mask_d)
-        tl.store(qdq_block_ptr, qdq.to(qdq_block_ptr.dtype.element_ty))
+        if USE_LD:
+            tl.store(qdq_block_ptr, qdq.to(qdq_block_ptr.dtype.element_ty))
         if USE_ALPHA:
             tl.store(dalpha_block_ptr, dalpha.to(dalpha_block_ptr.dtype.element_ty))
 
         # update state
-        state *= decay
+        if USE_LD:
+            state *= decay
         state_ = k[:, None] * o[None, :]
         state += state_
 
@@ -502,8 +526,9 @@ def _krcl_recurrence_bwd_dq(
         o_block_ptr += H * E
         dv_block_ptr += H * E
         dq_block_ptr += H * D
-        log_decay_block_ptr += H
-        qdq_block_ptr += H
+        if USE_LD:
+            log_decay_block_ptr += H
+            qdq_block_ptr += H
         if USE_ALPHA:
             alpha_block_ptr += H
             dalpha_block_ptr += H
@@ -534,6 +559,7 @@ def krcl_recurrence_bwd(
 
     use_initial_state = initial_state is not None
     use_q = q is not None
+    use_ld = ld is not None
     use_alpha = alpha is not None
     use_beta = beta is not None
     use_dfinal_state = dfinal_state is not None
@@ -543,8 +569,12 @@ def krcl_recurrence_bwd(
     dq = torch.empty_like(k) if use_q else None
     dk = torch.empty_like(k)
     dv = torch.empty_like(v)
-    qdq = torch.empty_like(ld, dtype=torch.float32)
-    kdk = torch.empty_like(ld, dtype=torch.float32)
+    if use_ld:
+        qdq = torch.empty_like(ld, dtype=torch.float32)
+        kdk = torch.empty_like(ld, dtype=torch.float32)
+    else:
+        qdq = None
+        kdk = None
     dalpha = torch.empty_like(alpha) if alpha is not None else None
     dbeta = torch.empty_like(beta) if beta is not None else None
     dinitial_state = torch.empty(b, h, d, e, device=k.device, dtype=torch.float32)
@@ -579,6 +609,7 @@ def krcl_recurrence_bwd(
         D=d,
         E=e,
         USE_Q=use_q,
+        USE_LD=use_ld,
         USE_ALPHA=use_alpha,
         USE_BETA=use_beta,
         USE_CU_SEQLENS=use_cu_seqlens,
@@ -615,6 +646,7 @@ def krcl_recurrence_bwd(
         D=d,
         E=e,
         USE_Q=use_q,
+        USE_LD=use_ld,
         USE_ALPHA=use_alpha,
         USE_BETA=use_beta,
         USE_CU_SEQLENS=use_cu_seqlens,
@@ -624,28 +656,31 @@ def krcl_recurrence_bwd(
         BLOCK_E=BLOCK_E,
     )
 
-    if dfinal_state is not None:
-        dld_state = (final_state * dfinal_state).sum(dim=-1).sum(dim=-1).unsqueeze(1)
-
-    dld = qdq - kdk
-    if cu_seqlens is not None:
-        dld = dld.squeeze(0)
-        b = cu_seqlens.shape[0] - 1
-        array = []
-        for i in range(b):
-            start = cu_seqlens[i].item()
-            end = cu_seqlens[i + 1].item()
-            dld_ = cumsum_fn(dld[start:end], dim=0, reverse=True)
-            if dfinal_state is not None:
-                dld_ = dld_ + dld_state[i]
-            array.append(dld_)
-        dld = torch.cat(array, dim=0)
-        dld = dld.unsqueeze(0)
-    else:
-        dld = cumsum_fn(dld, dim=1, reverse=True)
-
+    if use_ld:
         if dfinal_state is not None:
-            dld = dld + dld_state
+            dld_state = (final_state * dfinal_state).sum(dim=-1).sum(dim=-1).unsqueeze(1)
+
+        dld = qdq - kdk
+        if cu_seqlens is not None:
+            dld = dld.squeeze(0)
+            b = cu_seqlens.shape[0] - 1
+            array = []
+            for i in range(b):
+                start = cu_seqlens[i].item()
+                end = cu_seqlens[i + 1].item()
+                dld_ = cumsum_fn(dld[start:end], dim=0, reverse=True)
+                if dfinal_state is not None:
+                    dld_ = dld_ + dld_state[i]
+                array.append(dld_)
+            dld = torch.cat(array, dim=0)
+            dld = dld.unsqueeze(0)
+        else:
+            dld = cumsum_fn(dld, dim=1, reverse=True)
+
+            if dfinal_state is not None:
+                dld = dld + dld_state
+    else:
+        dld = None
 
     dinitial_state = dinitial_state if use_initial_state else None
 
