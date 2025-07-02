@@ -112,7 +112,7 @@ def _krcl_recurrence_fwd(
         if USE_BETA:
             beta = tl.load(beta_block_ptr).to(tl.float32)
             k = k * beta
-        
+
         if USE_LD:
             log_decay = tl.load(log_decay_block_ptr).to(tl.float32)
             decay = tl.exp(log_decay)
@@ -289,7 +289,7 @@ def _krcl_recurrence_bwd_dk_dv_p(
     if USE_BETA:
         beta_block_ptr = BETA + offset_log_decay
         dbeta_block_ptr = DBETA + offset_log_decay
-    
+
     mask_d = array_d < D
     mask_e = array_e < E
 
@@ -658,7 +658,9 @@ def krcl_recurrence_bwd(
 
     if use_ld:
         if dfinal_state is not None:
-            dld_state = (final_state * dfinal_state).sum(dim=-1).sum(dim=-1).unsqueeze(1)
+            dld_state = (
+                (final_state * dfinal_state).sum(dim=-1).sum(dim=-1).unsqueeze(1)
+            )
 
         dld = qdq - kdk
         if cu_seqlens is not None:

@@ -1515,13 +1515,9 @@ def _krcl_parallel_inverse_merge(
                 attn_mask21 = tl.exp(diff21)
             else:
                 if REVERSE:  # triu
-                    attn_mask21 = tl.where(
-                        array2[:, None] < array1[None, :], 1, 0
-                    )
+                    attn_mask21 = tl.where(array2[:, None] < array1[None, :], 1, 0)
                 else:  # tril
-                    attn_mask21 = tl.where(
-                        array2[:, None] > array1[None, :], 1, 0
-                    )
+                    attn_mask21 = tl.where(array2[:, None] > array1[None, :], 1, 0)
 
             a21 *= attn_mask21
         else:
@@ -1993,7 +1989,7 @@ def _krcl_parallel_inverse_merge(
                     diff43 = tl.where(
                         array4[:, None] > array3[None, :], diff43, -float("inf")
                     )
-                
+
                 attn_mask21 = tl.exp(diff21)
                 attn_mask31 = tl.exp(diff31)
                 attn_mask32 = tl.exp(diff32)
@@ -2002,43 +1998,19 @@ def _krcl_parallel_inverse_merge(
                 attn_mask43 = tl.exp(diff43)
             else:
                 if REVERSE:  # triu
-                    attn_mask21 = tl.where(
-                        array2[:, None] < array1[None, :], 1, 0
-                    )
-                    attn_mask31 = tl.where(
-                        array3[:, None] < array1[None, :], 1, 0
-                    )
-                    attn_mask32 = tl.where(
-                        array3[:, None] < array2[None, :], 1, 0
-                    )
-                    attn_mask41 = tl.where(
-                        array4[:, None] < array1[None, :], 1, 0
-                    )
-                    attn_mask42 = tl.where(
-                        array4[:, None] < array2[None, :], 1, 0
-                    )
-                    attn_mask43 = tl.where(
-                        array4[:, None] < array3[None, :], 1, 0
-                    )
+                    attn_mask21 = tl.where(array2[:, None] < array1[None, :], 1, 0)
+                    attn_mask31 = tl.where(array3[:, None] < array1[None, :], 1, 0)
+                    attn_mask32 = tl.where(array3[:, None] < array2[None, :], 1, 0)
+                    attn_mask41 = tl.where(array4[:, None] < array1[None, :], 1, 0)
+                    attn_mask42 = tl.where(array4[:, None] < array2[None, :], 1, 0)
+                    attn_mask43 = tl.where(array4[:, None] < array3[None, :], 1, 0)
                 else:  # tril
-                    attn_mask21 = tl.where(
-                        array2[:, None] > array1[None, :], 1, 0
-                    )
-                    attn_mask31 = tl.where(
-                        array3[:, None] > array1[None, :], 1, 0
-                    )
-                    attn_mask32 = tl.where(
-                        array3[:, None] > array2[None, :], 1, 0
-                    )
-                    attn_mask41 = tl.where(
-                        array4[:, None] > array1[None, :], 1, 0
-                    )
-                    attn_mask42 = tl.where(
-                        array4[:, None] > array2[None, :], 1, 0
-                    )
-                    attn_mask43 = tl.where(
-                        array4[:, None] > array3[None, :], 1, 0
-                    )
+                    attn_mask21 = tl.where(array2[:, None] > array1[None, :], 1, 0)
+                    attn_mask31 = tl.where(array3[:, None] > array1[None, :], 1, 0)
+                    attn_mask32 = tl.where(array3[:, None] > array2[None, :], 1, 0)
+                    attn_mask41 = tl.where(array4[:, None] > array1[None, :], 1, 0)
+                    attn_mask42 = tl.where(array4[:, None] > array2[None, :], 1, 0)
+                    attn_mask43 = tl.where(array4[:, None] > array3[None, :], 1, 0)
 
             a21 *= attn_mask21
             a31 *= attn_mask31
@@ -2914,7 +2886,9 @@ def _krcl_parallel_intra_inter(
 
     if USE_LD:
         if REVERSE:
-            ld_sum_block_ptr = LOG_DECAY_REVERSE + offset_ld + offset_block_ld + array * H
+            ld_sum_block_ptr = (
+                LOG_DECAY_REVERSE + offset_ld + offset_block_ld + array * H
+            )
         else:
             ld_sum_block_ptr = LOG_DECAY + offset_ld + offset_block_ld + array * H
         ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
@@ -2929,7 +2903,7 @@ def _krcl_parallel_intra_inter(
             diff = tl.where(array[:, None] < array[None, :], 0, -float("inf"))
         else:  # tril
             diff = tl.where(array[:, None] > array[None, :], 0, -float("inf"))
-                
+
     decay = tl.exp(diff)
 
     if USE_LD:
@@ -3099,7 +3073,11 @@ def _compute_dld_cumsum_kernel(
                 dld_block_ptr = DLD + offset_b_dld + array_n[:, None] * H + offset_h_dld
             else:
                 dld_block_ptr = (
-                    DLD + offset_b + array_n[:, None] * H * F + offset_h + array_f[None, :]
+                    DLD
+                    + offset_b
+                    + array_n[:, None] * H * F
+                    + offset_h
+                    + array_f[None, :]
                 )
         mask_n = array_n >= 0
         mask = mask_n[:, None] & mask_f[None, :]
@@ -3165,6 +3143,8 @@ def _compute_dld_cumsum_kernel(
                     dld_ += dld_state
 
                 # Store result
-                tl.store(dld_block_ptr, dld_.to(dld_block_ptr.dtype.element_ty), mask=mask)
+                tl.store(
+                    dld_block_ptr, dld_.to(dld_block_ptr.dtype.element_ty), mask=mask
+                )
 
         array_n -= BLOCK_N

@@ -297,7 +297,9 @@ def krcl_parallel_intra_inter(
             ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=False, chunk_size=BLOCK_N)
 
         if ld_reverse_cumsum is None and reverse:
-            ld_reverse_cumsum = chunk_cumsum_decay_fn(ld, reverse=True, chunk_size=BLOCK_N)
+            ld_reverse_cumsum = chunk_cumsum_decay_fn(
+                ld, reverse=True, chunk_size=BLOCK_N
+            )
 
     _krcl_parallel_intra_inter[grid](
         Q=q,

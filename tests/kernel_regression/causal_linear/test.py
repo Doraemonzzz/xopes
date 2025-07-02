@@ -288,7 +288,8 @@ def test_krcl(shape, use_q, use_ld, use_initial_state, use_varlen, no_dstate, c,
             torch.abs(dld_torch - dld_triton).max().item(),
         )
         print(
-            "dld diff norm (torch vs triton): ", torch.norm(dld_torch - dld_triton).item()
+            "dld diff norm (torch vs triton): ",
+            torch.norm(dld_torch - dld_triton).item(),
         )
         assert_close(dld_torch, dld_triton, atol=ld_atol, rtol=ld_rtol)
 
