@@ -2289,7 +2289,7 @@ def _krcl_parallel_inverse_attention(
         mask = (offset_block_n + array) < N
         ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
         diff = ld[:, None] - ld[None, :]
-        if USE_PAD:
+        if USE_PAD:  # todo: maybe always check
             diff = tl.where(diff <= 0, diff, -float("inf"))  # !!! important
         if REVERSE:  # triu
             diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
