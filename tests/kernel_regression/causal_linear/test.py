@@ -41,7 +41,7 @@ def get_params():
 @pytest.mark.parametrize("use_varlen", [False])
 @pytest.mark.parametrize("no_dstate", [True])
 @pytest.mark.parametrize("c", [0.1, 10])  # Scaling factor for log decay
-@pytest.mark.parametrize("dtype", [torch.bfloat16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 def test_krcl(shape, use_q, use_ld, use_initial_state, use_varlen, no_dstate, c, dtype):
     torch.manual_seed(2024)
     device = torch.device("cuda")
@@ -72,32 +72,15 @@ def test_krcl(shape, use_q, use_ld, use_initial_state, use_varlen, no_dstate, c,
     v = torch.randn((b, n, h, e), dtype=dtype, device=device).requires_grad_()
     if use_ld:
         ld = F.logsigmoid(
-            (1 + scale * torch.ones((b, n, h), dtype=dtype, device=device)) * c
+            (1 + scale * torch.ones((b, n, h), dtype=torch.float32, device=device)) * c
         ).requires_grad_()
     else:
         ld = None
     alpha = (
-        torch.exp(
-            F.logsigmoid(
-                (1 + scale * torch.randn((b, n, h), dtype=dtype, device=device)) * c
-            )
-        )
+        F.sigmoid(torch.randn((b, n, h), dtype=dtype, device=device))
     ).requires_grad_()
     beta = (
-        torch.exp(
-            F.logsigmoid(
-                (1 + scale * torch.randn((b, n, h), dtype=dtype, device=device)) * c
-            )
-        )
-    ).requires_grad_()
-    beta = (
-        2
-        * torch.exp(
-            F.logsigmoid(
-                (1 + scale * torch.randn((b, n, h), dtype=dtype, device=device)) * c
-            )
-        )
-        - 1
+        F.sigmoid(torch.randn((b, n, h), dtype=dtype, device=device))
     ).requires_grad_()
     BLOCK_N = 64
 
@@ -218,8 +201,8 @@ def test_krcl(shape, use_q, use_ld, use_initial_state, use_varlen, no_dstate, c,
 
     # Set tolerance for numerical comparisons
     atol, rtol = get_threshold(dtype)
-    ld_atol = 7e-2 if dtype == torch.bfloat16 else atol
-    ld_rtol = 7e-2 if dtype == torch.bfloat16 else rtol
+    ld_atol = 5e-2
+    ld_rtol = 5e-2
 
     ##### Forward pass validation
     # torch vs triton

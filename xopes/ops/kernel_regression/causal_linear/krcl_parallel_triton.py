@@ -76,6 +76,7 @@ def krcl_parallel_inverse(
         D=d,
         CU_SEQLENS=cu_seqlens,
         USE_CU_SEQLENS=use_cu_seqlens,
+        USE_PAD=use_pad,
         REVERSE=reverse,
         BLOCK_N=BLOCK_N,
         NUM_BLOCK_N=NUM_BLOCK_N,
@@ -575,12 +576,8 @@ def krcl_parallel_bwd(
 ):
     use_ld = ld is not None
     if use_ld:
-        ld_cumsum = chunk_cumsum_decay_fn(
-            ld, reverse=False, chunk_size=BLOCK_N * state_stride
-        )
-        ld_reverse_cumsum = chunk_cumsum_decay_fn(
-            ld, reverse=True, chunk_size=BLOCK_N * state_stride
-        )
+        ld_cumsum = chunk_cumsum_decay_fn(ld, reverse=False, chunk_size=BLOCK_N)
+        ld_reverse_cumsum = chunk_cumsum_decay_fn(ld, reverse=True, chunk_size=BLOCK_N)
     else:
         ld_cumsum = None
         ld_reverse_cumsum = None
@@ -618,6 +615,17 @@ def krcl_parallel_bwd(
         BLOCK_N=BLOCK_N,
         state_stride=state_stride,
     )
+
+    if use_ld:
+        ld_cumsum = chunk_cumsum_decay_fn(
+            ld, reverse=False, chunk_size=BLOCK_N * state_stride
+        )
+        ld_reverse_cumsum = chunk_cumsum_decay_fn(
+            ld, reverse=True, chunk_size=BLOCK_N * state_stride
+        )
+    else:
+        ld_cumsum = None
+        ld_reverse_cumsum = None
 
     use_q = q is not None
     dk, dld_k = krcl_parallel_intra_inter(

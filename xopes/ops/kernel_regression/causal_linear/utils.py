@@ -2188,6 +2188,7 @@ def _krcl_parallel_inverse_attention(
     H: tl.constexpr,
     D: tl.constexpr,
     USE_CU_SEQLENS: tl.constexpr,
+    USE_PAD: tl.constexpr,
     REVERSE: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_D: tl.constexpr,
@@ -2288,6 +2289,8 @@ def _krcl_parallel_inverse_attention(
         mask = (offset_block_n + array) < N
         ld = tl.load(ld_sum_block_ptr, mask=mask, other=0.0).to(tl.float32)
         diff = ld[:, None] - ld[None, :]
+        if USE_PAD:
+            diff = tl.where(diff <= 0, diff, -float("inf"))  # !!! important
         if REVERSE:  # triu
             diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
         else:  # tril
@@ -2597,7 +2600,6 @@ def _krcl_parallel_chunk_loop(
                         state1.to(states1_block_ptr.dtype.element_ty),
                         boundary_check=(0, 1),
                     )
-                # tl.debug_barrier()
 
         k = tl.load(k_block_ptr, boundary_check=(0, 1), padding_option="zero")
         v = tl.load(v_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -2898,13 +2900,14 @@ def _krcl_parallel_intra_inter(
             diff = tl.where(array[:, None] < array[None, :], diff, -float("inf"))
         else:  # tril
             diff = tl.where(array[:, None] > array[None, :], diff, -float("inf"))
+        attn_mask = tl.exp(diff)
     else:
         if REVERSE:  # triu
-            diff = tl.where(array[:, None] < array[None, :], 0, -float("inf"))
+            attn_mask = tl.where(array[:, None] < array[None, :], 1, 0)
         else:  # tril
-            diff = tl.where(array[:, None] > array[None, :], 0, -float("inf"))
+            attn_mask = tl.where(array[:, None] > array[None, :], 1, 0)
 
-    decay = tl.exp(diff)
+    # decay = tl.exp(diff)
 
     if USE_LD:
         q_decay = tl.exp(ld)
@@ -2916,7 +2919,7 @@ def _krcl_parallel_intra_inter(
         )
 
         score = tl.dot(q, k_trans)
-        score *= decay
+        score *= attn_mask
         o -= tl.dot(score.to(v.dtype), v)
         ##### inter start #####
         state = tl.load(state_block_ptr, boundary_check=(0, 1), padding_option="zero")
@@ -2930,42 +2933,41 @@ def _krcl_parallel_intra_inter(
         k_trans_block_ptr = tl.advance(k_trans_block_ptr, (BLOCK_D, 0))
         state_block_ptr = tl.advance(state_block_ptr, (BLOCK_D, 0))
 
-    if USE_LD:
-        # compute dld
-        if USE_Q:
-            x_block_ptr = tl.make_block_ptr(
-                base=X + offset_vo,
-                shape=(N, E),
-                strides=(H * E, 1),
-                offsets=(offset_block_n, offset_block_e),
-                block_shape=(BLOCK_N, BLOCK_E),
-                order=(1, 0),
-            )
-            x = tl.load(x_block_ptr, boundary_check=(0, 1), padding_option="zero")
-        else:
-            x = v_
-
-        if COMPUTE_DQ:
-            if USE_ALPHA:
-                x *= alpha
-        else:
-            if USE_BETA:
-                x *= beta
-
-        # N D -> N
-        dld = tl.sum(x * o, axis=-1)
-
-        offset_dld = off_b * N * H * NUM_BLOCK_E + off_h * NUM_BLOCK_E
-        offset_block_dld = offset_block_n * H * NUM_BLOCK_E
-        dld_block_ptr = (
-            DLOG_DECAY
-            + offset_dld
-            + offset_block_dld
-            + array * H * NUM_BLOCK_E
-            + off_block_e
+    # compute dld, for dalpha, dbeta
+    if USE_Q:
+        x_block_ptr = tl.make_block_ptr(
+            base=X + offset_vo,
+            shape=(N, E),
+            strides=(H * E, 1),
+            offsets=(offset_block_n, offset_block_e),
+            block_shape=(BLOCK_N, BLOCK_E),
+            order=(1, 0),
         )
+        x = tl.load(x_block_ptr, boundary_check=(0, 1), padding_option="zero")
+    else:
+        x = v_
 
-        tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty), mask=mask)
+    if COMPUTE_DQ:
+        if USE_ALPHA:
+            x *= alpha
+    else:
+        if USE_BETA:
+            x *= beta
+
+    # N D -> N
+    dld = tl.sum(x * o, axis=-1)
+
+    offset_dld = off_b * N * H * NUM_BLOCK_E + off_h * NUM_BLOCK_E
+    offset_block_dld = offset_block_n * H * NUM_BLOCK_E
+    dld_block_ptr = (
+        DLOG_DECAY
+        + offset_dld
+        + offset_block_dld
+        + array * H * NUM_BLOCK_E
+        + off_block_e
+    )
+
+    tl.store(dld_block_ptr, dld.to(dld_block_ptr.dtype.element_ty), mask=mask)
 
     # save o
     if COMPUTE_DQ:
